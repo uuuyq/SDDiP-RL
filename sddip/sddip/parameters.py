@@ -65,7 +65,7 @@ class Parameters:
         self.backsight_periods = None
         # Storage charge/discharge rate limits
         self.rc_max = None
-        self.rdc_min = None
+        self.rdc_max = None
         # Maximum state of charge
         self.soc_max = None
         # Charge/discharge efficiencies
