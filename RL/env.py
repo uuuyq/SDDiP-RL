@@ -31,7 +31,7 @@ class SCUCEnv(gym.Env):
         self.n_lines = parameters.n_lines
         self.n_buses = parameters.n_buses
         self.ptdf = parameters.ptdf
-        self.pl_max = parameters.pl_max
+        self.pl_max = np.array(parameters.pl_max)
         self.generators_at_bus = parameters.gens_at_bus
         self.storages_at_bus = parameters.storages_at_bus
         self.max_rate_up = parameters.r_up
@@ -54,13 +54,13 @@ class SCUCEnv(gym.Env):
         # 动作：x[g] (binary) + y[g] (continuous)  + 充放电功率
         action_low = np.concatenate([
             np.zeros(self.n_gen),  # x[g]
-            np.zeros(self.n_gen),  # y[g]
-            -self.rdc_max * np.ones(self.n_soc),  # 储能净充放电
+            self.min_y,  # y[g]
+            -np.array(self.rdc_max),  # 储能净充放电
         ])
         action_high = np.concatenate([
             np.ones(self.n_gen),  # x[g]
-            self.max_y * np.ones(self.n_gen),
-            self.rc_max * np.ones(self.n_soc),
+            self.max_y,
+            self.rc_max,
         ])
         self.action_space = spaces.Box(low=action_low, high=action_high, dtype=np.float32)
 
@@ -84,11 +84,13 @@ class SCUCEnv(gym.Env):
             np.concatenate(self.x_bs) if self.x_bs else np.array([]),
             self.x,
             self.y,
-            self.xi
+            self.xi,
+            np.array([self.t], dtype=np.float32)
         ])
         return state
 
     def sample_xi(self, t):
+        t = t - 1  # 参数t代表阶段，对应list中的t-1
         # 随机选择当前阶段的一个场景索引
         idx = np.random.randint(len(self.p_d[t]))
         # 拼接 Pd + Re
@@ -103,7 +105,6 @@ class SCUCEnv(gym.Env):
         y = action[idx:idx + self.n_gen]  # 发电功率
         idx += self.n_gen
         u_s = action[idx:idx + self.n_soc]  # 储能净充放电功率
-
 
         # ---------------- SOC 更新 ----------------
         soc_prev = self.soc
@@ -122,15 +123,15 @@ class SCUCEnv(gym.Env):
 
         reward = self.reward((self.x, self.y, x_bs_prev, soc_prev, x, y, self.x_bs, self.soc, u_s, self.xi))
 
-
         # ---------------- 更新状态 ----------------
         self.x = x
         self.y = y
         self.t += 1
-        self.xi = self.sample_xi(self.t + 1)
+        max_steps = 24  # 24个阶段
+        if self.t < max_steps:
+            self.xi = self.sample_xi(self.t + 1)
 
         # ---------------- 终止条件 ----------------
-        max_steps = 24  # 24个阶段
         terminated = self.t >= max_steps  # t 从0开始计数，第24个阶段的解不需要
         truncated = False  # 如果没有额外的截断条件
 
@@ -149,8 +150,10 @@ class SCUCEnv(gym.Env):
         soc = args[7]
         u_s = args[8]
         xi = args[9]
-        p_d = xi[:len(xi) / 2]
-        re = xi[len(xi) / 2 :]
+
+        # print(xi.shape)  # (12,)
+        p_d = xi[:xi.shape[0] // 2]
+        re = xi[xi.shape[0] // 2 :]
 
         s_up = (1 - x_prev) * x  # 启动
         s_down = x_prev * (1 - x)  # 停机
@@ -177,31 +180,29 @@ class SCUCEnv(gym.Env):
 
 
         r = 0
-        r += np.concatenate(y, s_up, s_down) * self.coefficient[:3 * self.n_gen]  # 发电成本 + 启动停机成本
-        penalty = [self.coefficient[-1] * 6]
-        r += np.array([x_bs_violation, flow_violation, ramp_violation, balance_violation, soc_violation,
-                            y_violation, soc_violation]) * penalty  # 约束惩罚项
-
+        r += np.sum(np.concatenate([y, s_up, s_down]) * self.coefficient[:3 * self.n_gen])  # 发电成本 + 启动停机成本
+        # penalty = self.coefficient[-1]
+        penalty = 0.000000001
+        r += np.sum(np.array([x_bs_violation, flow_violation, ramp_violation, balance_violation, soc_violation,
+                            y_violation, soc_violation]) * penalty)  # 约束惩罚项
 
         return -r
 
-
     def x_bs_violation(self, x_bs, min_up_times, min_down_times):
         """
-        x_bs: list of arrays，每个机组历史back-sight状态，0/1
-        min_up_times / min_down_times: 每台机组最小开停机时间
+        返回两个矩阵：
+        - x_bs_p[g][k] : 每个机组每个back-sight位置需要增加的开机次数
+        - x_bs_n[g][k] : 每个机组每个back-sight位置需要增加的停机次数
         """
-        violations = []
+        n_gen = len(x_bs)
+        x_bs_p = [np.zeros(len(x_bs[g])) for g in range(n_gen)]
+        x_bs_n = [np.zeros(len(x_bs[g])) for g in range(n_gen)]
 
-        for g in range(len(x_bs)):
+        for g in range(n_gen):
             seq = x_bs[g]
-            up_violation = 0
-            down_violation = 0
-
-            # 1. 找所有潜在的关机点，检查前面连续开机长度
+            # 检查连续开机
             for t in range(len(seq)):
-                if seq[t] == 0:  # 关机
-                    # 往前找连续开机长度
+                if seq[t] == 0:
                     count = 0
                     for k in range(t, -1, -1):
                         if seq[k] == 1:
@@ -209,12 +210,13 @@ class SCUCEnv(gym.Env):
                         else:
                             break
                     if count < min_up_times[g]:
-                        up_violation += min_up_times[g] - count
+                        # 需要增加开机次数
+                        for k in range(max(0, t - count + 1), t + 1):
+                            x_bs_p[g][k] += 1
 
-            # 2. 找所有潜在的启动点，检查前面连续停机长度
+            # 检查连续停机
             for t in range(len(seq)):
-                if seq[t] == 1:  # 启动
-                    # 往前找连续停机长度
+                if seq[t] == 1:
                     count = 0
                     for k in range(t, -1, -1):
                         if seq[k] == 0:
@@ -222,11 +224,11 @@ class SCUCEnv(gym.Env):
                         else:
                             break
                     if count < min_down_times[g]:
-                        down_violation += min_down_times[g] - count
+                        # 需要增加停机次数
+                        for k in range(max(0, t - count + 1), t + 1):
+                            x_bs_n[g][k] += 1
 
-            violations.append((up_violation, down_violation))
-
-        return violations
+        return np.sum(np.array(x_bs_p) + np.array(x_bs_n))
 
     def power_flow_violation(self, u_s, p_d, re):
         # ---------- 计算每条线路的功率流 ----------
