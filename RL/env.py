@@ -100,7 +100,8 @@ class SCUCEnv(gym.Env):
     def step(self, action):
         # ---------------- 动作解析 ----------------
         idx = 0
-        x = (action[idx:idx + self.n_gen] > 0.5).astype(float)  # 开机二值化
+        # x = (action[idx:idx + self.n_gen] > 0.5).astype(float)  # 开机二值化
+        x = action[idx:idx + self.n_gen]  # 开机二值化
         idx += self.n_gen
         y = action[idx:idx + self.n_gen]  # 发电功率
         idx += self.n_gen
@@ -110,16 +111,16 @@ class SCUCEnv(gym.Env):
         soc_prev = self.soc
         for s in range(self.n_soc):
             if u_s[s] >= 0:
-                self.soc[s] += self.eff_c[s] * u_s[s]  # 充电
+                self.soc[s] += self.eff_c[s] * u_s[s]  # 充电  delta T = 1
             else:
                 self.soc[s] += u_s[s] / self.eff_dc[s]  # 放电
 
         # ---------------- x_bs 滚动更新 ----------------
-        x_bs_prev = self.x_bs
+        x_bs_prev = [arr.copy() for arr in self.x_bs]
         if self.x_bs:
-            for i in range(len(self.x_bs)):
-                self.x_bs[i] = np.roll(self.x_bs[i], -1)  # 左移
-                self.x_bs[i][-1] = x[i % self.n_gen]
+            for g in range(self.n_gen):
+                self.x_bs[g] = np.roll(self.x_bs[g], -1)
+                self.x_bs[g][-1] = x[g]
 
         reward = self.reward((self.x, self.y, x_bs_prev, soc_prev, x, y, self.x_bs, self.soc, u_s, self.xi))
 
@@ -151,12 +152,13 @@ class SCUCEnv(gym.Env):
         u_s = args[8]
         xi = args[9]
 
-        # print(xi.shape)  # (12,)
         p_d = xi[:xi.shape[0] // 2]
         re = xi[xi.shape[0] // 2 :]
 
         s_up = (1 - x_prev) * x  # 启动
         s_down = x_prev * (1 - x)  # 停机
+
+        binary_violation = np.sum(x * (1 - x))
 
         # ---------------- 1 发电功率惩罚 ----------------
         y_violation = np.sum(np.maximum(0, y - x * self.max_y) + np.maximum(0, x * self.min_y - y))
@@ -169,66 +171,60 @@ class SCUCEnv(gym.Env):
         total_charge = np.sum([u_s[s] for s in range(self.n_soc) if u_s[s] > 0])
         total_renewable = np.sum(re)  # 可再生发电
         total_demand = np.sum(p_d)  # 负荷
-        balance_violation = total_generation + total_discharge - total_charge + total_renewable - total_demand
+        balance_violation = abs(total_generation + total_discharge - total_charge + total_renewable - total_demand)
 
         # ---------------- 4 最小启停时间约束 ----------------
-        x_bs_violation = self.x_bs_violation(x_bs, self.min_up_times, self.min_down_times)
+        x_bs_violation = self.x_bs_violation(x_bs_prev, x_prev, x, self.min_up_times, self.min_down_times)
         # ---------------- 5 power flow 约束 ----------------
         flow_violation = self.power_flow_violation(u_s, p_d, re)
         # ---------------- 6 ramping 约束 ----------------
-        ramp_violation = self.ramp_violation(x_prev, x, y_prev, y)
+        ramp_violation = self.ramp_violation(x_prev, y_prev, x, y)
 
 
         r = 0
         r += np.sum(np.concatenate([y, s_up, s_down]) * self.coefficient[:3 * self.n_gen])  # 发电成本 + 启动停机成本
         # penalty = self.coefficient[-1]
         penalty = 0.000000001
-        r += np.sum(np.array([x_bs_violation, flow_violation, ramp_violation, balance_violation, soc_violation,
-                            y_violation, soc_violation]) * penalty)  # 约束惩罚项
+        r += np.sum(binary_violation) * penalty
+        r += y_violation * penalty
+        r += soc_violation * penalty
+        r += balance_violation * penalty
+        r += np.sum(x_bs_violation) * penalty
+        r += np.sum(flow_violation) * penalty
+        r += np.sum(ramp_violation) * penalty
 
         return -r
 
-    def x_bs_violation(self, x_bs, min_up_times, min_down_times):
-        """
-        返回两个矩阵：
-        - x_bs_p[g][k] : 每个机组每个back-sight位置需要增加的开机次数
-        - x_bs_n[g][k] : 每个机组每个back-sight位置需要增加的停机次数
-        """
-        n_gen = len(x_bs)
-        x_bs_p = [np.zeros(len(x_bs[g])) for g in range(n_gen)]
-        x_bs_n = [np.zeros(len(x_bs[g])) for g in range(n_gen)]
 
-        for g in range(n_gen):
-            seq = x_bs[g]
-            # 检查连续开机
-            for t in range(len(seq)):
-                if seq[t] == 0:
-                    count = 0
-                    for k in range(t, -1, -1):
-                        if seq[k] == 1:
-                            count += 1
-                        else:
-                            break
-                    if count < min_up_times[g]:
-                        # 需要增加开机次数
-                        for k in range(max(0, t - count + 1), t + 1):
-                            x_bs_p[g][k] += 1
+    def x_bs_violation(self, x_bs_prev, x_prev, x, min_up, min_down):
+        violation = np.zeros(self.n_gen, dtype=np.float32)
 
-            # 检查连续停机
-            for t in range(len(seq)):
-                if seq[t] == 1:
-                    count = 0
-                    for k in range(t, -1, -1):
-                        if seq[k] == 0:
-                            count += 1
-                        else:
-                            break
-                    if count < min_down_times[g]:
-                        # 需要增加停机次数
-                        for k in range(max(0, t - count + 1), t + 1):
-                            x_bs_n[g][k] += 1
+        for g in range(self.n_gen):
+            hist = x_bs_prev[g]
 
-        return np.sum(np.array(x_bs_p) + np.array(x_bs_n))
+            # ---------- 启动 ----------
+            if x_prev[g] == 0 and x[g] == 1:
+                # 过去连续停机时间
+                off_time = 0
+                for v in reversed(hist):
+                    if v == 0:
+                        off_time += 1
+                    else:
+                        break
+                violation[g] = max(0, min_down[g] - off_time)
+
+            # ---------- 停机 ----------
+            elif x_prev[g] == 1 and x[g] == 0:
+                # 过去连续开机时间
+                on_time = 0
+                for v in reversed(hist):
+                    if v == 1:
+                        on_time += 1
+                    else:
+                        break
+                violation[g] = max(0, min_up[g] - on_time)
+
+        return violation
 
     def power_flow_violation(self, u_s, p_d, re):
         # ---------- 计算每条线路的功率流 ----------
@@ -255,37 +251,32 @@ class SCUCEnv(gym.Env):
             line_flows[l] = flow
 
         # ---------- 功率流违规量（惩罚） ----------
-        flow_violation = np.sum(np.maximum(0, line_flows - self.pl_max) +
-                                np.maximum(0, -self.pl_max - line_flows))
+        flow_violation = (
+            np.maximum(0.0, line_flows - self.pl_max) +
+            np.maximum(0.0, -self.pl_max - line_flows)
+        )
 
         return flow_violation
 
-
     def ramp_violation(self, x_prev, y_prev, x, y):
-        # ---------------- 计算爬坡率违规 ----------------
-        ramp_violation = 0
+        violation = np.zeros(self.n_gen, dtype=np.float32)
 
         for g in range(self.n_gen):
-            # 上升爬坡
-            max_up = self.max_rate_up[g]
-            if x[g] == 1:  # 仅当机组开机时才考虑爬坡
+            # ---------- 上升爬坡 ----------
+            if x[g] == 1 and x_prev[g] == 1:
                 ramp_up = y[g] - y_prev[g]
-                if ramp_up > max_up:
-                    ramp_violation += ramp_up - max_up
-
-            # 下降爬坡
-            max_down = self.max_rate_down[g]
-            if x_prev[g] == 1:  # 上阶段开机
+                if ramp_up > self.max_rate_up[g]:
+                    violation[g] += ramp_up - self.max_rate_up[g]
+            # ---------- 下降爬坡 ----------
+            if x[g] == 1 and x_prev[g] == 1:
                 ramp_down = y_prev[g] - y[g]
-                if ramp_down > max_down:
-                    ramp_violation += ramp_down - max_down
+                if ramp_down > self.max_rate_down[g]:
+                    violation[g] += ramp_down - self.max_rate_down[g]
+            # ---------- 启动爬坡 ----------
+            if x_prev[g] == 0 and x[g] == 1:
+                violation[g] += max(0.0, y[g] - self.startup_rate[g])
+            # ---------- 停机爬坡 ----------
+            if x_prev[g] == 1 and x[g] == 0:
+                violation[g] += max(0.0, y_prev[g] - self.shutdown_rate[g])
 
-            # 启动爬坡
-            if x[g] == 1 and x_prev[g] == 0:  # 启动
-                ramp_violation += max(0, y[g] - self.startup_rate[g])
-
-            # 停机爬坡
-            if x[g] == 0 and x_prev[g] == 1:  # 停机
-                ramp_violation += max(0, self.shutdown_rate[g] - y_prev[g])
-
-        return ramp_violation
+        return violation
