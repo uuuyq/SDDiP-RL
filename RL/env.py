@@ -183,15 +183,15 @@ class SCUCEnv(gym.Env):
 
         r = 0
         r += np.sum(np.concatenate([y, s_up, s_down]) * self.coefficient[:3 * self.n_gen])  # 发电成本 + 启动停机成本
-        # penalty = self.coefficient[-1]
-        penalty = 0.000000001
+        penalty = self.coefficient[-1]
+        # penalty =
         r += np.sum(binary_violation) * penalty
         r += y_violation * penalty
         r += soc_violation * penalty
-        r += balance_violation * penalty
-        r += np.sum(x_bs_violation) * penalty
-        r += np.sum(flow_violation) * penalty
-        r += np.sum(ramp_violation) * penalty
+        # r += balance_violation * penalty
+        # r += np.sum(x_bs_violation) * penalty
+        # r += np.sum(flow_violation) * penalty
+        # r += np.sum(ramp_violation) * penalty
 
         return -r
 
