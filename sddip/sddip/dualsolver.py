@@ -497,7 +497,7 @@ class BundleMethod(DualSolver):
             )
 
             # Predicted ascent
-            delta = self._get_predicted_ascent(f_best, v.x)
+            delta = self._get_predicted_ascent(f_best, v.x)  # f_best下界，v.x上界
 
             logger.debug("delta = %.8f", delta)
 
@@ -534,7 +534,7 @@ class BundleMethod(DualSolver):
                 i_u,
                 var_est,
             )
-
+            # 如果不是serious step 就不更新下界f_best
             if serious_step:
                 # Serious step
                 logger.debug(

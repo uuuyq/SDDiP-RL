@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 import gurobipy as gp
 
+from bundle_RL.logger import get_logger
 from sddip.sddip import ucmodelclassical, parameters
 
 logger = logging.getLogger(__name__)
@@ -176,11 +177,11 @@ class SubProblem:
 
 """
 这里说明符号的含义：
-f_hat master求解得到的上界
-f_best 当前最好的真实值（真实是指是通过sub求解得到的
+ub : master求解得到的上界
+f_best 下界（稳定中心对应的子问题最优目标函数值）
 f_new 当前sub求解得到的目标函数值
 x_new 求解master得到的新的pi值
-x_best f_best对应的pi值
+x_best f_best对应的pi值  （稳定中心）
 serious step 说明此次pi值的更新带来了足够好的f_new，可以更新f_best和x_best
 
 算法的逻辑： master -> sub -> add_cut -> weight_update
@@ -211,7 +212,7 @@ class MasterProblem:
 
         self.x_best = np.zeros(n_vars)
         self.f_best = -1e9
-        self.f_hat = 0.0  # 上一次 Master 求解的预测目标值
+        # self.f_hat = 0.0  # 上一次 Master 求解的预测目标值
         self.iter_idx = 0
 
         # --- 初始化 Gurobi 模型 ---
@@ -234,11 +235,10 @@ class MasterProblem:
         self.model.optimize()
         self.logger.info(self.model.status)
 
-        # 记录预测值（问题的上界）和候选点
-        self.f_hat = self.v.x
-        x_candidate = np.array([self.x_vars[j].x for j in range(self.n_vars)])
 
-        return x_candidate
+        x_candidate = np.array([self.x_vars[j].x for j in range(self.n_vars)])
+        # 返回预测值（问题的上界）和候选点
+        return self.v.x, x_candidate
 
     def add_cut(self, x_new, f_new, g_new):
         self.iter_idx += 1
@@ -248,22 +248,24 @@ class MasterProblem:
         self.cuts_storage.append((g_new, x_new, f_new))
         self.model.addConstr(self.v <= cut_expr, name=f"cut_{self.iter_idx}")
 
-    def update_strategy(self, x_new, f_new, g_new):
+    def update_strategy(self, x_new, f_new, g_new, ub):
         """
         更新权重和状态 (Weight Update)
         根据子问题的真实反馈 f_new 和 Master 的预测值 f_hat 进行判定。
         """
+        stop_flag = False
         if self.iter_idx == 1:
             self.f_best = f_new
             self.x_best = copy.copy(x_new)
             return True, 0.0
 
-        # 计算预测增益 delta
-        delta = max(self.f_hat - self.f_best, 0)
+        # 计算预测增益 delta  上界-best下界
+        delta = max(ub - self.f_best, 0)
 
         # Check stopping criterion
         self.logger.info(f"delta: {delta} tolerance: {self.tolerance}")
         if delta <= self.tolerance:
+            stop_flag = True
             self.logger.info(f"算法已满足终止条件, delta: {delta} tolerance: {self.tolerance}")
             # TODO 需要停止？
 
@@ -274,7 +276,7 @@ class MasterProblem:
         self.u, self.i_u, self.var_est = self._weight_update_logic(
             self.u, self.i_u, self.var_est,
             x_new, f_new, self.x_best, self.f_best,
-            self.f_hat, g_new, serious_step
+            ub, g_new, serious_step
         )
 
         # 如果是 Serious Step，更新中心点
@@ -282,13 +284,13 @@ class MasterProblem:
             self.x_best = copy.copy(x_new)
             self.f_best = f_new
 
-        return serious_step, delta
+        return serious_step, delta, stop_flag
 
     def _weight_update_logic(self, u_current, i_u, var_est, x_new, f_new, x_best, f_best, f_hat, subgradient,
                              serious_step):
         """这里完整保留你提供的原 weight_update 逻辑代码"""
         variation_estimate = var_est
-        delta = f_hat - f_best
+        delta = f_hat - f_best  # f_hat就是ub
         u_int = 2 * u_current * (1 - (f_new - f_best) / delta) if abs(delta) > 1e-12 else u_current
         u = u_current
 
@@ -316,24 +318,10 @@ class MasterProblem:
 
 
 
-def test():
-    log_formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
-    logger = logging.getLogger("BundleMethod")
-    logger.setLevel(logging.DEBUG)
-
-    # 文件输出
-    file_handler = logging.FileHandler("bundle_solver.log", mode='w')
-    file_handler.setFormatter(log_formatter)
-    logger.addHandler(file_handler)
-
-    # 控制台输出
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(log_formatter)
-    logger.addHandler(console_handler)
+def bundle_test():
+    logger = get_logger("log/bundle_solver.log")
 
     t = 0
-    k = 0
-    n = 0
     n_vars = 13
     x_trial = [1.0, 1.0, 1.0]
     y_trial = [71.52627531002818, 59.02627531002818, 66.52627531002818]
@@ -350,18 +338,16 @@ def test():
     x_new = np.zeros(n_vars)
 
     g_new, f_new = sub.solve(x_new)
-    logger.info(f"g_new: {g_new}, f_new: {f_new}")
-    master.add_cut(x_new, f_new, g_new)
-    master.update_strategy(x_new, f_new, g_new)
 
     for i in range(200):
-        x_new = master.solve_master()
-
+        master.add_cut(x_new, f_new, g_new)  # pi, sub_obj, subgradient
+        ub, x_new = master.solve_master()
         g_new, f_new = sub.solve(x_new)
-        logger.info(f"g_new: {g_new}, f_new: {f_new}")
-        master.add_cut(x_new, f_new, g_new)
-        master.update_strategy(x_new, f_new, g_new)
+        serious_step, delta, stop_flag = master.update_strategy(x_new, f_new, g_new, ub)
+        logger.info(f"delta: {delta}")
+        if stop_flag:
+            break
 
 
 if __name__ == "__main__":
-    test()
+    bundle_test()
