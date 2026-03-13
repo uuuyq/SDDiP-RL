@@ -133,7 +133,7 @@ class BundleDualEnv(gym.Env):
             "phi": phi_new,
         }
 
-        # reward 暂时使用子问题的求解值
+        # reward 使用子问题的目标函数的提升值
         reward = (phi_new - self.bundle[-1]["phi"]) / self.scale
         self.bundle.append(cut_new)
 

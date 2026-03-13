@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import gurobipy as gp
+from matplotlib import pyplot as plt
 
 from bundle_RL.logger import get_logger
 from sddip.sddip import ucmodelclassical, parameters
@@ -248,22 +249,23 @@ class MasterProblem:
         self.cuts_storage.append((g_new, x_new, f_new))
         self.model.addConstr(self.v <= cut_expr, name=f"cut_{self.iter_idx}")
 
-    def update_strategy(self, x_new, f_new, g_new, ub):
+    def update_strategy(self, x_new, f_new, g_new, ub=None):
         """
         更新权重和状态 (Weight Update)
         根据子问题的真实反馈 f_new 和 Master 的预测值 f_hat 进行判定。
         """
         stop_flag = False
-        if self.iter_idx == 1:
+        if self.iter_idx == 0:
             self.f_best = f_new
             self.x_best = copy.copy(x_new)
-            return True, 0.0
+            # 此时初始化，还没有进行master求解，没有ub
+            return None, None, None
 
         # 计算预测增益 delta  上界-best下界
         delta = max(ub - self.f_best, 0)
 
         # Check stopping criterion
-        self.logger.info(f"delta: {delta} tolerance: {self.tolerance}")
+        # self.logger.info(f"delta: {delta} tolerance: {self.tolerance}")
         if delta <= self.tolerance:
             stop_flag = True
             self.logger.info(f"算法已满足终止条件, delta: {delta} tolerance: {self.tolerance}")
@@ -333,20 +335,37 @@ def bundle_test():
     sub = SubProblem(logger, problem_params, trial_point=(x_trial, y_trial, x_bs_trial, soc_trial), t=t, n=0, i=0)
     master = MasterProblem(logger, n_vars, tolerance=1e-5)
 
-
+    delta_history = []
 
     x_new = np.zeros(n_vars)
 
     g_new, f_new = sub.solve(x_new)
+    master.update_strategy(x_new, f_new, g_new, ub=None)
 
     for i in range(200):
         master.add_cut(x_new, f_new, g_new)  # pi, sub_obj, subgradient
         ub, x_new = master.solve_master()
         g_new, f_new = sub.solve(x_new)
         serious_step, delta, stop_flag = master.update_strategy(x_new, f_new, g_new, ub)
+        delta_history.append(delta)
         logger.info(f"delta: {delta}")
         if stop_flag:
             break
+
+    plt.figure(figsize=(8, 5))
+    # 绘制折线
+    plt.plot(range(len(delta_history)), delta_history,
+             marker='o', linestyle='-', color='#1f77b4',
+             linewidth=1.5, markersize=4, label='$\Delta$ (Convergence Gap)')
+    plt.ylabel('Delta Value')
+    plt.xlabel('Iteration Step')
+    plt.title('Bundle Method Convergence (Delta)')
+    plt.grid(True, which="both", ls="--", alpha=0.6)
+    plt.legend()
+
+    # 自动调整布局并显示
+    plt.tight_layout()
+    plt.show()
 
 
 if __name__ == "__main__":

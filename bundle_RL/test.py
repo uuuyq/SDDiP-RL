@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import numpy as np
+from matplotlib import pyplot as plt
 from stable_baselines3 import PPO
 
 from train import train
@@ -53,6 +54,8 @@ def create_env(logger):
 
 
 def test(env, model, master, logger):
+    delta_history = []
+    reward_history = []
 
     obs, _ = env.reset()
 
@@ -60,30 +63,50 @@ def test(env, model, master, logger):
     x_new = sub_result["pi"]
     f_new = sub_result["phi"]
     g_new = sub_result["g"]
-
-    master.add_cut(x_new, f_new, g_new)
-
-    master.update_strategy(x_new, f_new, g_new)
-
-    master.solve()
-    logger.info(f"上界 f_hat: {master.f_hat}")
-
+    # 第一次，更新 f_best和x_best
+    master.update_strategy(x_new, f_new, g_new, ub=None)
 
     logger.info("==== ROLLOUT ====")
-
     for step in range(20):
+        master.add_cut(x_new, f_new, g_new)
+        ub, _ = master.solve_master()
+        _, delta, stop_flag = master.update_strategy(x_new, f_new, g_new, ub=ub)
         action, _ = model.predict(obs, deterministic=True)
         state, reward, terminated, truncated, info = env.step(action)
-
-        logger.info(f"Step {step + 1}")
-        # logger.info(f"  pi norm: {np.linalg.norm(state['pi'])}")
-        # logger.info(f"  cuts: {state['cuts']}")
-        # logger.info(f"  pi: {state['pi']}")
-        logger.info(f"  reward: {reward}")
-        logger.info(f"  bundle size: {len(env.bundle)}")
-        logger.info("")
+        # 保存数据
+        logger.info(f"delta: {delta}")
+        delta_history.append(delta)
+        reward_history.append(reward)
+        # 获取新的子问题得到的cut
+        sub_result = env.bundle[-1]
+        x_new = sub_result["pi"]
+        f_new = sub_result["phi"]
+        g_new = sub_result["g"]
+        logger.info(f"reward: {reward}")
 
     logger.info("Test finished successfully.")
+
+    # 绘制曲线
+    plt.figure(figsize=(12, 5))
+    # 绘制 Delta 收敛图
+    plt.subplot(1, 2, 1)
+    plt.plot(delta_history, marker='o', color='b', label='Delta (Gap)')
+    plt.yscale('log')  # 通常 delta 跨度很大，建议开启对数坐标
+    plt.xlabel('Iteration Step')
+    plt.ylabel('Delta Value (Log Scale)')
+    plt.title('Convergence of Bundle Method')
+    plt.grid(True, which="both", ls="-", alpha=0.5)
+    plt.legend()
+    # 绘制 Reward 变化图
+    plt.subplot(1, 2, 2)
+    plt.plot(reward_history, marker='s', color='r', label='Step Reward')
+    plt.xlabel('Iteration Step')
+    plt.ylabel('Reward')
+    plt.title('Reward during Rollout')
+    plt.grid(True, alpha=0.5)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
 
 
 def main():
@@ -95,7 +118,7 @@ def main():
     # 加载model
     model = PPO.load("model/ppo_bundle_0312_1633.zip")
 
-    test(env, model, logger)
+    test(env, model, master, logger)
 
 
 if __name__ == "__main__":
