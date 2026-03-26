@@ -26,7 +26,7 @@ class SubProblem:
         self.n = n
         self.i = i
         # 子问题模型
-        self.model, self.relaxed_terms, self.objective_terms = self.init_model()
+        self.uc_bw, self.model, self.relaxed_terms, self.objective_terms = self.init_model()
     def init_model(self):
         # Get binary trial points
         x_trial_point = self.trial_point[0]
@@ -60,7 +60,7 @@ class SubProblem:
         relaxed_terms = uc_bw.relaxed_terms
         uc_bw.disable_output()
 
-        return uc_bw.model, relaxed_terms, objective_terms
+        return uc_bw, uc_bw.model, relaxed_terms, objective_terms
 
 
     def add_problem_constraints(
