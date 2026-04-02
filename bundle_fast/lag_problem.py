@@ -3,10 +3,8 @@ import logging
 from pathlib import Path
 
 import numpy as np
-import gurobipy as gp
-from matplotlib import pyplot as plt
 
-from bundle_RL.logger import get_logger
+from logger import get_logger
 from sddip.sddip import ucmodelclassical, parameters
 
 logger = logging.getLogger(__name__)
@@ -316,7 +314,96 @@ class MasterProblem:
             i_u = min(i_u - 1, -1) if u_new == u_current else -1
 
         return u_new, i_u, variation_estimate
+    def get_all_cuts(self):
+        """
+        从现有的 MasterProblem 实例中提取所有 cuts。
+        返回格式: List of (g_new, x_new, f_new)
+        """
+        return self.cuts_storage
 
+
+import gurobipy as gp
+from gurobipy import GRB
+import numpy as np
+
+
+class LagrangianMaster:
+    def __init__(self, logger, n_vars, cuts_storage, x_best, u):
+        """
+        :param n_vars: 变量 pi 的维度
+        :param cuts_storage: 历史 cut 列表 [(g_j, x_j, f_j), ...]
+        :param x_best: 当前的稳定中心 (pi_best)
+        :param u: 当前的权重惩罚参数
+        """
+        self.logger = logger
+        self.n_vars = n_vars
+        self.cuts = cuts_storage
+        self.x_best = np.array(x_best)
+        self.u = u
+        self.n_cuts = len(cuts_storage)
+
+        # 初始化模型
+        self.model = gp.Model("Lagrangian_Master")
+        self.model.setParam("OutputFlag", 0)
+
+        # 定义对偶乘子 mu: 每个 cut 对应一个
+        # 约束: mu >= 0 且 sum(mu) = 1
+        self.mu_vars = self.model.addVars(self.n_cuts, lb=0.0, ub=1.0, name="mu")
+        self.model.addConstr(self.mu_vars.sum() == 1, name="mu_sum_one")
+
+    def solve(self):
+        """
+        求解对偶问题以获取 mu 乘子，并计算出对应的 pi
+        """
+        if self.n_cuts == 0:
+            return self.x_best, []
+
+        # 计算线性化误差 e_j = f_best - (f_j + g_j^T(x_best - x_j))
+        # 或者直接在目标函数中展开
+
+        # 构造目标函数 (对偶形式通常是最小化)
+        # 目标函数包含两部分：
+        # 1. 线性项: sum_j(mu_j * (f_j + g_j^T(x_best - x_j)))
+        # 2. 二次项: -1/(2u) * || sum_j(mu_j * g_j) ||^2
+
+        # 提取数据以加快计算
+        gs = np.array([c[0] for c in self.cuts])  # (n_cuts, n_vars)
+        xs = np.array([c[1] for c in self.cuts])  # (n_cuts, n_vars)
+        fs = np.array([c[2] for c in self.cuts])  # (n_cuts,)
+
+        # 1. 线性部分
+        linear_part = gp.quicksum(
+            self.mu_vars[j] * (fs[j] + np.dot(gs[j], self.x_best - xs[j]))
+            for j in range(self.n_cuts)
+        )
+
+        # 2. 二次部分 (计算聚合梯度的模平方)
+        # aggregate_g = sum(mu_j * g_j)
+        agg_g = [gp.quicksum(self.mu_vars[j] * gs[j][k] for j in range(self.n_cuts))
+                 for k in range(self.n_vars)]
+
+        quad_part = (1 / (2 * self.u)) * gp.quicksum(gk * gk for gk in agg_g)
+
+        # 对偶问题目标：Maximize linear_part - quad_part
+        self.model.setObjective(linear_part - quad_part, GRB.MAXIMIZE)
+        self.model.optimize()
+
+        if self.model.status != GRB.OPTIMAL:
+            self.logger.error("Lagrangian Master 求解未找到最优解")
+            return None, None
+
+        # 提取 mu 值
+        mu_values = np.array([self.mu_vars[j].x for j in range(self.n_cuts)])
+
+        # 根据 KKT 条件计算新的 pi (x_new)
+        # pi_new = pi_best + (1/u) * sum(mu_j * g_j)
+        weighted_grad = np.zeros(self.n_vars)
+        for j in range(self.n_cuts):
+            weighted_grad += mu_values[j] * gs[j]
+
+        pi_new = self.x_best + (1 / self.u) * weighted_grad
+
+        return pi_new, mu_values
 
 
 
@@ -352,20 +439,21 @@ def bundle_test():
         if stop_flag:
             break
 
-    plt.figure(figsize=(8, 5))
-    # 绘制折线
-    plt.plot(range(len(delta_history)), delta_history,
-             marker='o', linestyle='-', color='#1f77b4',
-             linewidth=1.5, markersize=4, label='$\Delta$ (Convergence Gap)')
-    plt.ylabel('Delta Value')
-    plt.xlabel('Iteration Step')
-    plt.title('Bundle Method Convergence (Delta)')
-    plt.grid(True, which="both", ls="--", alpha=0.6)
-    plt.legend()
+    # plt.figure(figsize=(8, 5))
+    # # 绘制折线
+    # plt.plot(range(len(delta_history)), delta_history,
+    #          marker='o', linestyle='-', color='#1f77b4',
+    #          linewidth=1.5, markersize=4, label='$\Delta$ (Convergence Gap)')
+    # plt.ylabel('Delta Value')
+    # plt.xlabel('Iteration Step')
+    # plt.title('Bundle Method Convergence (Delta)')
+    # plt.grid(True, which="both", ls="--", alpha=0.6)
+    # plt.legend()
+    #
+    # # 自动调整布局并显示
+    # plt.tight_layout()
+    # plt.show()
 
-    # 自动调整布局并显示
-    plt.tight_layout()
-    plt.show()
 
 
 
