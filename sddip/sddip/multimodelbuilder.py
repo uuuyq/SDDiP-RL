@@ -60,7 +60,7 @@ class MultiModelBuilder:
             'theta': None, # 期望值函数近似
             'ys_p': None,  # 正负松弛变量
             'ys_n': None,  # 负松弛变量
-            'delta': None  # 模型一致性松弛变量
+            'delta': []    # 每个组独立的模型一致性松弛变量
         }
 
         self.bin_type = gp.GRB.CONTINUOUS if lp_relax else gp.GRB.BINARY
@@ -191,6 +191,13 @@ class MultiModelBuilder:
                 self.model.addVar(vtype=gp.GRB.CONTINUOUS, lb=0, name=f"{group_prefix}socs_n")
             )
 
+            # Delta variable for this group
+            self.variables['delta'].append(
+                self.model.addVar(
+                    vtype=gp.GRB.CONTINUOUS, lb=0, name=f"{group_prefix}delta"
+                )
+            )
+
         # 全局变量（不按组）
         if group_id == 0:
             self.variables['theta'] = self.model.addVar(
@@ -201,9 +208,6 @@ class MultiModelBuilder:
             )
             self.variables['ys_n'] = self.model.addVar(
                 vtype=gp.GRB.CONTINUOUS, lb=0, name="ys_n"
-            )
-            self.variables['delta'] = self.model.addVar(
-                vtype=gp.GRB.CONTINUOUS, lb=0, name="delta"
             )
 
             # Copy variables
@@ -261,7 +265,7 @@ class MultiModelBuilder:
             'z_soc': self.variables['z_soc'],
             'ys_p': self.variables['ys_p'],
             'ys_n': self.variables['ys_n'],
-            'delta': self.variables['delta']
+            'delta': self.variables['delta'][group_id]
         }
 
     def _validate_group_id(self, group_id: int) -> None:

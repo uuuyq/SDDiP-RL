@@ -115,6 +115,17 @@ def history_solution_collect():
     # 3. 求解得到新的 pi 和 乘子 mu
     pi_candidate, mu_weights = lag_master.solve()
 
+    # 计算乘子加权梯度 r = mu_weights * subgradients
+    gradients = np.array([cut[0] for cut in current_cuts])
+    r = mu_weights @ gradients
+    print(f"r (mu * subgradients):\n{r}")
+    print(f"r Shape: {r.shape}")
+    # [-1.27361737e-03  1.82139936e-01  6.96591631e-01 -1.59861276e-01
+    #  -5.99225194e-02  3.66021115e-03  0.00000000e+00  0.00000000e+00
+    #   1.21268432e-01  1.21268432e-01  8.19133680e-01  8.19133680e-01
+    #  -2.17355022e+00]
+
+
     print(f"得到的对偶乘子为: {mu_weights}")
     print(f"下一个试验点 pi 为: {pi_candidate}")
 
@@ -157,12 +168,14 @@ def bundle_fast(mu_weights, size):
         edgeitems=5  # 数组过长时，开头和结尾显示的元素个数
     )
 
-    # subgradients_np = np.array(subgradients)
-    # print(f"subgradients:\n{subgradients_np}")
-    # print(f"Shape: {subgradients_np.shape}")
+    subgradients_np = np.array(subgradients)
+    print(f"subgradients:\n{subgradients_np}")
+    print(f"Shape: {subgradients_np.shape}")
 
-    print(f"subgradients: {subgradients}")
-    print(f"len(subgradients): {len(subgradients)}")
+
+
+    # print(f"subgradients: {subgradients}")
+    # print(f"len(subgradients): {len(subgradients)}")
 
 
 

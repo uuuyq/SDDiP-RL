@@ -10,7 +10,7 @@ from sddip.sddip.multimodelbuilder import MultiModelBuilder
 
 
 class FastMultiModel:
-    def __init__(self, logger, problem_params, trial_point, t, n, i, mu_history):
+    def __init__(self, logger, problem_params, trial_point, t, n, i, mu_history, alpha=100, verbose=1):
         self.logger = logger
         self.problem_params = problem_params
         self.trial_point = trial_point
@@ -21,6 +21,12 @@ class FastMultiModel:
 
         self.mu_history = mu_history
         self.len = len(mu_history)
+
+        # alpha: relaxed_sum 的权重
+        self.alpha = alpha
+
+        # Gurobi日志输出级别：0=关闭，1=开启
+        self.verbose = verbose
 
         # 初始化变量
         self.mu = []
@@ -48,6 +54,8 @@ class FastMultiModel:
             lp_relax=False,
             n_groups=self.len
         )
+        # 设置Gurobi日志输出
+        multi_builder.model.setParam("OutputFlag", self.verbose)
         multi_builder = self.add_problem_constraints(
             multi_builder,
             stage=self.t,
@@ -68,9 +76,36 @@ class FastMultiModel:
 
         # print("relaxed_sum: ", relaxed_sum)
 
-        # 设置目标函数，使用1范数或2范数
-        l2_norm_sq = gp.quicksum(xi * xi for x in relaxed_sum for xi in x)
-        multi_builder.model.setObjective(l2_norm_sq, gp.GRB.MINIMIZE)
+        # 设置目标函数，使用两部分：
+        # 1. relaxed_sum 的二范数（权重 alpha）
+        # 2. delta 的二范数（使用权重加权）
+        # 使用 r 向量各位置的绝对值约束 relaxed_sum 的每个分量
+        # r = np.array([
+        #     -1.27361737e-03,  1.82139936e-01,  6.96591631e-01, -1.59861276e-01,
+        #     -5.99225194e-02,  3.66021115e-03,  0.00000000e+00,  0.00000000e+00,
+        #      1.21268432e-01,  1.21268432e-01,  8.19133680e-01,  8.19133680e-01,
+        #     -2.17355022e+00
+        # ])
+        # for j, rj in enumerate(r):
+        #     bound = abs(float(rj))
+        #     if bound > 1e-12:
+        #         multi_builder.model.addConstr(relaxed_sum[j] <= bound, name=f"relaxed_upper_{j}")
+        #         multi_builder.model.addConstr(relaxed_sum[j] >= -bound, name=f"relaxed_lower_{j}")
+
+
+        # 范数约束
+        l2_norm_relaxed = gp.quicksum(xi * xi for x in relaxed_sum for xi in x)
+        multi_builder.model.addConstr(l2_norm_relaxed <= 1)
+
+        # 计算所有组的 delta² 的加权和
+        l2_norm_delta = gp.quicksum(
+            self.mu_history[i] * multi_builder.variables['delta'][i] * multi_builder.variables['delta'][i]
+            for i in range(self.len)
+        )
+
+        # 组合目标函数
+        objective = self.alpha * l2_norm_delta
+        multi_builder.model.setObjective(objective, gp.GRB.MINIMIZE)
 
         # 返回模型和相关组件
         return multi_builder, relaxed_sum
@@ -199,6 +234,9 @@ class FastMultiModel:
 
         self.model_builder.model.update()
         self.model_builder.model.optimize()
+
+
+        self.logger.info(f"obj: {self.model_builder.model.getObjective().getValue()}")
 
         self.logger.info(f"model opt status: {self.model_builder.model.status}")
 
