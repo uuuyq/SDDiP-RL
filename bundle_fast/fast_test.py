@@ -126,36 +126,51 @@ def history_solution_collect():
     #  -2.17355022e+00]
 
 
-    print(f"得到的对偶乘子为: {mu_weights}")
-    print(f"下一个试验点 pi 为: {pi_candidate}")
+    # print(f"得到的对偶乘子为: {mu_weights}")
+    # print(f"下一个试验点 pi 为: {pi_candidate}")
 
     with open(f"mu_{t}_{realization}.pkl", "wb") as f:
         pickle.dump(mu_weights, f)
 
-    return mu_weights
+    return mu_weights, solution_collection
 
 
-def bundle_fast(mu_weights, size):
+def bundle_fast(mu_weights, solution_collection, size):
     logger = get_logger("log/bundle_fast.log")
     mu_array = np.array(mu_weights)
     n_total = len(mu_array)
 
-    # 1. 如果现有的权重数量本身就小于等于 size，直接归一化返回
-    if n_total > size:
+    selected_solution_collection = solution_collection
 
+    # 如果权重数量大于 size，筛选 top-size 权重，并同步筛选对应历史解（保持顺序对应）
+    if n_total > size:
         top_indices = np.argsort(mu_array)[-size:][::-1]
         top_weights = mu_array[top_indices]
+
+        # 同步筛选历史解，顺序与 top_weights 完全一致
+        selected_solution_collection = [solution_collection[idx] for idx in top_indices]
+
         sum_top = top_weights.sum()
         if sum_top > 1e-12:
             mu_array = top_weights / sum_top
         else:
             # 如果前 size 个权重全是 0，则平均分配（兜底逻辑）
             mu_array = np.ones(size) / size
-
+    # mu_array = np.array([0.1] * 10)
+    print("mu_weight: ", mu_array)
+    print("solution_collection: ", selected_solution_collection)
 
     realization = 1
-    fast = FastMultiModel(logger, problem_params, trial_point=(x_trial, y_trial, x_bs_trial, soc_trial), t=t, n=realization, i=0
-                   , mu_history=mu_array)
+    fast = FastMultiModel(
+        logger,
+        problem_params,
+        trial_point=(x_trial, y_trial, x_bs_trial, soc_trial),
+        t=t,
+        n=realization,
+        i=0,
+        mu_history=mu_array,
+        solution_collection=selected_solution_collection,
+    )
     logger.info(f"场景，pd：{problem_params.p_d[t][realization]}")
     logger.info(f"场景，re：{problem_params.re[t][realization]}")
 
@@ -180,5 +195,6 @@ def bundle_fast(mu_weights, size):
 
 
 if __name__ == "__main__":
-    mu_weight = history_solution_collect()
-    bundle_fast(mu_weight, 10)
+    mu_weight, solution_collection = history_solution_collect()
+
+    bundle_fast(mu_weight, solution_collection, 10)

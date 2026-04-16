@@ -6,20 +6,20 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from sddip.sddip import parameters
-from sddip.sddip.multimodelbuilder import MultiModelBuilder
+from sddip.sddip.multimodelbuilder_with_offset import MultiModelBuilderWithOffset
 
 
 class FastMultiModel:
-    def __init__(self, logger, problem_params, trial_point, t, n, i, mu_history, alpha=100, verbose=1):
+    def __init__(self, logger, problem_params, trial_point, t, n, i, mu_history, solution_collection, alpha=100, verbose=0):
         self.logger = logger
         self.problem_params = problem_params
         self.trial_point = trial_point
         self.t = t
         self.n = n
         self.i = i
-        # self.history_solution = history_solution
 
         self.mu_history = mu_history
+        self.solution_collection = solution_collection
         self.len = len(mu_history)
 
         # alpha: relaxed_sum 的权重
@@ -35,6 +35,70 @@ class FastMultiModel:
         # 创建模型
         self.model_builder, self.objective_terms = self.init_model()
 
+    def _extract_offsets_from_solution(self, solution_collection):
+        """从 solution_collection 中提取偏移值，转换为 MultiModelBuilderWithOffset 需要的格式
+
+        solution_collection 中每个元素的结构：
+        {
+            "z_x": [1.0, 1.0, 1.0],           # 扁平列表
+            "z_y": [71.5, 59.0, 66.5],        # 扁平列表
+            "z_x_bs": [1.0, 0.0, 1.0, 0.0, 1.0, 0.0],  # 扁平列表
+            "z_soc": [5.0],
+            "x": [1.0, 1.0, 1.0],
+            "y": [71.5, 59.0, 66.5],
+            "x_bs": [1.0, 0.0, 1.0, 0.0, 1.0, 0.0],
+            "soc": [5.0]
+        }
+
+        需要转换为：
+        x_t: [[x_g1, x_g2, x_g3], ...]  # shape: (n_groups, n_generators)
+        x_bs_t: [[[x_bs_g1_k1, x_bs_g1_k2], [x_bs_g2_k1, x_bs_g2_k2], ...], ...]  # shape: (n_groups, n_generators, backsight_periods[g])
+        """
+        n_groups = len(solution_collection)
+        n_generators = self.problem_params.n_gens
+        n_storages = self.problem_params.n_storages
+        backsight_periods = self.problem_params.backsight_periods
+
+        # 初始化偏移值列表
+        x_t = []
+        y_t = []
+        x_bs_t = []
+        soc_t = []
+        z_t_x = []
+        z_t_y = []
+        z_t_x_bs = []
+        z_t_soc = []
+
+        for sol in solution_collection:
+            # x_t 和 y_t 直接使用
+            x_t.append(sol["x"].copy())
+            y_t.append(sol["y"].copy())
+            soc_t.append(sol["soc"].copy())
+
+            # z_t_x 和 z_t_y 直接使用
+            z_t_x.append(sol["z_x"].copy())
+            z_t_y.append(sol["z_y"].copy())
+            z_t_soc.append(sol["z_soc"].copy())
+
+            # x_bs_t 和 z_t_x_bs 需要从扁平列表转换为二维结构
+            # 扁平列表顺序：[g0_k0, g0_k1, g1_k0, g1_k1, g2_k0, g2_k1, ...]
+            x_bs_flat = sol["x_bs"]
+            z_x_bs_flat = sol["z_x_bs"]
+
+            x_bs_2d = []
+            z_x_bs_2d = []
+            idx = 0
+            for g in range(n_generators):
+                n_periods = backsight_periods[g]
+                x_bs_2d.append(x_bs_flat[idx:idx + n_periods])
+                z_x_bs_2d.append(z_x_bs_flat[idx:idx + n_periods])
+                idx += n_periods
+
+            x_bs_t.append(x_bs_2d)
+            z_t_x_bs.append(z_x_bs_2d)
+
+        return x_t, y_t, x_bs_t, soc_t, z_t_x, z_t_y, z_t_x_bs, z_t_soc
+
     def init_model(self):
         # Get binary trial points
         x_trial_point = self.trial_point[0]
@@ -42,8 +106,13 @@ class FastMultiModel:
         x_bs_trial_point = self.trial_point[2]
         soc_trial_point = self.trial_point[3]
 
-        # 创建MultiModelBuilder，组数等于历史解的数量
-        multi_builder = MultiModelBuilder(
+        # 从历史解中提取偏移值
+        x_t, y_t, x_bs_t, soc_t, z_t_x, z_t_y, z_t_x_bs, z_t_soc = self._extract_offsets_from_solution(
+            self.solution_collection
+        )
+
+        # 创建MultiModelBuilderWithOffset，组数等于历史解的数量
+        multi_builder = MultiModelBuilderWithOffset(
             self.problem_params.n_buses,
             self.problem_params.n_lines,
             self.problem_params.n_gens,
@@ -52,7 +121,15 @@ class FastMultiModel:
             self.problem_params.storages_at_bus,
             self.problem_params.backsight_periods,
             lp_relax=False,
-            n_groups=self.len
+            n_groups=self.len,
+            x_t=x_t,
+            y_t=y_t,
+            x_bs_t=x_bs_t,
+            soc_t=soc_t,
+            z_t_x=z_t_x,
+            z_t_y=z_t_y,
+            z_t_x_bs=z_t_x_bs,
+            z_t_soc=z_t_soc,
         )
         # 设置Gurobi日志输出
         multi_builder.model.setParam("OutputFlag", self.verbose)
@@ -76,32 +153,17 @@ class FastMultiModel:
 
         # print("relaxed_sum: ", relaxed_sum)
 
-        # 设置目标函数，使用两部分：
-        # 1. relaxed_sum 的二范数（权重 alpha）
-        # 2. delta 的二范数（使用权重加权）
-        # 使用 r 向量各位置的绝对值约束 relaxed_sum 的每个分量
-        # r = np.array([
-        #     -1.27361737e-03,  1.82139936e-01,  6.96591631e-01, -1.59861276e-01,
-        #     -5.99225194e-02,  3.66021115e-03,  0.00000000e+00,  0.00000000e+00,
-        #      1.21268432e-01,  1.21268432e-01,  8.19133680e-01,  8.19133680e-01,
-        #     -2.17355022e+00
-        # ])
-        # for j, rj in enumerate(r):
-        #     bound = abs(float(rj))
-        #     if bound > 1e-12:
-        #         multi_builder.model.addConstr(relaxed_sum[j] <= bound, name=f"relaxed_upper_{j}")
-        #         multi_builder.model.addConstr(relaxed_sum[j] >= -bound, name=f"relaxed_lower_{j}")
-
-
-        # 范数约束
-        l2_norm_relaxed = gp.quicksum(xi * xi for x in relaxed_sum for xi in x)
-        multi_builder.model.addConstr(l2_norm_relaxed <= 1)
+        # 范数约束: sum of all terms squared
+        l2_norm_relaxed = gp.QuadExpr()
+        for term in relaxed_sum:
+            l2_norm_relaxed.add(term * term)
+        multi_builder.model.addConstr(l2_norm_relaxed <= 1, "norm_relaxed")
 
         # 计算所有组的 delta² 的加权和
-        l2_norm_delta = gp.quicksum(
-            self.mu_history[i] * multi_builder.variables['delta'][i] * multi_builder.variables['delta'][i]
-            for i in range(self.len)
-        )
+        l2_norm_delta = gp.QuadExpr()
+        for i in range(self.len):
+            delta_var = multi_builder.variables['delta'][i]
+            l2_norm_delta.add(self.mu_history[i] * delta_var * delta_var)
 
         # 组合目标函数
         objective = self.alpha * l2_norm_delta
@@ -111,11 +173,11 @@ class FastMultiModel:
         return multi_builder, relaxed_sum
 
     def add_problem_constraints(self,
-        multi_builder: MultiModelBuilder,
+        multi_builder: MultiModelBuilderWithOffset,
         stage: int,
         realization: int,
         iteration: int,
-    ) -> MultiModelBuilder:
+    ) -> MultiModelBuilderWithOffset:
         # 为每个组添加约束
         for group_id in range(self.len):
 
@@ -194,13 +256,9 @@ class FastMultiModel:
         mu,
     ):
 
-        # # 创建新增的变量
-        # for i in range(self.len):
-        #     self.mu.append(multi_builder.model.addVar(lb=0, ub=1, vtype=gp.GRB.CONTINUOUS, name=f"mu_{i}"))
-
         all_relaxed_terms = []
         for group_id in range(self.len):
-            # 添加复制约束
+            # 计算松弛项
             relaxed_terms = multi_builder.relaxed_terms_calculate_without_binary(
                 x_trial_point,
                 y_trial_point,
@@ -210,14 +268,16 @@ class FastMultiModel:
             )
 
             all_relaxed_terms.append(relaxed_terms)
+
+        # 计算加权求和
         n_terms = len(all_relaxed_terms[0])
-        relaxed_sum = [0.0] * n_terms
+        relaxed_sum = [gp.LinExpr(0) for _ in range(n_terms)]
         for m, relaxed_terms in zip(mu, all_relaxed_terms):
             relaxed_sum = [
                 s + m * term for s, term in zip(relaxed_sum, relaxed_terms)
             ]
 
-        return all_relaxed_terms
+        return relaxed_sum
 
     def get_subgradients(self):
         """获取解，z_x"""
@@ -235,10 +295,7 @@ class FastMultiModel:
         self.model_builder.model.update()
         self.model_builder.model.optimize()
 
-
-        self.logger.info(f"obj: {self.model_builder.model.getObjective().getValue()}")
-
-        self.logger.info(f"model opt status: {self.model_builder.model.status}")
+        # self.logger.info(f"model opt status: {self.model_builder.model.status}")
 
         trial_point_flat = np.array(flatten_to_list(self.trial_point))
 
@@ -248,86 +305,33 @@ class FastMultiModel:
             for group_id in range(self.len):
                 group_vars = self.model_builder._get_group_variables(group_id)
                 solution = []
-                solution += [var.X for var in group_vars['z_x']]
-                solution += [var.X for var in group_vars['z_y']]
-                solution += [var.X for bs_vars in group_vars['z_x_bs'] for var in bs_vars]
-                solution += [var.X for var in group_vars['z_soc']]
+                # z_x, z_y, z_x_bs, z_soc 现在是表达式 (偏移量 + alpha变量)
+                # 需要用 getValue() 获取值
+                for var in group_vars['z_x']:
+                    if hasattr(var, 'getValue'):
+                        solution.append(var.getValue())
+                    else:
+                        solution.append(var)
+                for var in group_vars['z_y']:
+                    if hasattr(var, 'getValue'):
+                        solution.append(var.getValue())
+                    else:
+                        solution.append(var)
+                for bs_vars in group_vars['z_x_bs']:
+                    for var in bs_vars:
+                        if hasattr(var, 'getValue'):
+                            solution.append(var.getValue())
+                        else:
+                            solution.append(var)
+                for var in group_vars['z_soc']:
+                    if hasattr(var, 'getValue'):
+                        solution.append(var.getValue())
+                    else:
+                        solution.append(var)
+
                 solution_array = np.array(solution)
                 # 计算梯度 g_t = x_t-1 - z_x
                 subgradients.append(trial_point_flat - solution_array)
             return subgradients
         else:
             raise Exception(f"model status: {self.model_builder.model.status}")
-
-
-
-# 使用示例
-# if __name__ == "__main__":
-#     # 示例参数（实际使用时应该从problem_params获取）
-#     example_params = parameters.ProblemParams(
-#         n_buses=10,
-#         n_lines=15,
-#         n_gens=5,
-#         n_storages=2,
-#         n_stages=3,
-#         gens_at_bus=[...],  # 实际使用时需要正确设置
-#         storages_at_bus=[...],  # 实际使用时需要正确设置
-#         backsight_periods=[...],  # 实际使用时需要正确设置
-#         cost_coeffs=[...],  # 实际使用时需要正确设置
-#         p_d=[...],  # 实际使用时需要正确设置
-#         re=[...],  # 实际使用时需要正确设置
-#         eff_dc=[...],  # 实际使用时需要正确设置
-#         ptdf=[...],  # 实际使用时需要正确设置
-#         pl_max=[...],  # 实际使用时需要正确设置
-#         rc_max=[...],  # 实际使用时需要正确设置
-#         rdc_max=[...],  # 实际使用时需要正确设置
-#         soc_max=[...],  # 实际使用时需要正确设置
-#         init_soc_trial_point=[...],  # 实际使用时需要正确设置
-#         pg_min=[...],  # 实际使用时需要正确设置
-#         pg_max=[...],  # 实际使用时需要正确设置
-#         r_up=[...],  # 实际使用时需要正确设置
-#         r_down=[...],  # 实际使用时需要正确设置
-#         r_su=[...],  # 实际使用时需要正确设置
-#         r_sd=[...],  # 实际使用时需要正确设置
-#         min_up_time=[...],  # 实际使用时需要正确设置
-#         min_down_time=[...],  # 实际使用时需要正确设置
-#         cut_lb=[...],  # 实际使用时需要正确设置
-#         eff_c=[...],  # 实际使用时需要正确设置
-#     )
-#
-#     # 示例试验点（实际使用时应该从trial_point获取）
-#     example_trial_point = [
-#         [0.5, 0.3, 0.7, 0.2, 0.6],  # x_trial_point
-#         [100, 150, 120, 80, 200],    # y_trial_point
-#         [[0.8, 0.6], [0.9, 0.7], [0.5, 0.4], [0.3, 0.2], [0.7, 0.5]],  # x_bs_trial_point
-#         [0.8, 0.6]                  # soc_trial_point
-#     ]
-#
-#     # 历史解（示例）
-#     history_solution = [
-#         {"z_x": [0.5, 0.3, 0.7, 0.2, 0.6], "z_y": [100, 150, 120, 80, 200],
-#          "z_x_bs": [[0.8, 0.6], [0.9, 0.7], [0.5, 0.4], [0.3, 0.2], [0.7, 0.5]],
-#          "z_soc": [0.8, 0.6], "x": [0.5, 0.3, 0.7, 0.2, 0.6],
-#          "y": [100, 150, 120, 80, 200], "x_bs": [[0.8, 0.6], [0.9, 0.7], [0.5, 0.4], [0.3, 0.2], [0.7, 0.5]],
-#          "soc": [0.8, 0.6]}
-#     ]
-#
-#     # 创建并初始化模型
-#     fast_model = FastMultiModel(
-#         problem_params=example_params,
-#         trial_point=example_trial_point,
-#         t=0,
-#         n=0,
-#         i=0,
-#         history_solution=history_solution
-#     )
-#
-#     # 求解模型
-#     fast_model.solve()
-#
-#     # 获取解
-#     solution = fast_model.get_solution()
-#     group_solutions = fast_model.get_group_solutions()
-#
-#     print("Solution:", solution)
-#     print("Group solutions:", group_solutions)
