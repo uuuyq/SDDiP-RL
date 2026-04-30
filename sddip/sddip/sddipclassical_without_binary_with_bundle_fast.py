@@ -211,7 +211,6 @@ class Algorithm:
             self.runtime_logger.log_task_end(
                 f"forward_pass_i{i+1}", forward_pass_start_time
             )
-            return
 
             ########################################
             # Statistical upper bound

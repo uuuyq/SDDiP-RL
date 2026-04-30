@@ -211,7 +211,6 @@ class Algorithm:
             self.runtime_logger.log_task_end(
                 f"forward_pass_i{i+1}", forward_pass_start_time
             )
-            return
 
             ########################################
             # Statistical upper bound
@@ -434,11 +433,11 @@ class Algorithm:
                 ps_dict[ResultKeys.soc_key] = soc_kt
                 ps_dict[ResultKeys.v_key] = v_value_function
 
-                print(f"t: {t}, k: {k} n: {n}")
-                print(x_kt)
-                print(y_kt)
-                print(x_bs_trial_point)
-                print(soc_kt)
+                # print(f"t: {t}, k: {k} n: {n}")
+                # print(x_kt)
+                # print(y_kt)
+                # print(x_bs_trial_point)
+                # print(soc_kt)
 
 
 
