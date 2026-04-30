@@ -1,6 +1,9 @@
 import gurobipy as gp
 import numpy as np
 from scipy import linalg
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class MultiModelBuilderWithOffset:
@@ -112,9 +115,9 @@ class MultiModelBuilderWithOffset:
             'alpha_z_soc': [],   # SOC调整变量
             's_up': [],          # 启动决策
             's_down': [],        # 停止决策
-            'theta': None,       # 期望值函数近似
-            'ys_p': None,        # 正松弛变量
-            'ys_n': None,        # 负松弛变量
+            'theta': [],         # 期望值函数近似（按组）
+            'ys_p': [],          # 正松弛变量（按组）
+            'ys_n': [],          # 负松弛变量（按组）
             'delta': []          # 每个组独立的模型一致性松弛变量
         }
 
@@ -268,10 +271,10 @@ class MultiModelBuilderWithOffset:
                 )
             )
             self.variables['alpha_socs_p'].append(
-                self.model.addVar(vtype=gp.GRB.CONTINUOUS, lb=0, name=f"{group_prefix}alpha_socs_p")
+                self.model.addVar(vtype=gp.GRB.CONTINUOUS, lb=0, name=f"{group_prefix}alpha_socs_p_{s+1}")
             )
             self.variables['alpha_socs_n'].append(
-                self.model.addVar(vtype=gp.GRB.CONTINUOUS, lb=0, name=f"{group_prefix}alpha_socs_n")
+                self.model.addVar(vtype=gp.GRB.CONTINUOUS, lb=0, name=f"{group_prefix}alpha_socs_n_{s+1}")
             )
 
             # z_soc (alpha_z_soc) - 连续变量，无固定下界
@@ -282,24 +285,32 @@ class MultiModelBuilderWithOffset:
                 )
             )
 
-            # Delta variable for this group
-            self.variables['delta'].append(
-                self.model.addVar(
-                    vtype=gp.GRB.CONTINUOUS, lb=0, name=f"{group_prefix}delta"
-                )
+        # Delta variable for this group (每个组只有一个)
+        self.variables['delta'].append(
+            self.model.addVar(
+                vtype=gp.GRB.CONTINUOUS, lb=0, name=f"{group_prefix}delta"
             )
+        )
 
-        # 全局变量（不按组，只有 group_id == 0 时初始化）
-        if group_id == 0:
-            self.variables['theta'] = self.model.addVar(
-                vtype=gp.GRB.CONTINUOUS, lb=-gp.GRB.INFINITY, name="theta"
+        # 按组初始化的变量（theta, ys_p, ys_n）
+        self.variables['theta'].append(
+            self.model.addVar(
+                vtype=gp.GRB.CONTINUOUS, lb=-gp.GRB.INFINITY,
+                name=f"{group_prefix}theta"
             )
-            self.variables['ys_p'] = self.model.addVar(
-                vtype=gp.GRB.CONTINUOUS, lb=0, name="ys_p"
+        )
+        self.variables['ys_p'].append(
+            self.model.addVar(
+                vtype=gp.GRB.CONTINUOUS, lb=0,
+                name=f"{group_prefix}ys_p"
             )
-            self.variables['ys_n'] = self.model.addVar(
-                vtype=gp.GRB.CONTINUOUS, lb=0, name="ys_n"
+        )
+        self.variables['ys_n'].append(
+            self.model.addVar(
+                vtype=gp.GRB.CONTINUOUS, lb=0,
+                name=f"{group_prefix}ys_n"
             )
+        )
 
     def _add_alpha_bounds_constraints(self, group_id: int) -> None:
         """为指定组添加 alpha 变量的边界约束，确保 offset + alpha 在原始变量边界内"""
@@ -434,9 +445,10 @@ class MultiModelBuilderWithOffset:
             ],
             # z_soc = z_t_soc + alpha_z_soc
             'z_soc': [self.z_t_soc[group_id][s] + self.variables['alpha_z_soc'][start_storage + s] for s in range(self.n_storages)],
-            # 全局变量
-            'ys_p': self.variables['ys_p'],
-            'ys_n': self.variables['ys_n'],
+            # 组变量
+            'ys_p': self.variables['ys_p'][group_id],
+            'ys_n': self.variables['ys_n'][group_id],
+            'theta': self.variables['theta'][group_id],
             'delta': self.variables['delta'][group_id],
             # 原始 alpha 变量（用于 get_solution）
             'alpha_x': self.variables['alpha_x'][start_idx:end_idx],
@@ -828,11 +840,88 @@ class MultiModelBuilderWithOffset:
         )
         self.update_model()
 
-    def add_cut_lower_bound(self, lower_bound: float) -> None:
-        """添加切割下界"""
+    def add_cut_lower_bound(self, lower_bound: float, group_id: int = 0) -> None:
+        """为指定组添加切割下界"""
+        self._validate_group_id(group_id)
         self.constraints['cut_lower_bound'] = self.model.addConstr(
-            (self.variables['theta'] >= lower_bound), "cut-lb"
+            (self.variables['theta'][group_id] >= lower_bound), 
+            f"cut-lb_group_{group_id}"
         )
+
+    def add_benders_cuts_without_binary(
+        self, 
+        cut_intercepts: list, 
+        cut_gradients: list, 
+        trial_points: list,
+        group_id: int = 0
+    ) -> None:
+        """为指定组添加Benders割平面约束"""
+        self._validate_group_id(group_id)
+        group_vars = self._get_group_variables(group_id)
+        
+        state_variables = (
+            group_vars['x']
+            + group_vars['y']
+            + [var for gen_bs in group_vars['x_bs'] for var in gen_bs]
+            + group_vars['soc']
+        )
+        
+        n_state_variables = len(state_variables)
+        
+        for intercept, gradient, trial_point in zip(
+            cut_intercepts, cut_gradients, trial_points, strict=False
+        ):
+            if n_state_variables != len(trial_point):
+                logger.warning("Trial point: %s", trial_point)
+                msg = "Number of state variables must be equal to the number of trial points."
+                raise ValueError(msg)
+            
+            self.model.addConstr(
+                (
+                    group_vars['theta']
+                    >= intercept
+                    + gp.quicksum(
+                        gradient[i] * (state_variables[i] - trial_point[i])
+                        for i in range(n_state_variables)
+                    )
+                ),
+                f"benders_cut_group_{group_id}",
+            )
+        
+        self.update_model()
+    
+    def add_cut_constraints_without_binary(
+        self,
+        cut_intercepts: list,
+        cut_gradients: list,
+        group_id: int = 0
+    ) -> None:
+        """为指定组添加Lagrangian割平面约束"""
+        self._validate_group_id(group_id)
+        group_vars = self._get_group_variables(group_id)
+        
+        state_variables = (
+            group_vars['x']
+            + group_vars['y']
+            + [var for gen_bs in group_vars['x_bs'] for var in gen_bs]
+            + group_vars['soc']
+        )
+        
+        cut_id = 0
+        for intercept, gradient in zip(
+            cut_intercepts, cut_gradients, strict=False
+        ):
+            # Cut constraint
+            self.model.addConstr(
+                (
+                    group_vars['theta']
+                    >= intercept + gp.LinExpr(gradient, state_variables)
+                ),
+                f"lagrangian_cut_{group_id}_{cut_id}",
+            )
+            cut_id += 1
+        
+        self.update_model()
 
     def update_model(self) -> None:
         """更新模型"""

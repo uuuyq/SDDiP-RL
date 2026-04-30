@@ -244,7 +244,7 @@ class FastMultiModel:
             # 添加切割下界
             multi_builder.add_cut_lower_bound(self.problem_params.cut_lb[stage])
 
-            # 添加cuts约束
+            # TODO 添加cuts约束
             # if stage < self.problem_params.n_stages - 1 and iteration > 0:
             #     if common.CutType.LAGRANGIAN in self.cut_types_added:
             #         lagrangian_coefficients = self.cc_storage.get_stage_result(
@@ -327,11 +327,24 @@ class FastMultiModel:
             return flat
 
         def get_value(var):
-            """获取变量值，处理表达式和数值"""
+            """获取变量值，处理表达式、Gurobi变量和数值"""
+            # 如果是Gurobi表达式（LinExpr/QuadExpr）
             if hasattr(var, 'getValue'):
                 return var.getValue()
-            else:
+            # 如果是Gurobi变量
+            elif hasattr(var, 'x'):
+                return var.x
+            # 如果是数值（float/int）
+            elif isinstance(var, (int, float)):
                 return var
+            # 其他情况（可能是表达式对象）
+            else:
+                # 尝试调用getValue
+                try:
+                    return var.getValue()
+                except:
+                    # 如果失败，返回var本身（可能是数值表达式）
+                    return var
 
         self.model_builder.model.update()
         self.model_builder.model.optimize()
@@ -383,8 +396,9 @@ class FastMultiModel:
                 ys_n = get_value(group_vars['ys_n'])
                 socs_p = [get_value(var) for var in group_vars['socs_p']]
                 socs_n = [get_value(var) for var in group_vars['socs_n']]
-                x_bs_p = [get_value(var) for var in group_vars['x_bs_p']]
-                x_bs_n = [get_value(var) for var in group_vars['x_bs_n']]
+                # x_bs_p 和 x_bs_n 是二维列表 [generator][backsight_period]
+                x_bs_p = [get_value(var) for gen_vars in group_vars['x_bs_p'] for var in gen_vars]
+                x_bs_n = [get_value(var) for gen_vars in group_vars['x_bs_n'] for var in gen_vars]
                 delta = get_value(group_vars['delta'])
                 theta = get_value(group_vars['theta'])
 

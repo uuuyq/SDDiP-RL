@@ -26,6 +26,7 @@ def generate_cuts(
     subgradients,
     mu_weights,
     step: int,
+    x_vars_list,
     realization: int = 1,
     logger=None,
 ):
@@ -46,12 +47,13 @@ def generate_cuts(
     if logger is None:
         logger = get_logger("log/bundle_fast_script.log")
 
-    cuts = fast_cut_gen.generate_cuts(
+    cuts = fast_cut_gen.generate_cuts_update(
         config=config,
         subgradients=subgradients,
         mu_weights=mu_weights,
         step=step,
-        realization=realization,
+        x_vars_list=x_vars_list,
+        # realization=realization,
         logger=logger,
     )
 
@@ -185,6 +187,7 @@ def bundle_fast(
         subgradients=subgradients,
         mu_weights=mu_list,
         step=step,
+        x_vars_list=x_vars_list,
         realization=realization,
         logger=logger,
     )

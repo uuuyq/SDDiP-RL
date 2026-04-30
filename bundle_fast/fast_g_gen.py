@@ -11,16 +11,45 @@ from bundle_fast.fast_multimodel import FastMultiModel
 from bundle_fast.config import BundleConfig
 
 
+def ensure_numeric(obj):
+    """递归确保所有值都是数值类型"""
+    if isinstance(obj, dict):
+        return {k: ensure_numeric(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [ensure_numeric(item) for item in obj]
+    elif isinstance(obj, (int, float)):
+        return obj
+    else:
+        # 如果是numpy类型或其他，转换为float
+        return float(obj)
+
+
 def get_solution_x_z(result: list, sub: SubProblem):
     """从子问题中提取解"""
-    z_x = [sub.uc_bw.z_x[j].x for j in range(len(sub.uc_bw.z_x))]
-    z_y = [sub.uc_bw.z_y[j].x for j in range(len(sub.uc_bw.z_y))]
-    z_x_bs = [sub.uc_bw.z_x_bs[g][k].x for g in range(len(sub.uc_bw.z_x_bs)) for k in range(len(sub.uc_bw.z_x_bs[g]))]
-    z_soc = [sub.uc_bw.z_soc[i].x for i in range(len(sub.uc_bw.z_soc))]
-    x = [sub.uc_bw.x[j].x for j in range(len(sub.uc_bw.x))]
-    y = [sub.uc_bw.y[j].x for j in range(len(sub.uc_bw.y))]
-    x_bs = [sub.uc_bw.x_bs[g][k].x for g in range(len(sub.uc_bw.x_bs)) for k in range(len(sub.uc_bw.x_bs[g]))]
-    soc = [sub.uc_bw.soc[i].x for i in range(len(sub.uc_bw.soc))]
+    uc = sub.uc_bw
+    
+    z_x = [uc.z_x[j].x for j in range(len(uc.z_x))]
+    z_y = [uc.z_y[j].x for j in range(len(uc.z_y))]
+    z_x_bs = [uc.z_x_bs[g][k].x for g in range(len(uc.z_x_bs)) for k in range(len(uc.z_x_bs[g]))]
+    z_soc = [uc.z_soc[i].x for i in range(len(uc.z_soc))]
+    x = [uc.x[j].x for j in range(len(uc.x))]
+    y = [uc.y[j].x for j in range(len(uc.y))]
+    x_bs = [uc.x_bs[g][k].x for g in range(len(uc.x_bs)) for k in range(len(uc.x_bs[g]))]
+    soc = [uc.soc[i].x for i in range(len(uc.soc))]
+    
+    # 提取计算 objective_terms 所需的额外变量
+    s_up = [uc.s_up[j].x for j in range(len(uc.s_up))]
+    s_down = [uc.s_down[j].x for j in range(len(uc.s_down))]
+    ys_p = uc.ys_p.x
+    ys_n = uc.ys_n.x
+    socs_p = [uc.socs_p[i].x for i in range(len(uc.socs_p))]
+    socs_n = [uc.socs_n[i].x for i in range(len(uc.socs_n))]
+    # x_bs_p 和 x_bs_n 是二维列表 [generator][backsight_period]
+    x_bs_p = [uc.x_bs_p[g][k].x for g in range(len(uc.x_bs_p)) for k in range(len(uc.x_bs_p[g]))]
+    x_bs_n = [uc.x_bs_n[g][k].x for g in range(len(uc.x_bs_n)) for k in range(len(uc.x_bs_n[g]))]
+    delta = uc.delta.x
+    theta = uc.theta.x
+    
     result.append(
         {
             "z_x": z_x,
@@ -31,6 +60,16 @@ def get_solution_x_z(result: list, sub: SubProblem):
             "y": y,
             "x_bs": x_bs,
             "soc": soc,
+            "s_up": s_up,
+            "s_down": s_down,
+            "ys_p": ys_p,
+            "ys_n": ys_n,
+            "socs_p": socs_p,
+            "socs_n": socs_n,
+            "x_bs_p": x_bs_p,
+            "x_bs_n": x_bs_n,
+            "delta": delta,
+            "theta": theta,
         }
     )
 
@@ -206,7 +245,7 @@ if __name__ == "__main__":
     config = get_default_config()
 
     # 步骤1: 历史解收集
-    mu_weights, solution_collection = history_solution_collect(config=config, realization=0, logger=logger)
+    mu_weights, solution_collection, _ = history_solution_collect(config=config, realization=0, logger=logger)
 
     # 保存历史解
     with open(f"fast_g_gen/solutions_{config.T}_0.json", "w", encoding="utf-8") as f:
@@ -235,6 +274,7 @@ if __name__ == "__main__":
         "z_vars_list": z_vars_list,
         "x_vars_list": x_vars_list,
     }
+    # print(save_data)  # 注释掉，避免输出大量数据
 
     with open("fast_g_gen/subgradients_mu.json", "w", encoding="utf-8") as f:
         json.dump(save_data, f, ensure_ascii=False, indent=4)

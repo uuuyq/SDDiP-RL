@@ -24,7 +24,7 @@ def load_subgradients_mu(file_path: str) -> tuple[list, list]:
     """加载 subgradients 和 mu_weights"""
     with open(file_path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    return data["subgradients"], data["mu_weights"]
+    return data["subgradients"], data["mu_weights"], data["x_vars_list"]
 
 
 def compute_pi_list(subgradients: list, mu_weights: list, step: int = 1) -> list:
@@ -82,7 +82,7 @@ def solve_subproblem_for_cut(
         "f": float(f)
     }
 
-
+@DeprecationWarning
 def generate_cuts(
     config: BundleConfig,
     subgradients: list,
@@ -215,7 +215,37 @@ def compute_objective_terms_value(x_vars: dict, problem_params) -> float:
 
     return objective_terms_value
 
+def weighted_average_nested(values, weights):
+    """
+    计算加权平均，支持嵌套列表
+    
+    Args:
+        values: 值列表，可以是标量、一维列表或二维列表
+        weights: 权重列表
+    
+    Returns:
+        加权平均值
+    """
+    if not isinstance(values[0], list):
+        # 标量
+        return sum(weights[j] * values[j] for j in range(len(values)))
+    elif not isinstance(values[0][0], list):
+        # 一维列表
+        return [
+            sum(weights[j] * values[j][i] for j in range(len(values)))
+            for i in range(len(values[0]))
+        ]
+    else:
+        # 二维列表（如x_bs）
+        return [
+            [
+                sum(weights[j] * values[j][i][k] for j in range(len(values)))
+                for k in range(len(values[0][i]))
+            ]
+            for i in range(len(values[0]))
+        ]
 
+# TODO 不用realization？
 def generate_cuts_update(
     config: BundleConfig,
     subgradients: list,
@@ -255,6 +285,11 @@ def generate_cuts_update(
     cuts = []
     for idx, pi in enumerate(pi_list):
         end_idx = step * (idx + 1)
+        
+        # 确保不超过 x_vars_list 的长度
+        if end_idx > len(x_vars_list):
+            logger.warning(f"end_idx={end_idx} 超过 x_vars_list 长度={len(x_vars_list)}，截断到 {len(x_vars_list)}")
+            end_idx = len(x_vars_list)
 
         # 计算加权平均的 x_vars（使用与 compute_pi_list 相同的权重）
         batch_mu = mu_weights[0:end_idx]
@@ -268,14 +303,7 @@ def generate_cuts_update(
         weighted_x_vars = {}
         for key in x_vars_list[0].keys():
             values = [x_vars_list[j][key] for j in range(end_idx)]
-            if isinstance(values[0], list):
-                weighted_value = [
-                    sum(normalized_mu[j] * values[j][i] for j in range(end_idx))
-                    for i in range(len(values[0]))
-                ]
-                weighted_x_vars[key] = weighted_value
-            else:
-                weighted_x_vars[key] = sum(normalized_mu[j] * values[j] for j in range(end_idx))
+            weighted_x_vars[key] = weighted_average_nested(values, normalized_mu)
 
         # 计算 objective_terms_value 作为截距 f
         f = compute_objective_terms_value(weighted_x_vars, problem_params)
@@ -303,16 +331,17 @@ if __name__ == "__main__":
 
     # 加载数据
     input_file = "fast_g_gen/subgradients_mu.json"
-    subgradients, mu_weights = load_subgradients_mu(input_file)
+    subgradients, mu_weights, x_vars_list = load_subgradients_mu(input_file)
     logger.info(f"加载了 {len(subgradients)} 个 subgradients 和 {len(mu_weights)} 个 mu_weights")
 
     # 生成 cuts
-    cuts = generate_cuts(
+    cuts = generate_cuts_update(
         config=config,
         subgradients=subgradients,
         mu_weights=mu_weights,
         step=1,
-        realization=1,
+        x_vars_list=x_vars_list,
+        # realization=1,
         logger=logger,
     )
 

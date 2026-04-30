@@ -1,6 +1,6 @@
 from sddip.sddip.multimodelbuilder import MultiModelBuilder
 
-
+@DeprecationWarning
 class MultiModelBuilderExtensions(MultiModelBuilder):
     def relaxed_terms_calculate_without_binary(
             self,

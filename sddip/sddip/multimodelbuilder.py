@@ -2,7 +2,7 @@ import gurobipy as gp
 import numpy as np
 from scipy import linalg
 
-
+@DeprecationWarning
 class MultiModelBuilder:
     def __init__(
         self,

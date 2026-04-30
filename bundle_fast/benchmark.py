@@ -73,12 +73,13 @@ def run_bundle_warmstart(
     )
 
     logger.info(">>> 步骤3: 生成 cuts (fast_cut_gen.generate_cuts) <<<")
-    cuts = fast_cut_gen.generate_cuts(
+    cuts = fast_cut_gen.generate_cuts_update(
         config=config,
         subgradients=subgradients,
         mu_weights=mu_list,
+        x_vars_list=x_vars_list,
         step=step,
-        realization=realization,
+        # realization=realization,
         logger=logger,
     )
 
@@ -204,7 +205,7 @@ def run_bundle_baseline(
     master.update_strategy(x_new, f_new, g_new, ub=None)
 
     # 记录初始点：下界为子问题求解值，上界设为一个很大的值
-    ub_history.append(1e4)
+    ub_history.append(1e8)
     lb_history.append(f_new)
     iter_times.append(time.time() - start_time)
     logger.info(f"Baseline 初始子问题求解: lb={f_new:.6f}, ub=1e4 (初始值)")
@@ -247,14 +248,29 @@ def run_bundle_baseline(
     return result
 
 
-def plot_convergence(result: dict, output_file: str):
-    """绘制收敛曲线"""
+def plot_convergence(result: dict, output_file: str, y_lower: float = None, y_upper: float = None):
+    """绘制收敛曲线
+    
+    Args:
+        result: 包含收敛历史的字典
+        output_file: 输出文件路径
+        y_lower: y轴下界（固定值）
+        y_upper: y轴上界（固定值）
+    """
     plt.figure(figsize=(10, 6))
 
     iterations = range(1, len(result["ub_history"]) + 1)
+    
+    # 获取数据
+    ub_values = result["ub_history"]
+    lb_values = result["lb_history"]
+    
+    # 设置固定的y轴范围
+    if y_lower is not None and y_upper is not None:
+        plt.ylim(y_lower, y_upper)
 
-    plt.plot(iterations, result["ub_history"], 'b-o', label='Upper Bound', markersize=3)
-    plt.plot(iterations, result["lb_history"], 'r-s', label='Lower Bound', markersize=3)
+    plt.plot(iterations, ub_values, 'b-o', label='Upper Bound', markersize=3)
+    plt.plot(iterations, lb_values, 'r-s', label='Lower Bound', markersize=3)
 
     plt.xlabel('Iteration')
     plt.ylabel('Objective Value')
@@ -281,6 +297,8 @@ def main(
     step: int = 1,
     solution_size: int = 10,
     realization: int = 1,
+    y_lower: float = None,
+    y_upper: float = None,
 ):
     """
     主函数：运行两种方法的对比
@@ -291,6 +309,8 @@ def main(
         step: 每次增加的 subgradient 数量
         solution_size: 筛选的 top solution 数量
         realization: 场景索引
+        y_lower: y轴下界（固定值）
+        y_upper: y轴上界（固定值）
     """
     config = get_default_config()
     logger = get_logger("log/benchmark.log")
@@ -322,12 +342,12 @@ def main(
     )
 
     # 保存结果
-    save_result(result_warmstart, f"benchmark_warmstart_{config.T}_{realization}.json")
-    save_result(result_baseline, f"benchmark_baseline_{config.T}_{realization}.json")
+    save_result(result_warmstart, f"benchmark/benchmark_warmstart_{config.T}_{realization}.json")
+    save_result(result_baseline, f"benchmark/benchmark_baseline_{config.T}_{realization}.json")
 
     # 绘制收敛曲线
-    plot_convergence(result_warmstart, f"benchmark_warmstart_{config.T}_{realization}.png")
-    plot_convergence(result_baseline, f"benchmark_baseline_{config.T}_{realization}.png")
+    plot_convergence(result_warmstart, f"benchmark/benchmark_warmstart_{config.T}_{realization}.png", y_lower=y_lower, y_upper=y_upper)
+    plot_convergence(result_baseline, f"benchmark/benchmark_baseline_{config.T}_{realization}.png", y_lower=y_lower, y_upper=y_upper)
 
     # 打印对比摘要
     print("\n" + "=" * 60)
@@ -354,4 +374,6 @@ if __name__ == "__main__":
         step=1,
         solution_size=10,
         realization=1,
+        y_lower=-1e4,  # 设置固定的y轴下界
+        y_upper=6e4,   # 设置固定的y轴上界
     )
