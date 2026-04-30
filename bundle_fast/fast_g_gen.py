@@ -2,21 +2,12 @@ from pathlib import Path
 
 import numpy as np
 
-from bundle_RL.logger import get_logger
+from bundle_fast.lag_problem import SubProblem, MasterProblem
+from bundle_fast.logger import get_logger
 from bundle_fast.fast_multimodel import FastMultiModel
 from bundle_fast.lag_problem import LagrangianMaster
 from sddip.sddip import parameters
-
-from bundle_RL.lag_problem import SubProblem, MasterProblem
-from pathlib import Path
-
-import numpy as np
-
-from bundle_RL.lag_problem import SubProblem, MasterProblem
-from bundle_RL.logger import get_logger
-from bundle_fast.fast_multimodel import FastMultiModel
-from bundle_fast.lag_problem import LagrangianMaster
-from sddip.sddip import parameters
+from bundle_fast import config
 
 
 def get_solution_x_z(result: list, sub: SubProblem):
@@ -43,37 +34,21 @@ def get_solution_x_z(result: list, sub: SubProblem):
 
 
 
-# t = 1
-# n_vars = 13
-# x_trial = [1.0, 1.0, 1.0]
-# y_trial = [71.52627531002818, 59.02627531002818, 66.52627531002818]
-# x_bs_trial = [[1.0, 0.0], [1.0, 0.0], [1.0, 0.0]]
-# soc_trial = [5.0]
-t = 5
-n_vars = 13
-x_trial = [-0.0, 1.0, 1.0]
-y_trial = [0.0, 131.60809087723158, 45.0]
-x_bs_trial = [[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]]
-soc_trial = [0.0]
-path = Path(r"D:\tools\workspace_pycharm\sddip-main-zou\data\01_test_cases\case6ww\t06_n06")
-problem_params = parameters.Parameters(path)
 
-
-
-def history_solution_collect():
+def history_solution_collect(realization = 0):
     logger = get_logger("log/bundle_solver.log")
-    realization = 0
 
-    sub = SubProblem(logger, problem_params, trial_point=(x_trial, y_trial, x_bs_trial, soc_trial), t=t, n=realization, i=0)
-    logger.info(f"场景，pd：{problem_params.p_d[t][realization]}")
-    logger.info(f"场景，re：{problem_params.re[t][realization]}")
 
-    master = MasterProblem(logger, n_vars, tolerance=1e-5)
+    sub = SubProblem(logger, config.PROBLEM_PARAMS, trial_point=(config.X_TRIAL, config.Y_TRIAL, config.X_BS_TRIAL, config.SOC_TRIAL), t=config.T, n=realization, i=0)
+    logger.info(f"场景，pd：{config.PROBLEM_PARAMS.p_d[config.T][realization]}")
+    logger.info(f"场景，re：{config.PROBLEM_PARAMS.re[config.T][realization]}")
+
+    master = MasterProblem(logger, config.N_VARS, tolerance=1e-5)
 
     delta_history = []
     solution_collection = []
     # 初始化
-    x_new = np.zeros(n_vars)
+    x_new = np.zeros(config.N_VARS)
     g_new, f_new = sub.solve(x_new)
     # 获取解 x z_x
     get_solution_x_z(solution_collection, sub)
@@ -95,10 +70,8 @@ def history_solution_collect():
 
     logger.info(f"收集到 {len(solution_collection)} 个解: {solution_collection}")
 
-    with open(f"solutions_{t}_{realization}.json", "w", encoding="utf-8") as f:
+    with open(f"fast_g_gen/solutions_{config.T}_{realization}.json", "w", encoding="utf-8") as f:
         json.dump(solution_collection, f, ensure_ascii=False, indent=4)  # indent 使文件更易读
-    with open(f"solutions_{t}_{realization}.pkl", "wb") as f:
-        pickle.dump(solution_collection, f)
 
         # 1. 获取现有 cuts
     current_cuts = master.cuts_storage  # 或者使用 get_all_cuts(master)
@@ -106,7 +79,7 @@ def history_solution_collect():
     # 2. 构造对偶求解器
     lag_master = LagrangianMaster(
         logger=logger,
-        n_vars=n_vars,
+        n_vars=config.N_VARS,
         cuts_storage=current_cuts,
         x_best=master.x_best,
         u=master.u
@@ -120,22 +93,15 @@ def history_solution_collect():
     r = mu_weights @ gradients
     print(f"r (mu * subgradients):\n{r}")
     print(f"r Shape: {r.shape}")
-    # [-1.27361737e-03  1.82139936e-01  6.96591631e-01 -1.59861276e-01
-    #  -5.99225194e-02  3.66021115e-03  0.00000000e+00  0.00000000e+00
-    #   1.21268432e-01  1.21268432e-01  8.19133680e-01  8.19133680e-01
-    #  -2.17355022e+00]
 
+    with open(f"fast_g_gen/mu_raw_{config.T}_{realization}.json", "w", encoding="utf-8") as f:
+        json.dump(mu_weights.tolist(), f, ensure_ascii=False, indent=4)  # indent 使文件更易读
 
-    # print(f"得到的对偶乘子为: {mu_weights}")
-    # print(f"下一个试验点 pi 为: {pi_candidate}")
-
-    with open(f"mu_{t}_{realization}.pkl", "wb") as f:
-        pickle.dump(mu_weights, f)
 
     return mu_weights, solution_collection
 
 
-def bundle_fast(mu_weights, solution_collection, size):
+def bundle_fast(mu_weights, solution_collection, size, realization = 1):
     logger = get_logger("log/bundle_fast.log")
     mu_array = np.array(mu_weights)
     n_total = len(mu_array)
@@ -160,19 +126,19 @@ def bundle_fast(mu_weights, solution_collection, size):
     print("mu_weight: ", mu_array)
     print("solution_collection: ", selected_solution_collection)
 
-    realization = 1
+
     fast = FastMultiModel(
         logger,
-        problem_params,
-        trial_point=(x_trial, y_trial, x_bs_trial, soc_trial),
-        t=t,
+        config.PROBLEM_PARAMS,
+        trial_point=(config.X_TRIAL, config.Y_TRIAL, config.X_BS_TRIAL, config.SOC_TRIAL),
+        t=config.T,
         n=realization,
         i=0,
         mu_history=mu_array,
         solution_collection=selected_solution_collection,
     )
-    logger.info(f"场景，pd：{problem_params.p_d[t][realization]}")
-    logger.info(f"场景，re：{problem_params.re[t][realization]}")
+    logger.info(f"场景，pd：{config.PROBLEM_PARAMS.p_d[config.T][realization]}")
+    logger.info(f"场景，re：{config.PROBLEM_PARAMS.re[config.T][realization]}")
 
     subgradients = fast.get_subgradients()
 
@@ -187,14 +153,22 @@ def bundle_fast(mu_weights, solution_collection, size):
     print(f"subgradients:\n{subgradients_np}")
     print(f"Shape: {subgradients_np.shape}")
 
-
-
-    # print(f"subgradients: {subgradients}")
-    # print(f"len(subgradients): {len(subgradients)}")
-
+    return subgradients, mu_array.tolist()
 
 
 if __name__ == "__main__":
+    import json
+
     mu_weight, solution_collection = history_solution_collect()
 
-    bundle_fast(mu_weight, solution_collection, 10)
+    subgradients, mu_list = bundle_fast(mu_weight, solution_collection, 10)
+
+    # 保存 subgradients 和 mu 到文件
+    save_data = {
+        "subgradients": np.array(subgradients).tolist(),
+        "mu_weights": mu_list
+    }
+
+    with open("fast_g_gen/subgradients_mu.json", "w", encoding="utf-8") as f:
+        json.dump(save_data, f, ensure_ascii=False, indent=4)
+    print("已保存 subgradients 和 mu_weights 到 subgradients_mu.json")
