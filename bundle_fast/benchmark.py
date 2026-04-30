@@ -19,12 +19,13 @@ import matplotlib.pyplot as plt
 
 from bundle_fast.lag_problem import SubProblem, MasterProblem
 from bundle_fast.logger import get_logger
-from bundle_fast import config
 from bundle_fast import fast_g_gen
 from bundle_fast import fast_cut_gen
+from bundle_fast.config import BundleConfig, get_default_config
 
 
 def run_bundle_warmstart(
+    config: BundleConfig,
     max_iterations: int = 1000,
     tolerance: float = 1e-5,
     step: int = 1,
@@ -36,6 +37,7 @@ def run_bundle_warmstart(
     使用 warmstart cuts 的 bundle 方法
 
     Args:
+        config: BundleConfig 配置对象
         max_iterations: 最大迭代次数
         tolerance: 收敛阈值
         step: 每次增加的 subgradient 数量
@@ -49,29 +51,34 @@ def run_bundle_warmstart(
     if logger is None:
         logger = get_logger("log/benchmark_warmstart.log")
 
-    trial_point = (config.X_TRIAL, config.Y_TRIAL, config.X_BS_TRIAL, config.SOC_TRIAL)
+    trial_point = config.trial_point
     problem_params = config.PROBLEM_PARAMS
     t = config.T
 
     # ========== 第一步：生成 cuts（调用 fast_g_gen 和 fast_cut_gen）==========
 
     logger.info(">>> 步骤1: 历史解收集 (fast_g_gen.history_solution_collect) <<<")
-    mu_weights, solution_collection = fast_g_gen.history_solution_collect(realization=0)
+    mu_weights, solution_collection = fast_g_gen.history_solution_collect(config=config, realization=0, logger=logger)
 
     cut_gen_start_time = time.time()
 
     logger.info(">>> 步骤2: 生成 subgradients (fast_g_gen.bundle_fast) <<<")
-    subgradients, mu_list = fast_g_gen.bundle_fast(mu_weights, solution_collection, solution_size, realization=realization)
+    subgradients, mu_list, z_vars_list, x_vars_list = fast_g_gen.gen_subgradient(
+        config=config,
+        mu_weights=mu_weights,
+        solution_collection=solution_collection,
+        size=solution_size,
+        realization=realization,
+        logger=logger,
+    )
 
     logger.info(">>> 步骤3: 生成 cuts (fast_cut_gen.generate_cuts) <<<")
     cuts = fast_cut_gen.generate_cuts(
+        config=config,
         subgradients=subgradients,
         mu_weights=mu_list,
         step=step,
-        t=t,
         realization=realization,
-        trial_point=trial_point,
-        problem_params=problem_params,
         logger=logger,
     )
 
@@ -154,6 +161,7 @@ def run_bundle_warmstart(
 
 
 def run_bundle_baseline(
+    config: BundleConfig,
     max_iterations: int = 1000,
     tolerance: float = 1e-5,
     realization: int = 1,
@@ -163,6 +171,7 @@ def run_bundle_baseline(
     传统 bundle 方法（从零开始）
 
     Args:
+        config: BundleConfig 配置对象
         max_iterations: 最大迭代次数
         tolerance: 收敛阈值
         realization: 场景索引
@@ -174,7 +183,7 @@ def run_bundle_baseline(
     if logger is None:
         logger = get_logger("log/benchmark_baseline.log")
 
-    trial_point = (config.X_TRIAL, config.Y_TRIAL, config.X_BS_TRIAL, config.SOC_TRIAL)
+    trial_point = config.trial_point
     problem_params = config.PROBLEM_PARAMS
     t = config.T
 
@@ -283,6 +292,7 @@ def main(
         solution_size: 筛选的 top solution 数量
         realization: 场景索引
     """
+    config = get_default_config()
     logger = get_logger("log/benchmark.log")
     logger.info("=" * 50)
     logger.info("开始 Benchmark 对比测试")
@@ -292,6 +302,7 @@ def main(
     # 运行 warmstart 方法
     logger.info("\n>>> 运行 Warmstart 方法 <<<")
     result_warmstart = run_bundle_warmstart(
+        config=config,
         max_iterations=max_iterations,
         tolerance=tolerance,
         step=step,
@@ -303,6 +314,7 @@ def main(
     # 运行 baseline 方法
     logger.info("\n>>> 运行 Baseline 方法 <<<")
     result_baseline = run_bundle_baseline(
+        config=config,
         max_iterations=max_iterations,
         tolerance=tolerance,
         realization=realization,

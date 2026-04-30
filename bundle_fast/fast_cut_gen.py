@@ -2,7 +2,7 @@
 fast_cut_gen.py
 
 分批次使用 subgradients 和 mu_weights 计算 pi，
-然后使用每个 pi 求解子问题得到 cut，保存到 JSON。
+然后使用每个 pi 求解子问题得到 cut。
 
 pi 计算方式：
     从 0 开始，每次增加 step 个 g
@@ -17,8 +17,7 @@ import json
 import numpy as np
 
 from bundle_fast.lag_problem import SubProblem
-from bundle_fast.logger import get_logger
-from bundle_fast import config
+from bundle_fast.config import BundleConfig
 
 
 def load_subgradients_mu(file_path: str) -> tuple[list, list]:
@@ -47,20 +46,15 @@ def compute_pi_list(subgradients: list, mu_weights: list, step: int = 1) -> list
     n = len(subgradients)
     pi_list = []
 
-    # 累积使用 subgradient
     for end_idx in range(step, n + 1, step):
-        # 使用 g[0:end_idx]，即从第0个到第 end_idx-1 个
         batch_mu = mu_weights[0:end_idx]
 
-        # 归一化 mu
         sum_mu = sum(batch_mu)
         if sum_mu > 1e-12:
             normalized_mu = [m / sum_mu for m in batch_mu]
         else:
-            # 如果 mu 全为 0，平均分配
             normalized_mu = [1.0 / len(batch_mu)] * len(batch_mu)
 
-        # 计算累积加权的 pi
         pi = np.zeros_like(np.array(subgradients[0]))
         for j in range(end_idx):
             pi += normalized_mu[j] * np.array(subgradients[j])
@@ -90,36 +84,30 @@ def solve_subproblem_for_cut(
 
 
 def generate_cuts(
+    config: BundleConfig,
     subgradients: list,
     mu_weights: list,
     step: int = 1,
-    t: int = None,
     realization: int = 1,
-    trial_point=None,
-    problem_params=None,
     logger=None,
 ) -> list:
     """
     生成分批次的 cuts
 
     Args:
+        config: BundleConfig 配置对象
         subgradients: 梯度列表
         mu_weights: 权重列表
         step: 每次增加的梯度数量
-        t: 时间阶段
         realization: 场景索引
-        trial_point: 试探点
-        problem_params: 问题参数
         logger: 日志器
 
     Returns:
         cuts: cut 列表
     """
-    if trial_point is None:
-        trial_point = (config.X_TRIAL, config.Y_TRIAL, config.X_BS_TRIAL, config.SOC_TRIAL)
-
-    if problem_params is None:
-        problem_params = config.PROBLEM_PARAMS
+    trial_point = config.trial_point
+    problem_params = config.PROBLEM_PARAMS
+    t = config.T
 
     # 计算 pi 列表
     pi_list = compute_pi_list(subgradients, mu_weights, step)
@@ -134,60 +122,42 @@ def generate_cuts(
             logger, problem_params, trial_point, t, realization, 0, np.array(pi)
         )
         cuts.append(cut)
-        logger.info(f"cut {idx + 1}: f = {cut['f']}")
+        logger.info(f"cut {idx + 1}: f = {cut['f']:.6f}")
 
     return cuts
 
 
-def save_cuts(cuts: list, output_file: str):
+def save_cuts(cuts: list, output_file: str, logger=None):
     """保存 cuts 到 JSON 文件"""
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(cuts, f, ensure_ascii=False, indent=4)
+    if logger:
+        logger.info(f"已保存 {len(cuts)} 个 cuts 到 {output_file}")
     print(f"已保存 {len(cuts)} 个 cuts 到 {output_file}")
 
 
-def main(
-    input_file: str = "fast_g_gen/subgradients_mu.json",
-    output_file: str = "cuts_fast.json",
-    step: int = 1,
-    t: int = None,
-    realization: int = 1,
-):
-    """
-    主函数
+if __name__ == "__main__":
+    from bundle_fast.logger import get_logger
+    from bundle_fast.config import get_default_config
 
-    Args:
-        input_file: 输入的 subgradients 和 mu 文件
-        output_file: 输出的 cuts 文件
-        step: 每次增加的梯度数量
-        t: 时间阶段
-        realization: 场景索引
-    """
-    if t is None:
-        t = config.T
     logger = get_logger("log/fast_cut_gen.log")
+    config = get_default_config()
 
     # 加载数据
+    input_file = "fast_g_gen/subgradients_mu.json"
     subgradients, mu_weights = load_subgradients_mu(input_file)
     logger.info(f"加载了 {len(subgradients)} 个 subgradients 和 {len(mu_weights)} 个 mu_weights")
 
     # 生成 cuts
     cuts = generate_cuts(
-        subgradients, mu_weights, step, t, realization, logger=logger
+        config=config,
+        subgradients=subgradients,
+        mu_weights=mu_weights,
+        step=1,
+        realization=1,
+        logger=logger,
     )
 
     # 保存 cuts
-    save_cuts(cuts, output_file)
-
-    return cuts
-
-
-if __name__ == "__main__":
-    # 在这里直接设置参数
-    main(
-        input_file="fast_g_gen/subgradients_mu.json",
-        output_file="fast_cut_gen/cuts_fast.json",
-        step=1,
-        t=config.T,
-        realization=1,
-    )
+    output_file = "fast_cut_gen/cuts_fast.json"
+    save_cuts(cuts, output_file, logger)

@@ -280,7 +280,14 @@ class FastMultiModel:
         return relaxed_sum
 
     def get_subgradients(self):
-        """获取解，z_x"""
+        """
+        获取解，z_x 和 x（各四项）
+
+        Returns:
+            subgradients: 梯度列表
+            z_vars_list: 每个组的 z 变量最优值列表 [z_x, z_y, z_x_bs, z_soc]
+            x_vars_list: 每个组的 x 变量最优值列表 [x, y, x_bs, soc]
+        """
 
         def flatten_to_list(nested_data):
             """递归展开任何嵌套的 list/tuple/ndarray"""
@@ -292,6 +299,13 @@ class FastMultiModel:
                     flat.append(item)
             return flat
 
+        def get_value(var):
+            """获取变量值，处理表达式和数值"""
+            if hasattr(var, 'getValue'):
+                return var.getValue()
+            else:
+                return var
+
         self.model_builder.model.update()
         self.model_builder.model.optimize()
 
@@ -301,6 +315,8 @@ class FastMultiModel:
 
         if self.model_builder.model.status == gp.GRB.OPTIMAL:
             subgradients = []
+            z_vars_list = []
+            x_vars_list = []
 
             for group_id in range(self.len):
                 group_vars = self.model_builder._get_group_variables(group_id)
@@ -308,30 +324,44 @@ class FastMultiModel:
                 # z_x, z_y, z_x_bs, z_soc 现在是表达式 (偏移量 + alpha变量)
                 # 需要用 getValue() 获取值
                 for var in group_vars['z_x']:
-                    if hasattr(var, 'getValue'):
-                        solution.append(var.getValue())
-                    else:
-                        solution.append(var)
+                    solution.append(get_value(var))
                 for var in group_vars['z_y']:
-                    if hasattr(var, 'getValue'):
-                        solution.append(var.getValue())
-                    else:
-                        solution.append(var)
+                    solution.append(get_value(var))
                 for bs_vars in group_vars['z_x_bs']:
                     for var in bs_vars:
-                        if hasattr(var, 'getValue'):
-                            solution.append(var.getValue())
-                        else:
-                            solution.append(var)
+                        solution.append(get_value(var))
                 for var in group_vars['z_soc']:
-                    if hasattr(var, 'getValue'):
-                        solution.append(var.getValue())
-                    else:
-                        solution.append(var)
+                    solution.append(get_value(var))
 
                 solution_array = np.array(solution)
                 # 计算梯度 g_t = x_t-1 - z_x
                 subgradients.append(trial_point_flat - solution_array)
-            return subgradients
+
+                # 获取 z 变量的四项：z_x, z_y, z_x_bs, z_soc
+                z_x = [get_value(var) for var in group_vars['z_x']]
+                z_y = [get_value(var) for var in group_vars['z_y']]
+                z_x_bs = [[get_value(var) for var in bs_vars] for bs_vars in group_vars['z_x_bs']]
+                z_soc = [get_value(var) for var in group_vars['z_soc']]
+
+                # 获取 x 变量的四项：x, y, x_bs, soc
+                x = [get_value(var) for var in group_vars['x']]
+                y = [get_value(var) for var in group_vars['y']]
+                x_bs = [[get_value(var) for var in bs_vars] for bs_vars in group_vars['x_bs']]
+                soc = [get_value(var) for var in group_vars['soc']]
+
+                z_vars_list.append({
+                    'z_x': z_x,
+                    'z_y': z_y,
+                    'z_x_bs': z_x_bs,
+                    'z_soc': z_soc,
+                })
+                x_vars_list.append({
+                    'x': x,
+                    'y': y,
+                    'x_bs': x_bs,
+                    'soc': soc,
+                })
+
+            return subgradients, z_vars_list, x_vars_list
         else:
             raise Exception(f"model status: {self.model_builder.model.status}")

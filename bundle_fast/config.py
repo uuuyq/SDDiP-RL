@@ -8,6 +8,33 @@ from pathlib import Path
 
 from sddip.sddip import parameters
 
+
+class BundleConfig:
+    """Bundle 配置类，包含所有参数"""
+
+    def __init__(
+        self,
+        T,
+        N_VARS,
+        X_TRIAL,
+        Y_TRIAL,
+        X_BS_TRIAL,
+        SOC_TRIAL,
+        PROBLEM_PARAMS,
+    ):
+        self.T = T
+        self.N_VARS = N_VARS
+        self.X_TRIAL = X_TRIAL
+        self.Y_TRIAL = Y_TRIAL
+        self.X_BS_TRIAL = X_BS_TRIAL
+        self.SOC_TRIAL = SOC_TRIAL
+        self.PROBLEM_PARAMS = PROBLEM_PARAMS
+
+    @property
+    def trial_point(self):
+        return (self.X_TRIAL, self.Y_TRIAL, self.X_BS_TRIAL, self.SOC_TRIAL)
+
+
 # 问题参数
 T = 5
 N_VARS = 13
@@ -25,8 +52,14 @@ PATH = Path(r"D:\tools\workspace_pycharm\sddip-main-zou\data\01_test_cases\case6
 PROBLEM_PARAMS = parameters.Parameters(PATH)
 
 
-# t = 1
-# x_trial = [1.0, 1.0, 1.0]
-# y_trial = [71.52627531002818, 59.02627531002818, 66.52627531002818]
-# x_bs_trial = [[1.0, 0.0], [1.0, 0.0], [1.0, 0.0]]
-# soc_trial = [5.0]
+def get_default_config() -> BundleConfig:
+    """获取默认的 BundleConfig"""
+    return BundleConfig(
+        T=T,
+        N_VARS=N_VARS,
+        X_TRIAL=X_TRIAL,
+        Y_TRIAL=Y_TRIAL,
+        X_BS_TRIAL=X_BS_TRIAL,
+        SOC_TRIAL=SOC_TRIAL,
+        PROBLEM_PARAMS=PROBLEM_PARAMS,
+    )
