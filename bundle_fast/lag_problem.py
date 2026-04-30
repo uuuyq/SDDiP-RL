@@ -10,6 +10,21 @@ from sddip.sddip import ucmodelclassical, parameters
 logger = logging.getLogger(__name__)
 
 
+class SolverResults:
+    """Bundle求解结果封装"""
+    def __init__(self):
+        self.obj_value = None
+        self.multipliers = None
+        self.solver_time = None
+        self.n_iterations = None
+
+    def set_values(self, obj_value, multipliers, n_iterations, solver_time):
+        self.obj_value = obj_value
+        self.multipliers = multipliers
+        self.n_iterations = n_iterations
+        self.solver_time = solver_time
+
+
 class SubProblem:
     """
     求解: phi(pi) = min_x L(x, pi)

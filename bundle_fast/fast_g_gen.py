@@ -38,6 +38,7 @@ def get_solution_x_z(result: list, sub: SubProblem):
 def history_solution_collect(
     config: BundleConfig,
     realization: int = 0,
+    max_iterations: int = 200,
     logger=None,
 ):
     """
@@ -51,8 +52,13 @@ def history_solution_collect(
     Returns:
         mu_weights: mu 权重数组
         solution_collection: 历史解列表
+        sg_results: SolverResults对象（包含obj_value, multipliers, n_iterations, solver_time）
     """
+    from bundle_fast.lag_problem import SolverResults
+    import time
+    
     trial_point = config.trial_point
+    start_time = time.time()
 
     sub = SubProblem(logger, config.PROBLEM_PARAMS, trial_point=trial_point, t=config.T, n=realization, i=0)
     logger.info(f"历史解收集: realization={realization}, pd={config.PROBLEM_PARAMS.p_d[config.T][realization]}, re={config.PROBLEM_PARAMS.re[config.T][realization]}")
@@ -65,12 +71,14 @@ def history_solution_collect(
     get_solution_x_z(solution_collection, sub)
     master.update_strategy(x_new, f_new, g_new, ub=None)
 
-    for i in range(200):
+    n_iterations = 0
+    for i in range(max_iterations):
         master.add_cut(x_new, f_new, g_new)
         ub, x_new = master.solve_master()
         g_new, f_new = sub.solve(x_new)
         get_solution_x_z(solution_collection, sub)
         serious_step, delta, stop_flag = master.update_strategy(x_new, f_new, g_new, ub)
+        n_iterations = i + 1
         logger.info(f"迭代 {i+1}: delta={delta:.6f}")
         if stop_flag:
             break
@@ -97,7 +105,29 @@ def history_solution_collect(
     r = mu_weights @ gradients
     logger.info(f"mu 加权梯度 r: {r}")
 
-    return mu_weights, solution_collection
+    # 使用 x_best 再求解一次子问题，获取最终的 subgradient 和 obj_value
+    final_subgradient, final_obj_value = sub.solve(master.x_best)
+    
+    # 计算 dual_value（需要减去 trial_point 的影响）
+    trial_point_flat = np.array(
+        trial_point[0] + trial_point[1] + 
+        [val for bs in trial_point[2] for val in bs] + 
+        trial_point[3]
+    )
+    dual_value = final_obj_value - final_subgradient.dot(trial_point_flat)
+    
+    solver_time = time.time() - start_time
+    
+    # 封装成 SolverResults
+    sg_results = SolverResults()
+    sg_results.set_values(
+        obj_value=dual_value,
+        multipliers=final_subgradient,
+        n_iterations=n_iterations,
+        solver_time=solver_time
+    )
+
+    return mu_weights, solution_collection, sg_results
 
 
 def gen_subgradient(

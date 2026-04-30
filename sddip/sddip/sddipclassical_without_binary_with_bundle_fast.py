@@ -434,11 +434,6 @@ class Algorithm:
                 ps_dict[ResultKeys.soc_key] = soc_kt
                 ps_dict[ResultKeys.v_key] = v_value_function
 
-                print(f"t: {t}, k: {k} n: {n}")
-                print(x_kt)
-                print(y_kt)
-                print(x_bs_trial_point)
-                print(soc_kt)
 
 
 
@@ -700,6 +695,145 @@ class Algorithm:
                 cc_dict[ResultKeys.cg_key] = gradient.tolist()
 
                 self.cc_storage.add_result(i, k, t - 1, cc_dict)
+
+    def backward_pass_with_bundle_fast(self, iteration: int, samples: list) -> None:
+        i = iteration
+        n_samples = len(samples)
+
+        for t in reversed(range(1, self.problem_params.n_stages)):
+            for k in range(n_samples):
+                n_realizations = self.problem_params.n_realizations_per_stage[
+                    t
+                ]
+                ds_dict = self.ds_storage.create_empty_result_dict()
+                cc_dict = self.cc_storage.create_empty_result_dict()
+                dual_solver_dict = (
+                    self.dual_solver_storage.create_empty_result_dict()
+                )
+                # Get binary trial points
+                y_trial_point = self.ps_storage.get_result(
+                    i - 1, k, t - 1
+                )[ResultKeys.y_key]
+                x_trial_point = self.ps_storage.get_result(
+                    i - 1, k, t - 1
+                )[ResultKeys.x_key]
+                x_bs_trial_point = self.ps_storage.get_result(
+                    i - 1, k, t - 1
+                )[ResultKeys.x_bs_key]
+                soc_trial_point = self.ps_storage.get_result(
+                    i - 1, k, t - 1
+                )[ResultKeys.soc_key]
+
+                # 构建BundleConfig
+                from bundle_fast.config import BundleConfig
+                
+                # 计算 N_VARS (trial_point 的总维度)
+                n_vars = (
+                    len(x_trial_point) + 
+                    len(y_trial_point) + 
+                    sum(len(bs) for bs in x_bs_trial_point) + 
+                    len(soc_trial_point)
+                )
+                
+                # 构建 BundleConfig
+                bundle_config = BundleConfig(
+                    T=t,
+                    N_VARS=n_vars,
+                    X_TRIAL=x_trial_point,
+                    Y_TRIAL=y_trial_point,
+                    X_BS_TRIAL=x_bs_trial_point,
+                    SOC_TRIAL=soc_trial_point,
+                    PROBLEM_PARAMS=self.problem_params,
+                )
+
+
+                for n in range(n_realizations):
+                    if n == 0:
+                        # 调用 fast_g_gen中的history_solution_collect生成第一组 历史解
+                        # 同时也需要加入到cut集合中
+                        from bundle_fast.fast_g_gen import history_solution_collect
+                        from bundle_fast.logger import get_logger as get_bundle_logger
+                        
+                        bundle_logger = get_bundle_logger(f"log/bundle_fast_t{t}_k{k}.log")
+                        
+                        mu_weights, solution_collection, sg_results = history_solution_collect(
+                            config=bundle_config,
+                            realization=n,
+                            max_iterations=200,
+                            logger=bundle_logger,
+                        )
+                        
+                        # 保存第一个realization的结果，后续realization需要使用
+                        first_mu_weights = mu_weights
+                        first_solution_collection = solution_collection
+                        first_sg_results = sg_results
+                        
+                        # 将第一个realization的结果加入到cut集合中
+                        dual_multipliers = sg_results.multipliers.tolist()
+                        dual_value = sg_results.obj_value
+                        
+                        ds_dict[ResultKeys.dv_key].append(dual_value)
+                        ds_dict[ResultKeys.dm_key].append(dual_multipliers)
+                        
+                        dual_solver_dict[ResultKeys.ds_iterations].append(
+                            sg_results.n_iterations
+                        )
+                        dual_solver_dict[ResultKeys.ds_solver_time].append(
+                            sg_results.solver_time
+                        )
+                        
+                    else:
+                        # 调用 bundle_fast_script 中的bundle_fast方法，生成每个realization对应的解
+                        # 同时也需要加入到cut集合中
+                        from bundle_fast.bundle_fast_script import bundle_fast
+                        from bundle_fast.logger import get_logger as get_bundle_logger
+                        
+                        bundle_logger = get_bundle_logger(f"log/bundle_fast_t{t}_k{k}_n{n}.log")
+                        
+                        # 使用 n=0 时收集的历史解和 mu_weights
+                        sg_results = bundle_fast(
+                            config=bundle_config,
+                            mu_weights=first_mu_weights,
+                            solution_collection=first_solution_collection,
+                            size=10,
+                            step=1,
+                            max_iterations=1000,
+                            tolerance=1e-5,
+                            realization=n,
+                            logger=bundle_logger,
+                        )
+                        
+                        # 将结果加入到cut集合中
+                        dual_multipliers = sg_results.multipliers.tolist()
+                        dual_value = sg_results.obj_value
+                        
+                        ds_dict[ResultKeys.dv_key].append(dual_value)
+                        ds_dict[ResultKeys.dm_key].append(dual_multipliers)
+                        
+                        dual_solver_dict[ResultKeys.ds_iterations].append(
+                            sg_results.n_iterations
+                        )
+                        dual_solver_dict[ResultKeys.ds_solver_time].append(
+                            sg_results.solver_time
+                        )
+
+
+                # 完成所有realization的求解，对cut进行整理
+                # 计算和存储cut系数（与backward_pass保持一致）
+                probabilities = self.problem_params.prob[t]
+                intercept = np.array(probabilities).dot(
+                    np.array(ds_dict[ResultKeys.dv_key])
+                )
+                gradient = np.array(probabilities).dot(
+                    np.array(ds_dict[ResultKeys.dm_key])
+                )
+
+                cc_dict[ResultKeys.ci_key] = intercept.tolist()
+                cc_dict[ResultKeys.cg_key] = gradient.tolist()
+
+                self.cc_storage.add_result(i, k, t - 1, cc_dict)
+                self.ds_storage.add_result(i, k, t, ds_dict)
+                self.dual_solver_storage.add_result(i, k, t, dual_solver_dict)
 
     def backward_benders(self, iteration: int, samples: list) -> None:
         i = iteration

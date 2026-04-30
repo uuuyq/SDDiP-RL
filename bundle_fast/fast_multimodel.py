@@ -244,6 +244,28 @@ class FastMultiModel:
             # 添加切割下界
             multi_builder.add_cut_lower_bound(self.problem_params.cut_lb[stage])
 
+            # 添加cuts约束
+            # if stage < self.problem_params.n_stages - 1 and iteration > 0:
+            #     if common.CutType.LAGRANGIAN in self.cut_types_added:
+            #         lagrangian_coefficients = self.cc_storage.get_stage_result(
+            #             stage
+            #         )
+            #         model_builder.add_cut_constraints_without_binary(
+            #             lagrangian_coefficients[ResultKeys.ci_key],
+            #             lagrangian_coefficients[ResultKeys.cg_key],
+            #         )
+            #     if bool(
+            #             self.cut_types_added
+            #             & {common.CutType.BENDERS, common.CutType.STRENGTHENED_BENDERS}
+            #     ):
+            #         benders_coefficients = self.bc_storage.get_stage_result(stage)
+            #         model_builder.add_benders_cuts_without_binary(
+            #             benders_coefficients[ResultKeys.bc_intercept_key],
+            #             benders_coefficients[ResultKeys.bc_gradient_key],
+            #             benders_coefficients[ResultKeys.bc_trial_point_key],
+            #         )
+
+
         return multi_builder
 
     def get_relaxed_sum(

@@ -246,7 +246,7 @@ def generate_cuts_update(
     """
     problem_params = config.PROBLEM_PARAMS
 
-    # 计算 pi 列表
+    # 使用 compute_pi_list 计算 pi 列表
     pi_list = compute_pi_list(subgradients, mu_weights, step)
 
     logger.info(f"将生成 {len(pi_list)} 个 cuts (step={step}, 使用直接计算方式)")
@@ -254,18 +254,9 @@ def generate_cuts_update(
     # 直接计算 cuts
     cuts = []
     for idx, pi in enumerate(pi_list):
-        pi_array = np.array(pi)
-
-        # 使用对应索引的 x_vars 计算截距
-        # pi_list 的第 idx 个元素对应于 subgradients[0:step*(idx+1)] 的累积加权
-        # 我们使用最后一个 subgradient 对应的 x_vars（即 x_vars_list[step*(idx+1)-1]）
-        # 或者使用累积加权的平均 x_vars？
-
-        # 这里我们使用累积加权的方式计算 objective_terms_value
-        # 对于 pi_k = sum_{j=0}^{k} normalized_mu[j] * g[j]
-        # 我们使用对应的加权平均 x_vars
-
         end_idx = step * (idx + 1)
+
+        # 计算加权平均的 x_vars（使用与 compute_pi_list 相同的权重）
         batch_mu = mu_weights[0:end_idx]
         sum_mu = sum(batch_mu)
         if sum_mu > 1e-12:
@@ -278,23 +269,19 @@ def generate_cuts_update(
         for key in x_vars_list[0].keys():
             values = [x_vars_list[j][key] for j in range(end_idx)]
             if isinstance(values[0], list):
-                # 列表类型：加权求和
-                weighted_value = []
-                for i in range(len(values[0])):
-                    weighted_value.append(sum(normalized_mu[j] * values[j][i] for j in range(end_idx)))
+                weighted_value = [
+                    sum(normalized_mu[j] * values[j][i] for j in range(end_idx))
+                    for i in range(len(values[0]))
+                ]
                 weighted_x_vars[key] = weighted_value
             else:
-                # 单值类型：加权求和
                 weighted_x_vars[key] = sum(normalized_mu[j] * values[j] for j in range(end_idx))
 
-        # 计算 objective_terms_value
+        # 计算 objective_terms_value 作为截距 f
         f = compute_objective_terms_value(weighted_x_vars, problem_params)
 
-        # 使用累积加权的 subgradient 作为 g
-        # g = sum_{j=0}^{end_idx-1} normalized_mu[j] * subgradients[j]
-        g = np.zeros_like(np.array(subgradients[0]))
-        for j in range(end_idx):
-            g += normalized_mu[j] * np.array(subgradients[j])
+        # g 使用 pi（累积加权的 subgradient）
+        g = np.array(pi)
 
         cut = {
             "g": g.tolist(),

@@ -128,7 +128,7 @@ def run_bundle_with_cuts(
     return master.f_best, master.x_best.copy(), i + 1
 
 
-def run(
+def bundle_fast(
     config: BundleConfig,
     mu_weights,
     solution_collection,
@@ -158,8 +158,10 @@ def run(
         logger: 日志器
 
     Returns:
-        f_best, x_best, iterations, solver_time
+        sg_results: SolverResults对象（包含obj_value, multipliers, n_iterations, solver_time）
     """
+    from bundle_fast.lag_problem import SolverResults
+    
     if logger is None:
         logger = get_logger("log/bundle_fast_script.log")
 
@@ -198,12 +200,37 @@ def run(
         logger=logger,
     )
 
+    # 使用 x_best 再求解一次子问题，获取最终的 subgradient 和 obj_value
+    from bundle_fast.lag_problem import SubProblem
+    
+    trial_point = config.trial_point
+    sub = SubProblem(logger, config.PROBLEM_PARAMS, trial_point, config.T, realization, 0)
+    final_subgradient, final_obj_value = sub.solve(x_best)
+    
+    # 计算 dual_value（需要减去 trial_point 的影响）
+    trial_point_flat = np.array(
+        trial_point[0] + trial_point[1] + 
+        [val for bs in trial_point[2] for val in bs] + 
+        trial_point[3]
+    )
+    dual_value = final_obj_value - final_subgradient.dot(trial_point_flat)
+    
     solver_time = time.time() - start_time
+    
+    # 封装成 SolverResults
+    sg_results = SolverResults()
+    sg_results.set_values(
+        obj_value=dual_value,
+        multipliers=final_subgradient,
+        n_iterations=iterations,
+        solver_time=solver_time
+    )
+    
     logger.info("=" * 40)
     logger.info(f"完成! 总耗时: {solver_time:.3f}s, 迭代次数: {iterations}")
-    logger.info(f"最终结果: f_best={f_best:.6f}")
+    logger.info(f"最终结果: dual_value={dual_value:.6f}")
 
-    return f_best, x_best, iterations, solver_time, z_vars_list, x_vars_list
+    return sg_results
 
 
 if __name__ == "__main__":
@@ -215,7 +242,7 @@ if __name__ == "__main__":
 
     mu_weights, solution_collection = history_solution_collect(config=config, logger=logger)
 
-    f_best, x_best, iterations, solver_time, z_vars_list, x_vars_list = run(
+    f_best, x_best, iterations, solver_time, z_vars_list, x_vars_list = bundle_fast(
         config=config,
         mu_weights=mu_weights,
         solution_collection=solution_collection,
@@ -234,6 +261,9 @@ if __name__ == "__main__":
     print(f"solver_time: {solver_time:.3f}s")
     print(f"z_vars_list: {z_vars_list}")
     print(f"x_vars_list: {x_vars_list}")
+
+
+
 
 
 # ============================================================================

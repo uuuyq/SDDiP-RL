@@ -58,7 +58,7 @@ def run_bundle_warmstart(
     # ========== 第一步：生成 cuts（调用 fast_g_gen 和 fast_cut_gen）==========
 
     logger.info(">>> 步骤1: 历史解收集 (fast_g_gen.history_solution_collect) <<<")
-    mu_weights, solution_collection = fast_g_gen.history_solution_collect(config=config, realization=0, logger=logger)
+    mu_weights, solution_collection, _ = fast_g_gen.history_solution_collect(config=config, realization=0, logger=logger)
 
     cut_gen_start_time = time.time()
 
