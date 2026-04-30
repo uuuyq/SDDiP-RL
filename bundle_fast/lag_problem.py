@@ -328,6 +328,9 @@ import numpy as np
 
 
 class LagrangianMaster:
+    """
+    用来获取 mu的求解器，提供多个cut，通过求解主问题得到cut对应的mu值
+    """
     def __init__(self, logger, n_vars, cuts_storage, x_best, u):
         """
         :param n_vars: 变量 pi 的维度

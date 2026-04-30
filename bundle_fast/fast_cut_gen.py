@@ -136,6 +136,177 @@ def save_cuts(cuts: list, output_file: str, logger=None):
     print(f"已保存 {len(cuts)} 个 cuts 到 {output_file}")
 
 
+def compute_objective_terms_value(x_vars: dict, problem_params) -> float:
+    """
+    计算 objective_terms 的值
+
+    objective_terms = sum(coefficients[i] * variables[i])
+
+    在 problem_params 中，cost_coeffs 已经包含：
+        gc + suc + sdc + [penalty] * 2
+
+    扩展后的 coefficients = cost_coeffs + [penalty] * (2*n_storages + 2*n_x_bs + 1) + [1]
+    variables = y + s_up + s_down + [ys_p, ys_n] + socs_p + socs_n + x_bs_p + x_bs_n + [delta] + [theta]
+
+    Args:
+        x_vars: 包含所有变量值的字典
+        problem_params: 问题参数对象，包含 cost_coeffs 和 penalty
+
+    Returns:
+        objective_terms_value: objective_terms 的值
+    """
+    # 获取系数（cost_coeffs 已经包含 gc + suc + sdc + [penalty] * 2）
+    cost_coeffs = problem_params.cost_coeffs
+    penalty = problem_params.penalty
+
+    n_generators = problem_params.n_gens
+    n_storages = problem_params.n_storages
+    backsight_periods = problem_params.backsight_periods
+
+    # 计算 x_bs_p 和 x_bs_n 的总数
+    n_x_bs = sum(backsight_periods)
+
+    # 构建完整的系数列表
+    # cost_coeffs 已经包含 gc + suc + sdc + [penalty] * 2
+    # 扩展后的 coefficients = cost_coeffs + [penalty] * (2*n_storages + 2*n_x_bs + 1)
+    coefficients = cost_coeffs + [penalty] * (2 * n_storages + 2 * n_x_bs + 1)
+
+    # 构建变量值列表
+    # variables = y + s_up + s_down + [ys_p, ys_n] + socs_p + socs_n + x_bs_p + x_bs_n + [delta] + [theta]
+
+    # y: n_generators 个
+    y_values = x_vars['y']
+
+    # s_up: n_generators 个
+    s_up_values = x_vars['s_up']
+
+    # s_down: n_generators 个
+    s_down_values = x_vars['s_down']
+
+    # ys_p, ys_n: 2 个全局变量
+    ys_p_value = x_vars['ys_p']
+    ys_n_value = x_vars['ys_n']
+
+    # socs_p, socs_n: n_storages 个
+    socs_p_values = x_vars['socs_p']
+    socs_n_values = x_vars['socs_n']
+
+    # x_bs_p, x_bs_n: n_generators 个（每个发电机一个）
+    x_bs_p_values = x_vars['x_bs_p']
+    x_bs_n_values = x_vars['x_bs_n']
+
+    # delta: 1 个
+    delta_value = x_vars['delta']
+
+    # theta: 1 个
+    theta_value = x_vars['theta']
+
+    # 组合变量值列表
+    variables_values = (
+        y_values + s_up_values + s_down_values
+        + [ys_p_value, ys_n_value]
+        + socs_p_values + socs_n_values
+        + x_bs_p_values + x_bs_n_values
+        + [delta_value, theta_value]
+    )
+
+    # 计算 objective_terms_value
+    objective_terms_value = sum(c * v for c, v in zip(coefficients, variables_values))
+
+    return objective_terms_value
+
+
+def generate_cuts_update(
+    config: BundleConfig,
+    subgradients: list,
+    mu_weights: list,
+    x_vars_list: list,
+    step: int = 1,
+    logger=None,
+) -> list:
+    """
+    使用已知数据直接计算 cuts，不求解子问题
+
+    对于每个累积加权的 pi，使用对应的 subgradient 和 x_vars 直接计算截距 f。
+
+    截距计算公式：
+    - objective_terms_value = sum(coefficients[i] * variables[i])
+    - f = objective_terms_value
+
+    Args:
+        config: BundleConfig 配置对象
+        subgradients: 梯度列表
+        mu_weights: 权重列表
+        x_vars_list: 每个组的 x 变量值列表
+        step: 每次增加的梯度数量
+        logger: 日志器
+
+    Returns:
+        cuts: cut 列表
+    """
+    problem_params = config.PROBLEM_PARAMS
+
+    # 计算 pi 列表
+    pi_list = compute_pi_list(subgradients, mu_weights, step)
+
+    logger.info(f"将生成 {len(pi_list)} 个 cuts (step={step}, 使用直接计算方式)")
+
+    # 直接计算 cuts
+    cuts = []
+    for idx, pi in enumerate(pi_list):
+        pi_array = np.array(pi)
+
+        # 使用对应索引的 x_vars 计算截距
+        # pi_list 的第 idx 个元素对应于 subgradients[0:step*(idx+1)] 的累积加权
+        # 我们使用最后一个 subgradient 对应的 x_vars（即 x_vars_list[step*(idx+1)-1]）
+        # 或者使用累积加权的平均 x_vars？
+
+        # 这里我们使用累积加权的方式计算 objective_terms_value
+        # 对于 pi_k = sum_{j=0}^{k} normalized_mu[j] * g[j]
+        # 我们使用对应的加权平均 x_vars
+
+        end_idx = step * (idx + 1)
+        batch_mu = mu_weights[0:end_idx]
+        sum_mu = sum(batch_mu)
+        if sum_mu > 1e-12:
+            normalized_mu = [m / sum_mu for m in batch_mu]
+        else:
+            normalized_mu = [1.0 / len(batch_mu)] * len(batch_mu)
+
+        # 计算加权平均的 x_vars
+        weighted_x_vars = {}
+        for key in x_vars_list[0].keys():
+            values = [x_vars_list[j][key] for j in range(end_idx)]
+            if isinstance(values[0], list):
+                # 列表类型：加权求和
+                weighted_value = []
+                for i in range(len(values[0])):
+                    weighted_value.append(sum(normalized_mu[j] * values[j][i] for j in range(end_idx)))
+                weighted_x_vars[key] = weighted_value
+            else:
+                # 单值类型：加权求和
+                weighted_x_vars[key] = sum(normalized_mu[j] * values[j] for j in range(end_idx))
+
+        # 计算 objective_terms_value
+        f = compute_objective_terms_value(weighted_x_vars, problem_params)
+
+        # 使用累积加权的 subgradient 作为 g
+        # g = sum_{j=0}^{end_idx-1} normalized_mu[j] * subgradients[j]
+        g = np.zeros_like(np.array(subgradients[0]))
+        for j in range(end_idx):
+            g += normalized_mu[j] * np.array(subgradients[j])
+
+        cut = {
+            "g": g.tolist(),
+            "x": pi,
+            "f": float(f)
+        }
+        cuts.append(cut)
+        logger.info(f"cut {idx + 1}: f = {f:.6f}")
+
+    return cuts
+
+
 if __name__ == "__main__":
     from bundle_fast.logger import get_logger
     from bundle_fast.config import get_default_config

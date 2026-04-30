@@ -286,7 +286,12 @@ class FastMultiModel:
         Returns:
             subgradients: 梯度列表
             z_vars_list: 每个组的 z 变量最优值列表 [z_x, z_y, z_x_bs, z_soc]
-            x_vars_list: 每个组的 x 变量最优值列表 [x, y, x_bs, soc]
+            x_vars_list: 每个组的 x 变量最优值列表，扩展为包含所有计算 objective_terms 所需的变量
+            {
+                'x', 'y', 'x_bs', 'soc',
+                's_up', 's_down', 'ys_p', 'ys_n', 'socs_p', 'socs_n',
+                'x_bs_p', 'x_bs_n', 'delta', 'theta'
+            }
         """
 
         def flatten_to_list(nested_data):
@@ -349,6 +354,18 @@ class FastMultiModel:
                 x_bs = [[get_value(var) for var in bs_vars] for bs_vars in group_vars['x_bs']]
                 soc = [get_value(var) for var in group_vars['soc']]
 
+                # 获取计算 objective_terms 所需的额外变量
+                s_up = [get_value(var) for var in group_vars['s_up']]
+                s_down = [get_value(var) for var in group_vars['s_down']]
+                ys_p = get_value(group_vars['ys_p'])
+                ys_n = get_value(group_vars['ys_n'])
+                socs_p = [get_value(var) for var in group_vars['socs_p']]
+                socs_n = [get_value(var) for var in group_vars['socs_n']]
+                x_bs_p = [get_value(var) for var in group_vars['x_bs_p']]
+                x_bs_n = [get_value(var) for var in group_vars['x_bs_n']]
+                delta = get_value(group_vars['delta'])
+                theta = get_value(group_vars['theta'])
+
                 z_vars_list.append({
                     'z_x': z_x,
                     'z_y': z_y,
@@ -360,6 +377,16 @@ class FastMultiModel:
                     'y': y,
                     'x_bs': x_bs,
                     'soc': soc,
+                    's_up': s_up,
+                    's_down': s_down,
+                    'ys_p': ys_p,
+                    'ys_n': ys_n,
+                    'socs_p': socs_p,
+                    'socs_n': socs_n,
+                    'x_bs_p': x_bs_p,
+                    'x_bs_n': x_bs_n,
+                    'delta': delta,
+                    'theta': theta,
                 })
 
             return subgradients, z_vars_list, x_vars_list

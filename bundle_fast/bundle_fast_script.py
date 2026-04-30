@@ -234,3 +234,164 @@ if __name__ == "__main__":
     print(f"solver_time: {solver_time:.3f}s")
     print(f"z_vars_list: {z_vars_list}")
     print(f"x_vars_list: {x_vars_list}")
+
+
+# ============================================================================
+# Bundle算法接口说明（从sddipclassical_without_binary_with_bundle_fast.py提取）
+# ============================================================================
+#
+# 【Bundle Method 核心接口】
+# 位置: sddip.sddip.dualsolver.BundleMethod
+#
+# 【1. 初始化接口】
+# ----------------------------------------------------------------------------
+# from sddip.sddip.dualsolver import BundleMethod
+#
+# dual_solver = BundleMethod(
+#     max_iterations=1000,      # 最大迭代次数
+#     tolerance=1e-5,           # 收敛容差（预测上升量<=tolerance时停止）
+#     log_dir="log/",           # 日志目录
+#     predicted_ascent="abs",   # 预测上升量计算方式: "abs"(绝对) 或 "rel"(相对)
+#     time_limit=3600.0         # 时间限制（秒），可选
+# )
+#
+# 关键参数:
+#   - u_init = 1: 初始权重
+#   - u_min = 0.1: 最小权重
+#   - m_l = 0.2: serious step下界系数 (0, 0.5)
+#   - m_r = 0.5: serious step上界系数 (m_l, 1)
+#
+#
+# 【2. 求解接口 - solve()方法】
+# ----------------------------------------------------------------------------
+# 调用示例（在backward_pass中）:
+#
+#     _, sg_results = self.dual_solver.solve(
+#         uc_bw.model,              # Gurobi模型对象
+#         objective_terms,          # 目标函数项（Gurobi表达式）
+#         relaxed_terms,            # 松弛项列表（Gurobi表达式列表）
+#         normalization=False       # 是否使用标准化（可选，默认False）
+#     )
+#
+# 参数说明:
+#   - model: Gurobi Model对象，表示待优化的问题
+#   - objective_terms: 原始目标函数表达式
+#   - relaxed_terms: 被松弛的约束项列表（对应要生成割平面的变量）
+#   - normalization: bool，是否使用L1范数标准化（添加pi0>=0和归一化约束）
+#
+# 返回值:
+#   - tuple[gp.Model, SolverResults]
+#     - model: 更新后的Gurobi模型
+#     - sg_results: SolverResults对象，包含以下属性:
+#       - obj_value: 最优目标值（float）
+#       - multipliers: 最优对偶乘子/次梯度（numpy.ndarray）
+#       - n_iterations: 迭代次数（int）
+#       - solver_time: 求解时间（秒，float）
+#
+#
+# 【3. 后处理 - 提取割平面系数】
+# ----------------------------------------------------------------------------
+# 在backward_pass中的使用流程:
+#
+#     # 1) 调用bundle求解
+#     _, sg_results = self.dual_solver.solve(
+#         uc_bw.model,
+#         objective_terms,
+#         relaxed_terms,
+#         normalization=False
+#     )
+#
+#     # 2) 提取对偶乘子（次梯度）
+#     dual_multipliers = sg_results.multipliers.tolist()
+#
+#     # 3) 计算对偶值（需要减去trial_point的影响）
+#     dual_value = sg_results.obj_value - np.array(dual_multipliers).dot(trial_point)
+#
+#     # 4) 存储结果
+#     ds_dict[ResultKeys.dv_key].append(dual_value)      # 对偶值
+#     ds_dict[ResultKeys.dm_key].append(dual_multipliers) # 对偶乘子
+#
+#     # 5) 记录bundle求解器信息
+#     dual_solver_dict[ResultKeys.ds_iterations].append(sg_results.n_iterations)
+#     dual_solver_dict[ResultKeys.ds_solver_time].append(sg_results.solver_time)
+#
+#
+# 【4. 割平面系数聚合】
+# ----------------------------------------------------------------------------
+# 对所有场景（realizations）的结果进行加权平均:
+#
+#     probabilities = self.problem_params.prob[t]  # 各场景概率
+#     intercept = np.array(probabilities).dot(
+#         np.array(ds_dict[ResultKeys.dv_key])      # 所有场景的对偶值
+#     )
+#     gradient = np.array(probabilities).dot(
+#         np.array(ds_dict[ResultKeys.dm_key])      # 所有场景的对偶乘子
+#     )
+#
+#     # 存储割平面系数
+#     cc_dict[ResultKeys.ci_key] = intercept.tolist()  # 截距
+#     cc_dict[ResultKeys.cg_key] = gradient.tolist()   # 梯度
+#
+#
+# 【5. Bundle算法内部工作流程】
+# ----------------------------------------------------------------------------
+# solve()方法内部逻辑:
+#   1) 初始化: 获取初始次梯度和最优下界f_best
+#   2) 创建子问题: create_subproblem()或create_normalized_subproblem()
+#   3) 迭代求解:
+#      a) 添加新的割平面到子问题: v <= f_new + g^T(x - x_new)
+#      b) 设置目标: max v - u/2 * ||x - x_best||^2
+#      c) 求解子问题得到候选解x_new
+#      d) 调用get_subgradient_and_value()获取新的次梯度和函数值
+#      e) 计算预测上升量delta = v.x - f_best
+#      f) 检查收敛: delta <= tolerance则停止
+#      g) Serious step判断: f_new - f_best >= m_l * delta
+#         - 如果是serious step: 更新x_best和f_best
+#         - 如果否: 保持x_best不变
+#      h) 权重更新: 根据serious step调整proximity weight u
+#   4) 返回结果: (model, SolverResults)
+#
+#
+# 【6. 关键辅助方法】
+# ----------------------------------------------------------------------------
+# get_subgradient_and_value(model, objective_terms, relaxed_terms, multipliers, time_remaining)
+#   - 功能: 求解原问题，获取次梯度和目标值
+#   - 参数:
+#     * model: Gurobi模型
+#     * objective_terms: 目标函数项
+#     * relaxed_terms: 松弛项列表
+#     * multipliers: 对偶乘子（用于加权relaxed_terms）
+#     * time_remaining: 剩余时间
+#   - 返回: (subgradient: list, obj_value: float)
+#
+# weight_update(u_current, i_u, var_est, x_new, f_new, x_best, f_best, f_hat, subgradient, serious_step)
+#   - 功能: 更新bundle方法的权重参数u
+#   - 返回: (u_new, i_u_new, var_est_new)
+#
+# create_subproblem(n_dual_multipliers)
+#   - 功能: 创建标准bundle子问题（QP）
+#   - 返回: (subproblem_model, v_var, x_vars)
+#
+# create_normalized_subproblem(n_dual_multipliers)
+#   - 功能: 创建标准化bundle子问题（带L1范数约束）
+#   - 返回: (subproblem_model, v_var, x_vars)
+#
+#
+# 【7. 与bundle_fast_script.py的对应关系】
+# ----------------------------------------------------------------------------
+# bundle_fast_script.py中的实现是SDDiP中BundleMethod的独立版本:
+#
+#   SDDiP中的BundleMethod          bundle_fast_script.py
+#   -----------------------       ----------------------
+#   BundleMethod.solve()      ->  run_bundle_with_cuts()
+#   create_subproblem()       ->  MasterProblem（主问题）
+#   get_subgradient_and_value()->  SubProblem.solve()（子问题）
+#   serious step判断          ->  MasterProblem.update_strategy()
+#   weight_update()           ->  （内部实现可能不同）
+#
+# 主要区别:
+#   - SDDiP的BundleMethod直接在solve()中管理完整的bundle迭代
+#   - bundle_fast_script.py将主问题和子问题分离，支持warmstart cuts
+#   - bundle_fast_script.py使用预生成的cuts进行加速
+#
+# ============================================================================
