@@ -99,7 +99,7 @@ def history_solution_collect(
     trial_point = config.trial_point
     start_time = time.time()
 
-    sub = SubProblem(logger, config.PROBLEM_PARAMS, trial_point=trial_point, t=config.T, n=realization, i=0)
+    sub = SubProblem(logger, config, realization)
     logger.info(f"历史解收集: realization={realization}, pd={config.PROBLEM_PARAMS.p_d[config.T][realization]}, re={config.PROBLEM_PARAMS.re[config.T][realization]}")
 
     master = MasterProblem(logger, config.N_VARS, tolerance=1e-5)
@@ -217,11 +217,8 @@ def gen_subgradient(
 
     fast = FastMultiModel(
         logger,
-        config.PROBLEM_PARAMS,
-        trial_point=trial_point,
-        t=config.T,
+        config,
         n=realization,
-        i=0,
         mu_history=mu_array,
         solution_collection=selected_solution_collection,
     )

@@ -65,7 +65,7 @@ def compute_pi_list(subgradients: list, mu_weights: list, step: int = 1) -> list
 
 
 def solve_subproblem_for_cut(
-    logger, problem_params, trial_point, t, n, i, pi
+    logger, config, n, pi
 ) -> dict:
     """
     使用给定的 pi 求解子问题，返回 cut
@@ -73,7 +73,7 @@ def solve_subproblem_for_cut(
     Returns:
         {"g": [...], "x": [...], "f": value}
     """
-    sub = SubProblem(logger, problem_params, trial_point, t, n, i)
+    sub = SubProblem(logger, config, n)
     g, f = sub.solve(pi)
 
     return {
@@ -82,7 +82,7 @@ def solve_subproblem_for_cut(
         "f": float(f)
     }
 
-@DeprecationWarning
+# @DeprecationWarning
 def generate_cuts(
     config: BundleConfig,
     subgradients: list,
@@ -119,7 +119,7 @@ def generate_cuts(
     for idx, pi in enumerate(pi_list):
         logger.info(f"求解 cut {idx + 1}/{len(pi_list)}: pi = {pi}")
         cut = solve_subproblem_for_cut(
-            logger, problem_params, trial_point, t, realization, 0, np.array(pi)
+            logger, config, realization, np.array(pi)
         )
         cuts.append(cut)
         logger.info(f"cut {idx + 1}: f = {cut['f']:.6f}")
@@ -317,7 +317,7 @@ def generate_cuts_update(
             "f": float(f)
         }
         cuts.append(cut)
-        logger.info(f"cut {idx + 1}: f = {f:.6f}")
+        # logger.info(f"cut {idx + 1}: f = {f:.6f}")
 
     return cuts
 

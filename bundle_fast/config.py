@@ -21,6 +21,9 @@ class BundleConfig:
         X_BS_TRIAL,
         SOC_TRIAL,
         PROBLEM_PARAMS,
+        iteration: int = 0,
+        bc_storage=None,
+        dual_solver_storage=None,
     ):
         self.T = T
         self.N_VARS = N_VARS
@@ -29,6 +32,9 @@ class BundleConfig:
         self.X_BS_TRIAL = X_BS_TRIAL
         self.SOC_TRIAL = SOC_TRIAL
         self.PROBLEM_PARAMS = PROBLEM_PARAMS
+        self.iteration = iteration  # 当前迭代次数 i
+        self.bc_storage = bc_storage  # Benders cuts 存储
+        self.dual_solver_storage = dual_solver_storage  # Lagrangian cuts 存储
 
     @property
     def trial_point(self):

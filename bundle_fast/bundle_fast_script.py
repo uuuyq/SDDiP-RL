@@ -89,7 +89,7 @@ def run_bundle_with_cuts(
 
     # 初始化子问题和主问题
     sub = SubProblem(
-        logger, config.PROBLEM_PARAMS, trial_point, config.T, realization, 0
+        logger, config, realization
     )
     master = MasterProblem(logger, config.N_VARS, tolerance=tolerance)
 
@@ -119,9 +119,9 @@ def run_bundle_with_cuts(
         g_new, f_new = sub.solve(x_new)
         serious_step, delta, stop_flag = master.update_strategy(x_new, f_new, g_new, ub)
 
-        logger.info(
-            f"迭代 {i+1}: ub={ub:.6f}, lb={master.f_best:.6f}, delta={delta:.6f}"
-        )
+        # logger.info(
+        #     # f"迭代 {i+1}: ub={ub:.6f}, lb={master.f_best:.6f}, delta={delta:.6f}"
+        # )
 
         if stop_flag:
             logger.info(f"收敛于迭代 {i+1}")
@@ -206,15 +206,15 @@ def bundle_fast(
     # 使用 x_best 再求解一次子问题，获取最终的 subgradient 和 obj_value
     from bundle_fast.lag_problem import SubProblem
     
-    trial_point = config.trial_point
-    sub = SubProblem(logger, config.PROBLEM_PARAMS, trial_point, config.T, realization, 0)
+    sub = SubProblem(logger, config, realization)
     final_subgradient, final_obj_value = sub.solve(x_best)
     
     # 计算 dual_value（需要减去 trial_point 的影响）
+
     trial_point_flat = np.array(
-        trial_point[0] + trial_point[1] + 
-        [val for bs in trial_point[2] for val in bs] + 
-        trial_point[3]
+        config.X_TRIAL + config.Y_TRIAL +
+        [val for bs in config.X_BS_TRIAL for val in bs] +
+        config.SOC_TRIAL
     )
     dual_value = final_obj_value - final_subgradient.dot(trial_point_flat)
     
@@ -243,9 +243,9 @@ if __name__ == "__main__":
     config = get_default_config()
     logger = get_logger("log/bundle_fast_script.log")
 
-    mu_weights, solution_collection = history_solution_collect(config=config, logger=logger)
+    mu_weights, solution_collection, _ = history_solution_collect(config=config, logger=logger)
 
-    f_best, x_best, iterations, solver_time, z_vars_list, x_vars_list = bundle_fast(
+    sg_result = bundle_fast(
         config=config,
         mu_weights=mu_weights,
         solution_collection=solution_collection,
@@ -257,13 +257,14 @@ if __name__ == "__main__":
         logger=logger,
     )
 
-    print(f"\n最终结果:")
-    print(f"f_best: {f_best}")
-    print(f"x_best: {x_best}")
-    print(f"iterations: {iterations}")
-    print(f"solver_time: {solver_time:.3f}s")
-    print(f"z_vars_list: {z_vars_list}")
-    print(f"x_vars_list: {x_vars_list}")
+    # print(f"\n最终结果:")
+    # print(f"f_best: {f_best}")
+    # print(f"x_best: {x_best}")
+    # print(f"iterations: {iterations}")
+    # print(f"solver_time: {solver_time:.3f}s")
+    # print(f"z_vars_list: {z_vars_list}")
+    # print(f"x_vars_list: {x_vars_list}")
+    print(sg_result.toString())
 
 
 

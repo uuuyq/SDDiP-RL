@@ -10,13 +10,14 @@ from sddip.sddip.multimodelbuilder_with_offset import MultiModelBuilderWithOffse
 
 
 class FastMultiModel:
-    def __init__(self, logger, problem_params, trial_point, t, n, i, mu_history, solution_collection, alpha=100, verbose=0):
+    def __init__(self, logger, config, n, mu_history, solution_collection, alpha=100, verbose=0):
         self.logger = logger
-        self.problem_params = problem_params
-        self.trial_point = trial_point
-        self.t = t
+        self.config = config
+        self.problem_params = config.PROBLEM_PARAMS
+        self.trial_point = config.trial_point
+        self.t = config.T
         self.n = n
-        self.i = i
+        self.i = config.iteration
 
         self.mu_history = mu_history
         self.solution_collection = solution_collection
@@ -244,26 +245,49 @@ class FastMultiModel:
             # 添加切割下界
             multi_builder.add_cut_lower_bound(self.problem_params.cut_lb[stage])
 
-            # TODO 添加cuts约束
-            # if stage < self.problem_params.n_stages - 1 and iteration > 0:
-            #     if common.CutType.LAGRANGIAN in self.cut_types_added:
-            #         lagrangian_coefficients = self.cc_storage.get_stage_result(
-            #             stage
-            #         )
-            #         model_builder.add_cut_constraints_without_binary(
-            #             lagrangian_coefficients[ResultKeys.ci_key],
-            #             lagrangian_coefficients[ResultKeys.cg_key],
-            #         )
-            #     if bool(
-            #             self.cut_types_added
-            #             & {common.CutType.BENDERS, common.CutType.STRENGTHENED_BENDERS}
-            #     ):
-            #         benders_coefficients = self.bc_storage.get_stage_result(stage)
-            #         model_builder.add_benders_cuts_without_binary(
-            #             benders_coefficients[ResultKeys.bc_intercept_key],
-            #             benders_coefficients[ResultKeys.bc_gradient_key],
-            #             benders_coefficients[ResultKeys.bc_trial_point_key],
-            #         )
+            # 添加 cuts 约束
+            if stage < self.problem_params.n_stages - 1 and self.config.iteration > 0:
+                # 添加 Lagrangian cuts
+                if self.config.dual_solver_storage is not None:
+                    try:
+                        # 获取所有阶段的 Lagrangian cuts
+                        for s in range(self.problem_params.n_stages):
+                            lagrangian_result = self.config.dual_solver_storage.get_stage_result(s)
+                            if lagrangian_result and 'dm' in lagrangian_result and 'dv' in lagrangian_result:
+                                cut_gradients = lagrangian_result['dm']
+                                cut_intercepts = lagrangian_result['dv']
+                                if cut_gradients and cut_intercepts:
+                                    multi_builder.add_cut_constraints_without_binary(
+                                        cut_intercepts,
+                                        cut_gradients,
+                                        group_id=group_id
+                                    )
+                    except Exception as e:
+                        self.logger.warning(f"Failed to add Lagrangian cuts: {e}")
+
+                # 添加 Benders cuts
+                if self.config.bc_storage is not None:
+                    try:
+                        # 获取所有阶段的 Benders cuts
+                        for s in range(self.problem_params.n_stages):
+                            benders_result = self.config.bc_storage.get_stage_result(s)
+                            if benders_result and 'bc_gradient' in benders_result and 'bc_intercept' in benders_result:
+                                cut_gradients = benders_result['bc_gradient']
+                                cut_intercepts = benders_result['bc_intercept']
+                                # Benders cuts 需要 trial point，这里使用当前的 trial_point
+                                trial_point_flat = self.config.trial_point[0] + self.config.trial_point[1] + \
+                                                  [val for bs in self.config.trial_point[2] for val in bs] + \
+                                                  self.config.trial_point[3]
+                                trial_points = [trial_point_flat] * len(cut_gradients)
+                                if cut_gradients and cut_intercepts:
+                                    multi_builder.add_benders_cuts_without_binary(
+                                        cut_intercepts,
+                                        cut_gradients,
+                                        trial_points,
+                                        group_id=group_id
+                                    )
+                    except Exception as e:
+                        self.logger.warning(f"Failed to add Benders cuts: {e}")
 
 
         return multi_builder

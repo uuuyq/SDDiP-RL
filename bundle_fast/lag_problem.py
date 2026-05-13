@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from logger import get_logger
+from .logger import get_logger
 from sddip.sddip import ucmodelclassical, parameters
 
 logger = logging.getLogger(__name__)
@@ -24,6 +24,9 @@ class SolverResults:
         self.n_iterations = n_iterations
         self.solver_time = solver_time
 
+    def toString(self):
+        return f"{self.obj_value:.4f}, {self.multipliers}, {self.solver_time:.4f}, {self.n_iterations}"
+
 
 class SubProblem:
     """
@@ -31,13 +34,21 @@ class SubProblem:
     该类充当 Oracle，为 Master 提供函数值和子梯度。
     """
 
-    def __init__(self, logger, problem_params, trial_point, t, n, i):
+    def __init__(self, logger, config, n, i_override=None):
+        """
+        Args:
+            logger: 日志器
+            config: BundleConfig 对象
+            n: realization 索引
+            i_override: 可选，覆盖 config 中的 iteration
+        """
         self.logger = logger
-        self.problem_params = problem_params
-        self.trial_point = trial_point
-        self.t = t
+        self.config = config
+        self.problem_params = config.PROBLEM_PARAMS
+        self.trial_point = config.trial_point
+        self.t = config.T
         self.n = n
-        self.i = i
+        self.i = i_override if i_override is not None else config.iteration
         # 子问题模型
         self.uc_bw, self.model, self.relaxed_terms, self.objective_terms = self.init_model()
     def init_model(self):
@@ -130,26 +141,46 @@ class SubProblem:
 
         model_builder.add_cut_lower_bound(self.problem_params.cut_lb[stage])
 
-        # TODO: cuts constrains
-        # if stage < self.problem_params.n_stages - 1 and iteration > 0:
-        #     if common.CutType.LAGRANGIAN in self.cut_types_added:
-        #         lagrangian_coefficients = self.cc_storage.get_stage_result(
-        #             stage
-        #         )
-        #         model_builder.add_cut_constraints_without_binary(
-        #             lagrangian_coefficients[ResultKeys.ci_key],
-        #             lagrangian_coefficients[ResultKeys.cg_key],
-        #         )
-        #     if bool(
-        #         self.cut_types_added
-        #         & {common.CutType.BENDERS, common.CutType.STRENGTHENED_BENDERS}
-        #     ):
-        #         benders_coefficients = self.bc_storage.get_stage_result(stage)
-        #         model_builder.add_benders_cuts_without_binary(
-        #             benders_coefficients[ResultKeys.bc_intercept_key],
-        #             benders_coefficients[ResultKeys.bc_gradient_key],
-        #             benders_coefficients[ResultKeys.bc_trial_point_key],
-        #         )
+        # 添加 cuts 约束
+        if stage < self.problem_params.n_stages - 1 and self.i > 0:
+            # 添加 Lagrangian cuts
+            if self.config.dual_solver_storage is not None:
+                try:
+                    # 获取所有阶段的 Lagrangian cuts
+                    for s in range(self.problem_params.n_stages):
+                        lagrangian_result = self.config.dual_solver_storage.get_stage_result(s)
+                        if lagrangian_result and 'dm' in lagrangian_result and 'dv' in lagrangian_result:
+                            cut_gradients = lagrangian_result['dm']
+                            cut_intercepts = lagrangian_result['dv']
+                            if cut_gradients and cut_intercepts:
+                                model_builder.add_cut_constraints_without_binary(
+                                    cut_intercepts,
+                                    cut_gradients,
+                                )
+                except Exception as e:
+                    self.logger.warning(f"Failed to add Lagrangian cuts: {e}")
+
+            # 添加 Benders cuts
+            if self.config.bc_storage is not None:
+                try:
+                    # 获取所有阶段的 Benders cuts
+                    for s in range(self.problem_params.n_stages):
+                        benders_result = self.config.bc_storage.get_stage_result(s)
+                        if benders_result and 'bc_gradient' in benders_result and 'bc_intercept' in benders_result:
+                            cut_gradients = benders_result['bc_gradient']
+                            cut_intercepts = benders_result['bc_intercept']
+                            # Benders cuts 需要 trial point，这里使用当前的 trial_point
+                            trial_points = [self.trial_point[0] + self.trial_point[1] +
+                                           [val for bs in self.trial_point[2] for val in bs] +
+                                           self.trial_point[3]] * len(cut_gradients)
+                            if cut_gradients and cut_intercepts:
+                                model_builder.add_benders_cuts_without_binary(
+                                    cut_intercepts,
+                                    cut_gradients,
+                                    trial_points,
+                                )
+                except Exception as e:
+                    self.logger.warning(f"Failed to add Benders cuts: {e}")
 
         return model_builder
 
@@ -160,10 +191,11 @@ class SubProblem:
         """
 
         gradient_len = len(self.relaxed_terms)
-
-        total_objective = self.objective_terms + gp.quicksum(
+        temp_terms = gp.quicksum(
             self.relaxed_terms[i] * pi[i] for i in range(gradient_len)
         )
+        total_objective = self.objective_terms + temp_terms
+
 
         self.model.setObjective(total_objective)
 
@@ -181,6 +213,49 @@ class SubProblem:
             self.model.setParam("TimeLimit", gp.GRB.INFINITY)
 
         self.model.optimize()
+
+        print(f"obj_terms: {self.objective_terms.getValue()}")  # 1946.9484484730497
+        print(f"temp_terms: {temp_terms.getValue()}")  # -9061.207913979584
+        # print("x:")
+        trial_point_list = []
+        # for i in range(len(self.uc_bw.x)):
+        #     print(self.uc_bw.x[i].x)
+        # for i in range(len(self.uc_bw.x_bs)):
+        #     for j in range(len(self.uc_bw.x_bs[i])):
+        #         print(self.uc_bw.x_bs[i][j].x)
+        # for i in range(len(self.uc_bw.y)):
+        #     print(self.uc_bw.y[i].x)
+        # for i in range(len(self.uc_bw.soc)):
+        #     print(self.uc_bw.soc[i].x)
+        # for i in range(len(self.trial_point)):
+        #     # for j in range(len(self.trial_point[i])):
+        #         # trial_point_list.append(self.trial_point[i][j])
+        #     print(self.trial_point[i])
+        #
+        # print("z_x:")
+        # z_x_list = []
+        # for i in range(len(self.uc_bw.z_x)):
+        #     z_x_list.append(self.uc_bw.z_x[i].x)
+        # for i in range(len(self.uc_bw.z_y)):
+        #     z_x_list.append(self.uc_bw.z_y[i].x)
+        #
+        # for i in range(len(self.uc_bw.z_x_bs)):
+        #     for j in range(len(self.uc_bw.z_x_bs[i])):
+        #         z_x_list.append(self.uc_bw.z_x_bs[i][j].x)
+        #
+        # for i in range(len(self.uc_bw.z_soc)):
+        #     z_x_list.append(self.uc_bw.z_soc[i].x)
+        # print(np.array(z_x_list))
+
+        # print(np.array(trial_point_list) - np.array(z_x_list))
+        # print(f"pi: {pi}")
+        # print(pi * np.array(trial_point_list) - np.array(z_x_list))
+
+        #
+        # print(self.uc_bw.z_x.x)
+        # print(self.uc_bw.z_x_bs.x)
+        # print(self.uc_bw.z_y.x)
+        # print(self.uc_bw.z_soc.x)
 
         # self.solver_time += self.model.Runtime
 
@@ -247,7 +322,7 @@ class MasterProblem:
         )
         self.model.setObjective(obj, gp.GRB.MAXIMIZE)
         self.model.optimize()
-        self.logger.info(self.model.status)
+        # self.logger.info(self.model.status)
 
 
         x_candidate = np.array([self.x_vars[j].x for j in range(self.n_vars)])

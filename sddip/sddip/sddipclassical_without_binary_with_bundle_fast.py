@@ -1,6 +1,8 @@
 import logging
+import json
 from pathlib import Path
 from time import time
+from datetime import datetime
 
 import gurobipy as gp
 import numpy as np
@@ -82,6 +84,9 @@ class Algorithm:
         self.bound_storage = storage.ResultStorage(
             ResultKeys.bound_keys, "bounds"
         )
+        
+        # 时间记录
+        self.timing_log_path = Path(log_dir) / "sddip_timing.json"
 
         print(self.problem_params.n_stages)
 
@@ -100,6 +105,11 @@ class Algorithm:
         file_handler = logging.FileHandler(mylog_dir, mode='a', encoding='utf-8')
         file_handler.setLevel(logging.DEBUG)
         self.logger.addHandler(file_handler)
+
+        # --- 创建全局的 bundle_logger ---
+        bundle_log_path = Path(log_dir) / "bundle_fast.log"
+        from bundle_fast.logger import get_logger as get_bundle_logger
+        self.bundle_logger = get_bundle_logger(str(bundle_log_path))
 
 
     def fixed_binary_approximation(self) -> None:
@@ -184,6 +194,17 @@ class Algorithm:
 
         for i in range(n_iterations):
             self.logger.info("Iteration %s", i + 1)
+            
+            # 初始化本次迭代的时间记录
+            iteration_timing = {
+                "iteration": i + 1,
+                "timestamp": datetime.now().isoformat(),
+                "forward_pass": {},
+                "backward_pass": {
+                    "bundle_calls": {}
+                },
+                "bounds": {}
+            }
 
             ########################################
             # Cut mode selection
@@ -208,6 +229,10 @@ class Algorithm:
             ########################################
             forward_pass_start_time = time()
             v_opt_k = self.forward_pass(i, samples)
+            forward_pass_duration = time() - forward_pass_start_time
+            iteration_timing["forward_pass"] = {
+                "duration_seconds": round(forward_pass_duration, 3)
+            }
             self.runtime_logger.log_task_end(
                 f"forward_pass_i{i+1}", forward_pass_start_time
             )
@@ -227,7 +252,7 @@ class Algorithm:
             ########################################
             # Forward pass 足够多个路径计算上界
             ########################################
-            n_samples_statistical = 300
+            n_samples_statistical = 10
             forward_pass_statistical_start_time = time()
             samples_statistical = self.sc_sampler.generate_samples(n_samples_statistical)
             v_opt_k = self.forward_pass_statistical(i, samples_statistical)
@@ -249,7 +274,8 @@ class Algorithm:
             backward_pass_start_time = time()
             if self.current_cut_mode == common.CutType.LAGRANGIAN:
                 lagrangian_cut_iterations.append(i)
-                self.backward_pass(i + 1, samples)
+                # 传递 timing 记录字典
+                self.backward_pass_with_bundle_fast(i + 1, samples, iteration_timing)
                 self.cut_types_added.update([common.CutType.LAGRANGIAN])
             elif self.current_cut_mode in [
                 common.CutType.BENDERS,
@@ -262,6 +288,8 @@ class Algorithm:
                         common.CutType.STRENGTHENED_BENDERS,
                     ]
                 )
+            backward_pass_duration = time() - backward_pass_start_time
+            iteration_timing["backward_pass"]["duration_seconds"] = round(backward_pass_duration, 3)
             self.runtime_logger.log_task_end(
                 f"backward_pass_i{i+1}", backward_pass_start_time
             )
@@ -273,6 +301,7 @@ class Algorithm:
             v_lower = self.lower_bound_without_binary(i + 1)
             lower_bounds.append(v_lower)
             self.logger.info(f"Lower bound: {v_lower} ")
+            lower_bound_duration = time() - lower_bound_start_time
             self.runtime_logger.log_task_end(
                 f"lower_bound_i{i+1}", lower_bound_start_time
             )
@@ -282,6 +311,14 @@ class Algorithm:
             bound_dict[ResultKeys.ub_l_key] = v_upper_l
             bound_dict[ResultKeys.ub_r_key] = v_upper_r
             self.bound_storage.add_result(i, 0, 0, bound_dict)
+
+            # 记录边界
+            iteration_timing["bounds"] = {
+                "lower_bound": round(v_lower, 3),
+                "upper_bound_l": round(v_upper_l, 3),
+                "upper_bound_r": round(v_upper_r, 3),
+                "gap": round(v_upper_l - v_lower, 3) if v_lower != 0 else None
+            }
 
             ########################################
             # Stopping criteria
@@ -695,12 +732,30 @@ class Algorithm:
 
                 self.cc_storage.add_result(i, k, t - 1, cc_dict)
 
-    def backward_pass_with_bundle_fast(self, iteration: int, samples: list) -> None:
+    def backward_pass_with_bundle_fast(self, iteration: int, samples: list, iteration_timing: dict = None) -> None:
+        """
+        后向过程 - 使用 bundle_fast 加速
+
+        Args:
+            iteration: 迭代次数
+            samples: 样本列表
+            iteration_timing: 时间记录字典（可选）
+        """
         i = iteration
         n_samples = len(samples)
 
+        # 记录当前 iteration
+        self.bundle_logger.info(f"========== Iteration {i} ==========")
+        self.logger.info(f"[Bundle Fast] Starting backward pass for iteration {i}")
+
+        # 记录本次 backward_pass 的开始时间
+        backward_start_time = time()
+
         for t in reversed(range(1, self.problem_params.n_stages)):
+            self.bundle_logger.info(f"--- Stage t={t} ---")
+
             for k in range(n_samples):
+                self.bundle_logger.info(f"  Sample k={k}")
                 n_realizations = self.problem_params.n_realizations_per_stage[
                     t
                 ]
@@ -743,24 +798,32 @@ class Algorithm:
                     X_BS_TRIAL=x_bs_trial_point,
                     SOC_TRIAL=soc_trial_point,
                     PROBLEM_PARAMS=self.problem_params,
+                    iteration=i,  # 当前迭代次数
+                    bc_storage=self.bc_storage,  # Benders cuts
+                    dual_solver_storage=self.dual_solver_storage,  # Lagrangian cuts
                 )
 
 
                 for n in range(n_realizations):
+                    # 记录当前 realization
+                    self.bundle_logger.info(f"    Realization n={n}")
+
+                    # 记录Bundle调用时间
+                    bundle_start_time = time()
+
                     if n == 0:
                         # 调用 fast_g_gen中的history_solution_collect生成第一组 历史解
                         # 同时也需要加入到cut集合中
                         from bundle_fast.fast_g_gen import history_solution_collect
-                        from bundle_fast.logger import get_logger as get_bundle_logger
-                        
-                        bundle_logger = get_bundle_logger(f"log/bundle_fast_t{t}_k{k}.log")
-                        
+
                         mu_weights, solution_collection, sg_results = history_solution_collect(
                             config=bundle_config,
                             realization=n,
                             max_iterations=200,
-                            logger=bundle_logger,
+                            logger=self.bundle_logger,
                         )
+                        
+                        bundle_duration = time() - bundle_start_time
                         
                         # 保存第一个realization的结果，后续realization需要使用
                         first_mu_weights = mu_weights
@@ -781,14 +844,25 @@ class Algorithm:
                             sg_results.solver_time
                         )
                         
+                        # 记录时间
+                        if iteration_timing is not None:
+                            stage_key = f"stage_{t}_sample_{k}"
+                            if stage_key not in iteration_timing["backward_pass"]["bundle_calls"]:
+                                iteration_timing["backward_pass"]["bundle_calls"][stage_key] = {
+                                    "n_0_exact": {},
+                                    "n_gt_0_approx": {}
+                                }
+                            iteration_timing["backward_pass"]["bundle_calls"][stage_key]["n_0_exact"][f"realization_{n}"] = {
+                                "duration_seconds": round(bundle_duration, 3),
+                                "iterations": sg_results.n_iterations,
+                                "status": "converged" if sg_results.n_iterations < 200 else "max_iterations"
+                            }
+                        
                     else:
                         # 调用 bundle_fast_script 中的bundle_fast方法，生成每个realization对应的解
                         # 同时也需要加入到cut集合中
                         from bundle_fast.bundle_fast_script import bundle_fast
-                        from bundle_fast.logger import get_logger as get_bundle_logger
-                        
-                        bundle_logger = get_bundle_logger(f"log/bundle_fast_t{t}_k{k}_n{n}.log")
-                        
+
                         # 使用 n=0 时收集的历史解和 mu_weights
                         sg_results = bundle_fast(
                             config=bundle_config,
@@ -799,8 +873,10 @@ class Algorithm:
                             max_iterations=1000,
                             tolerance=1e-5,
                             realization=n,
-                            logger=bundle_logger,
+                            logger=self.bundle_logger,
                         )
+                        
+                        bundle_duration = time() - bundle_start_time
                         
                         # 将结果加入到cut集合中
                         dual_multipliers = sg_results.multipliers.tolist()
@@ -815,6 +891,20 @@ class Algorithm:
                         dual_solver_dict[ResultKeys.ds_solver_time].append(
                             sg_results.solver_time
                         )
+                        
+                        # 记录时间
+                        if iteration_timing is not None:
+                            stage_key = f"stage_{t}_sample_{k}"
+                            if stage_key not in iteration_timing["backward_pass"]["bundle_calls"]:
+                                iteration_timing["backward_pass"]["bundle_calls"][stage_key] = {
+                                    "n_0_exact": {},
+                                    "n_gt_0_approx": {}
+                                }
+                            iteration_timing["backward_pass"]["bundle_calls"][stage_key]["n_gt_0_approx"][f"realization_{n}"] = {
+                                "duration_seconds": round(bundle_duration, 3),
+                                "iterations": sg_results.n_iterations,
+                                "status": "converged" if sg_results.n_iterations < 1000 else "max_iterations"
+                            }
 
 
                 # 完成所有realization的求解，对cut进行整理
@@ -833,6 +923,43 @@ class Algorithm:
                 self.cc_storage.add_result(i, k, t - 1, cc_dict)
                 self.ds_storage.add_result(i, k, t, ds_dict)
                 self.dual_solver_storage.add_result(i, k, t, dual_solver_dict)
+
+        # 计算本次 backward_pass 的总时间
+        backward_duration = time() - backward_start_time
+
+        # 记录本次 backward_pass 完成
+        self.bundle_logger.info(f"========== Iteration {i} completed in {backward_duration:.3f}s ==========")
+        self.logger.info(f"[Bundle Fast] Backward pass for iteration {i} completed in {backward_duration:.3f}s")
+
+        # 追加写入时间记录到 JSON 文件
+        timing_record = {
+            "iteration": i,
+            "timestamp": datetime.now().isoformat(),
+            "backward_pass_duration_seconds": round(backward_duration, 3),
+            "backward_pass_details": iteration_timing.get("backward_pass", {}) if iteration_timing else {},
+            "forward_pass": iteration_timing.get("forward_pass", {}) if iteration_timing else {},
+        }
+
+        # 检查文件是否存在，如果不存在则创建
+        if not self.timing_log_path.exists():
+            # 创建目录（如果不存在）
+            self.timing_log_path.parent.mkdir(parents=True, exist_ok=True)
+            # 创建空列表
+            timing_data = []
+        else:
+            # 读取现有数据
+            try:
+                with open(self.timing_log_path, 'r', encoding='utf-8') as f:
+                    timing_data = json.load(f)
+            except (json.JSONDecodeError, FileNotFoundError):
+                timing_data = []
+
+        # 追加新记录
+        timing_data.append(timing_record)
+
+        # 写回文件
+        with open(self.timing_log_path, 'w', encoding='utf-8') as f:
+            json.dump(timing_data, f, indent=2, ensure_ascii=False)
 
     def backward_benders(self, iteration: int, samples: list) -> None:
         i = iteration

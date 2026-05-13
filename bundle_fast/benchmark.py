@@ -90,7 +90,7 @@ def run_bundle_warmstart(
     bundle_start_time = time.time()
 
     # 初始化子问题和主问题
-    sub = SubProblem(logger, problem_params, trial_point, t, realization, 0)
+    sub = SubProblem(logger, config, realization)
     master = MasterProblem(logger, config.N_VARS, tolerance=tolerance)
 
     # 将预生成的 cuts 添加到主问题
@@ -108,6 +108,8 @@ def run_bundle_warmstart(
     # 第一次：用主问题求解，得到初始 x 和 ub
     ub, x_new = master.solve_master()
     g_new, f_new = sub.solve(x_new)
+
+    logger.error(f"x_new: {x_new}")
 
     # 初始化 f_best 和 x_best
     master.f_best = f_new
@@ -189,7 +191,7 @@ def run_bundle_baseline(
     t = config.T
 
     # 初始化子问题和主问题
-    sub = SubProblem(logger, problem_params, trial_point, t, realization, 0)
+    sub = SubProblem(logger, config, realization)
     master = MasterProblem(logger, config.N_VARS, tolerance=tolerance)
 
     # 记录历史
@@ -203,6 +205,8 @@ def run_bundle_baseline(
     x_new = np.zeros(config.N_VARS)
     g_new, f_new = sub.solve(x_new)
     master.update_strategy(x_new, f_new, g_new, ub=None)
+
+    logger.error(f"x_new_baseline: {x_new}")
 
     # 记录初始点：下界为子问题求解值，上界设为一个很大的值
     ub_history.append(1e8)
