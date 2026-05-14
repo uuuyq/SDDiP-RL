@@ -52,7 +52,7 @@ X_BS_TRIAL = [[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]]
 SOC_TRIAL = [0.0]
 
 # 数据路径
-PATH = Path(r"D:\tools\workspace_pycharm\sddip-main-zou\data\01_test_cases\case6ww\t06_n06")
+PATH = Path(r"D:\tools\workspace_pycharm\sddip-main-zou\data\01_test_cases\case6ww\t24_n06")
 
 # 初始化 problem_params
 PROBLEM_PARAMS = parameters.Parameters(PATH)
