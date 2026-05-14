@@ -6,8 +6,8 @@ def get_logger(file_name):
     logger = logging.getLogger("BundleMethod")
     logger.setLevel(logging.DEBUG)
 
-    # 文件输出
-    file_handler = logging.FileHandler(file_name, mode='w')
+    # 文件输出 - 指定 UTF-8 编码，避免乱码
+    file_handler = logging.FileHandler(file_name, mode='w', encoding='utf-8')
     file_handler.setFormatter(log_formatter)
     logger.addHandler(file_handler)
 

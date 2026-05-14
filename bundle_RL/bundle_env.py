@@ -1,7 +1,7 @@
 import gymnasium as gym
 import numpy as np
-from lag_problem import SubProblem
-from features import bundle_features
+from bundle_RL.lag_problem import SubProblem
+from bundle_RL.features import bundle_features
 
 
 """
@@ -14,34 +14,20 @@ reward：pi对应的子问题最优解对应的目标函数值，求解的真实
 
 """
 
-class ProblemData:
-    def __init__(self, logger, problem_params, trial_point, t, n, i):
-        self.logger = logger
-        self.problem_params = problem_params
-        self.trial_point = trial_point
-        self.t = t
-        self.n = n
-        self.i = i
-
 
 class BundleDualEnv(gym.Env):
-    def __init__(self, problemData, state_dim, K):
+    def __init__(self, logger, config, n, state_dim, K):
         """
 
-        :param problemData: 构建子问题的参数
+        :param logger: 日志器
+        :param config: BundleConfig 对象
+        :param n: realization 索引
         :param state_dim: cut中次梯度的维度
         :param K: 使用padding的方式，K代表最大的cuts数，同时也是输出的lambda维度
         """
         super().__init__()
 
-        self.subproblem = SubProblem(
-            problemData.logger,
-            problemData.problem_params,
-            problemData.trial_point,
-            problemData.t,
-            problemData.n,
-            problemData.i
-        )
+        self.subproblem = SubProblem(logger, config, n)
         self.K = K
         self.state_dim = state_dim
         self.action_dim = K + 1  # 输出lambda以及步长

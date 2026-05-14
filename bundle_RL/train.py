@@ -43,8 +43,27 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.policies import MultiInputActorCriticPolicy
 
 
-def train(env, save_path=None, logger=None):
-    os.makedirs("model", exist_ok=True)
+def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000, checkpoint_freq=5000, experiment_name="default"):
+    """
+    训练函数
+    
+    Args:
+        env: 环境
+        save_path: 模型保存路径（可选）
+        logger: 日志器
+        model: 已有模型（用于继续训练）
+        total_timesteps: 训练总步数
+        checkpoint_freq: 检查点保存频率
+        experiment_name: 实验名称，用于区分不同实验，训练结果将保存到 model/{experiment_name}/ 目录下
+    """
+    # 创建实验文件夹结构
+    experiment_dir = os.path.join("model", experiment_name)
+    checkpoints_dir = os.path.join(experiment_dir, "checkpoints")
+    tensorboard_dir = os.path.join("res", "ppo_tensorboard", experiment_name)
+    
+    os.makedirs(experiment_dir, exist_ok=True)
+    os.makedirs(checkpoints_dir, exist_ok=True)
+    os.makedirs(tensorboard_dir, exist_ok=True)
 
     # 统一提取超参数 (Hyperparameters)
     hparams = {
@@ -52,7 +71,7 @@ def train(env, save_path=None, logger=None):
         "n_steps": 512,  # 建议比 128 稍大，PPO 更稳定
         "batch_size": 128,
         "ent_coef": 0,  # 开启微量探索
-        "total_timesteps": 200_000,  # 训练总步数
+        "total_timesteps": total_timesteps,  # 训练总步数
         "features_dim": 128,  # 特征维度
         "net_arch": dict(pi=[128, 128], vf=[128, 128])  # 策略网络和价值网络结构
     }
@@ -63,36 +82,53 @@ def train(env, save_path=None, logger=None):
         net_arch=hparams["net_arch"]
     )
 
-    # 初始化并训练模型
-    model = PPO(
-        policy=MultiInputActorCriticPolicy,
-        env=env,
-        policy_kwargs=policy_kwargs,
-        verbose=1,
-        learning_rate=hparams["learning_rate"],
-        n_steps=hparams["n_steps"],
-        batch_size=hparams["batch_size"],
-        ent_coef=hparams["ent_coef"],
-        tensorboard_log="./logs/ppo_tensorboard/"  # 训练数据会自动保存到这个文件夹
+    # 如果没有传入模型，初始化新模型；否则继续训练已有模型
+    if model is None:
+        model = PPO(
+            policy=MultiInputActorCriticPolicy,
+            env=env,
+            policy_kwargs=policy_kwargs,
+            verbose=1,
+            learning_rate=hparams["learning_rate"],
+            n_steps=hparams["n_steps"],
+            batch_size=hparams["batch_size"],
+            ent_coef=hparams["ent_coef"],
+            tensorboard_log=tensorboard_dir  # TensorBoard 日志保存到实验目录
+        )
+    else:
+        # 切换到新环境继续训练
+        model.set_env(env)
+
+    # 创建检查点回调（每 checkpoint_freq 步保存一次）
+    from stable_baselines3.common.callbacks import CheckpointCallback
+    checkpoint_callback = CheckpointCallback(
+        save_freq=checkpoint_freq,
+        save_path=checkpoints_dir,
+        name_prefix="ppo_bundle_checkpoint"
     )
 
-    model.learn(total_timesteps=hparams["total_timesteps"])
+    model.learn(
+        total_timesteps=hparams["total_timesteps"],
+        reset_num_timesteps=False,
+        callback=checkpoint_callback
+    )
 
     # 保存路径
     timestamp = datetime.now().strftime("%m%d_%H%M")
     model_name = save_path if save_path else f"ppo_bundle_{timestamp}"
-    final_save_path = os.path.join("model", model_name)
+    final_save_path = os.path.join(experiment_dir, model_name)
 
     # 5. 保存模型
     model.save(final_save_path)
 
-    # 4. 记录到 CSV 文件
-    csv_file = os.path.join("model", "training_log.csv")
+    # 4. 记录到 CSV 文件（每个实验独立的日志）
+    csv_file = os.path.join(experiment_dir, "training_log.csv")
 
     # 准备这一行要存的数据
     row_data = {
         "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "model_name": model_name,
+        "experiment_name": experiment_name,
         **hparams  # 将 hparams 字典展开合并到 row_data
     }
 
@@ -104,7 +140,7 @@ def train(env, save_path=None, logger=None):
             writer.writeheader()  # 第一次创建文件时写入表头
         writer.writerow(row_data)
 
-    msg = f"训练完成！模型: {model_name}.zip, 超参数已记录至: {csv_file}"
+    msg = f"训练完成！实验: {experiment_name}, 模型: {model_name}.zip, 超参数已记录至: {csv_file}"
     if logger:
         logger.info(msg)
     else:

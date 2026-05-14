@@ -1,55 +1,99 @@
 from pathlib import Path
 
-import numpy as np
 from matplotlib import pyplot as plt
-from stable_baselines3 import PPO
 
-from train import train
-from bundle_RL.lag_problem import SubProblem, MasterProblem
+from bundle_RL.bundle_env import BundleDualEnv
+from bundle_RL.config import BundleConfig
+from bundle_RL.lag_problem import MasterProblem
 from bundle_RL.logger import get_logger
-from bundle_env import BundleDualEnv, ProblemData
-from sddip.sddip import parameters
+from train import train
 
-def create_env(logger):
+
+def create_config_list():
+    """创建多个 config 列表，用于交错训练"""
     # ===============================
-    # 1️⃣ 构造 ProblemData
+    # Config 1 (原始配置，realization 0)
     # ===============================
-
-    t = 0
-    k = 0
-    n = 0
-    i = 0
-    n_vars = 13
-    x_trial = [1.0, 1.0, 1.0]
-    y_trial = [71.52627531002818, 59.02627531002818, 66.52627531002818]
-    x_bs_trial = [[1.0, 0.0], [1.0, 0.0], [1.0, 0.0]]
-    soc_trial = [5.0]
-    trial_point = (x_trial, y_trial, x_bs_trial, soc_trial)
-    path = Path(r"D:\tools\workspace_pycharm\sddip-main-zou\data\01_test_cases\case6ww\t06_n06")
-    problem_params = parameters.Parameters(path)
-
-    problem_data = ProblemData(
-        logger,
-        problem_params,
-        trial_point,
-        t,
-        n,
-        i
+    config1 = BundleConfig(
+        T=5,
+        N_VARS=13,
+        X_TRIAL=[-0.0, 1.0, 1.0],
+        Y_TRIAL=[0.0, 131.60809087723158, 45.0],
+        X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
+        SOC_TRIAL=[0.0],
+        PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
+        n=0,  # realization 索引
     )
-    master = MasterProblem(logger, n_vars, tolerance=1e-5)
+    config2 = BundleConfig(
+        T=5,
+        N_VARS=13,
+        X_TRIAL=[-0.0, 1.0, 1.0],
+        Y_TRIAL=[0.0, 131.60809087723158, 45.0],
+        X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
+        SOC_TRIAL=[0.0],
+        PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
+        n=1,  # realization 索引
+    )
+    config3 = BundleConfig(
+        T=5,
+        N_VARS=13,
+        X_TRIAL=[-0.0, 1.0, 1.0],
+        Y_TRIAL=[0.0, 131.60809087723158, 45.0],
+        X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
+        SOC_TRIAL=[0.0],
+        PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
+        n=2,  # realization 索引
+    )
+    config4 = BundleConfig(
+        T=5,
+        N_VARS=13,
+        X_TRIAL=[-0.0, 1.0, 1.0],
+        Y_TRIAL=[0.0, 131.60809087723158, 45.0],
+        X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
+        SOC_TRIAL=[0.0],
+        PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
+        n=3,  # realization 索引
+    )
+    config5 = BundleConfig(
+        T=5,
+        N_VARS=13,
+        X_TRIAL=[-0.0, 1.0, 1.0],
+        Y_TRIAL=[0.0, 131.60809087723158, 45.0],
+        X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
+        SOC_TRIAL=[0.0],
+        PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
+        n=4,  # realization 索引
+    )
+    config6 = BundleConfig(
+        T=5,
+        N_VARS=13,
+        X_TRIAL=[-0.0, 1.0, 1.0],
+        Y_TRIAL=[0.0, 131.60809087723158, 45.0],
+        X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
+        SOC_TRIAL=[0.0],
+        PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
+        n=5,  # realization 索引
+    )
 
-    # ===============================
-    # 2️⃣ 创建环境
-    # ===============================
 
-    state_dim = 13
+
+    return [config1, config2, config3, config4, config5], [config6]
+
+
+def create_env(logger, config):
+    """创建单个环境（使用 config 中的 n 参数）"""
+    state_dim = config.N_VARS
     K = 20
 
     env = BundleDualEnv(
-        problemData=problem_data,
+        logger=logger,
+        config=config,
+        n=config.n,  # 直接使用 config 中的 realization 索引
         state_dim=state_dim,
         K=K
     )
+    master = MasterProblem(logger, config.N_VARS, tolerance=1e-5)
+    
     return env, master
 
 
@@ -109,16 +153,74 @@ def test(env, model, master, logger):
     plt.show()
 
 
+def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_000, experiment_name="multi_config_exp"):
+    """
+    交错训练函数：在多个 config 之间交替训练
+    
+    Args:
+        logger: 日志器
+        configs: 配置列表（每个 config 包含自己的 n 参数）
+        rounds: 训练轮数（每个 config 会被训练 rounds 次）
+        steps_per_config_per_round: 每轮每个 config 训练的步数
+        experiment_name: 实验名称，用于区分不同实验
+    
+    Returns:
+        训练好的模型
+    """
+    model = None
+    
+    for round_idx in range(rounds):
+        logger.info(f"===== 训练轮次 {round_idx + 1}/{rounds} =====")
+        
+        for config_idx, config in enumerate(configs):
+            logger.info(f"  训练 Config {config_idx + 1}/{len(configs)} (realization {config.n})")
+            
+            # 创建当前 config 的环境（n 已包含在 config 中）
+            env, _ = create_env(logger, config)
+            
+            # 训练（如果 model 已存在则继续训练）
+            model = train(
+                env=env,
+                logger=logger,
+                model=model,
+                total_timesteps=steps_per_config_per_round,
+                experiment_name=experiment_name
+            )
+    
+    return model
+
+
 def main():
     logger = get_logger("log/bundle_env_test.log")
-    env, master = create_env(logger)
-
-    # model = train(env)
-
-    # 加载model
-    model = PPO.load("model/ppo_bundle_0312_1633.zip")
-
-    test(env, model, master, logger)
+    
+    # ===============================
+    # 1️⃣ 实验配置
+    # ===============================
+    experiment_name = "multi_config_exp_01"  # 实验名称，用于区分不同实验
+    
+    # ===============================
+    # 2️⃣ 创建 config 列表
+    # ===============================
+    train_configs, test_configs = create_config_list()
+    logger.info(f"加载了 {len(train_configs)} 个配置")
+    
+    # ===============================
+    # 3️⃣ 交错训练
+    # ===============================
+    # 训练参数：3 轮 × 3 个 config × 每 config 20,000 步 = 180,000 总步数
+    model = train_interleaved(
+        logger=logger,
+        configs=train_configs,
+        rounds=3,
+        steps_per_config_per_round=20_000,
+        experiment_name=experiment_name
+    )
+    
+    # ===============================
+    # 4️⃣ 在第一个 config 上测试
+    # ===============================
+    test_env, test_master = create_env(logger, test_configs[0])
+    test(test_env, model, test_master, logger)
 
 
 if __name__ == "__main__":

@@ -20,10 +20,11 @@ class BundleConfig:
         Y_TRIAL,
         X_BS_TRIAL,
         SOC_TRIAL,
-        PROBLEM_PARAMS,
+        PATH,
         iteration: int = 0,
         bc_storage=None,
         dual_solver_storage=None,
+        n: int = 0,  # realization 索引
     ):
         self.T = T
         self.N_VARS = N_VARS
@@ -31,10 +32,11 @@ class BundleConfig:
         self.Y_TRIAL = Y_TRIAL
         self.X_BS_TRIAL = X_BS_TRIAL
         self.SOC_TRIAL = SOC_TRIAL
-        self.PROBLEM_PARAMS = PROBLEM_PARAMS
+        self.PROBLEM_PARAMS = parameters.Parameters(PATH)
         self.iteration = iteration  # 当前迭代次数 i
         self.bc_storage = bc_storage  # Benders cuts 存储
         self.dual_solver_storage = dual_solver_storage  # Lagrangian cuts 存储
+        self.n = n  # realization 索引
 
     @property
     def trial_point(self):
@@ -54,8 +56,6 @@ SOC_TRIAL = [0.0]
 # 数据路径
 PATH = Path(r"D:\tools\workspace_pycharm\sddip-main-zou\data\01_test_cases\case6ww\t06_n06")
 
-# 初始化 problem_params
-PROBLEM_PARAMS = parameters.Parameters(PATH)
 
 
 def get_default_config() -> BundleConfig:
@@ -67,5 +67,5 @@ def get_default_config() -> BundleConfig:
         Y_TRIAL=Y_TRIAL,
         X_BS_TRIAL=X_BS_TRIAL,
         SOC_TRIAL=SOC_TRIAL,
-        PROBLEM_PARAMS=PROBLEM_PARAMS,
+        PATH=PATH
     )
