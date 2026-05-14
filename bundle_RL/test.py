@@ -1,105 +1,48 @@
+import json
+import os
+import time
 from pathlib import Path
 
+import numpy as np
 from matplotlib import pyplot as plt
-
-from bundle_RL.bundle_env import BundleDualEnv
 from bundle_RL.config import BundleConfig
-from bundle_RL.lag_problem import MasterProblem
 from bundle_RL.logger import get_logger
-from train import train
+from bundle_RL.tool import create_env
+from bundle_RL.lag_problem import SubProblem, MasterProblem
 
 
-def create_config_list():
-    """创建多个 config 列表，用于交错训练"""
-    # ===============================
-    # Config 1 (原始配置，realization 0)
-    # ===============================
-    config1 = BundleConfig(
-        T=5,
-        N_VARS=13,
-        X_TRIAL=[-0.0, 1.0, 1.0],
-        Y_TRIAL=[0.0, 131.60809087723158, 45.0],
-        X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
-        SOC_TRIAL=[0.0],
-        PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
-        n=0,  # realization 索引
-    )
-    config2 = BundleConfig(
-        T=5,
-        N_VARS=13,
-        X_TRIAL=[-0.0, 1.0, 1.0],
-        Y_TRIAL=[0.0, 131.60809087723158, 45.0],
-        X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
-        SOC_TRIAL=[0.0],
-        PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
-        n=1,  # realization 索引
-    )
-    config3 = BundleConfig(
-        T=5,
-        N_VARS=13,
-        X_TRIAL=[-0.0, 1.0, 1.0],
-        Y_TRIAL=[0.0, 131.60809087723158, 45.0],
-        X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
-        SOC_TRIAL=[0.0],
-        PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
-        n=2,  # realization 索引
-    )
-    config4 = BundleConfig(
-        T=5,
-        N_VARS=13,
-        X_TRIAL=[-0.0, 1.0, 1.0],
-        Y_TRIAL=[0.0, 131.60809087723158, 45.0],
-        X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
-        SOC_TRIAL=[0.0],
-        PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
-        n=3,  # realization 索引
-    )
-    config5 = BundleConfig(
-        T=5,
-        N_VARS=13,
-        X_TRIAL=[-0.0, 1.0, 1.0],
-        Y_TRIAL=[0.0, 131.60809087723158, 45.0],
-        X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
-        SOC_TRIAL=[0.0],
-        PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
-        n=4,  # realization 索引
-    )
-    config6 = BundleConfig(
-        T=5,
-        N_VARS=13,
-        X_TRIAL=[-0.0, 1.0, 1.0],
-        Y_TRIAL=[0.0, 131.60809087723158, 45.0],
-        X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
-        SOC_TRIAL=[0.0],
-        PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
-        n=5,  # realization 索引
-    )
-
-
-
-    return [config1, config2, config3, config4, config5], [config6]
-
-
-def create_env(logger, config):
-    """创建单个环境（使用 config 中的 n 参数）"""
-    state_dim = config.N_VARS
-    K = 20
-
-    env = BundleDualEnv(
-        logger=logger,
-        config=config,
-        n=config.n,  # 直接使用 config 中的 realization 索引
-        state_dim=state_dim,
-        K=K
-    )
+def bundle_baseline(logger, config):
+    """传统 Bundle 算法求解作为 baseline"""
+    sub = SubProblem(logger, config, n=config.n)
     master = MasterProblem(logger, config.N_VARS, tolerance=1e-5)
     
-    return env, master
+    delta_history = []
+    time_history = []
+    x_new = np.zeros(config.N_VARS)
+    g_new, f_new = sub.solve(x_new)
+    master.update_strategy(x_new, f_new, g_new, ub=None)
+    
+    for i in range(20):
+        start_time = time.time()
+        master.add_cut(x_new, f_new, g_new)
+        ub, x_new = master.solve_master()
+        g_new, f_new = sub.solve(x_new)
+        serious_step, delta, stop_flag = master.update_strategy(x_new, f_new, g_new, ub)
+        end_time = time.time()
+        
+        delta_history.append(delta)
+        time_history.append(end_time - start_time)
+        logger.info(f"Baseline - delta: {delta}, time: {time_history[-1]:.4f}s")
+        if stop_flag:
+            break
+    
+    return delta_history, time_history
 
 
 def test(env, model, master, logger):
     delta_history = []
     reward_history = []
+    time_history = []
 
     obs, _ = env.reset()
 
@@ -112,113 +55,95 @@ def test(env, model, master, logger):
 
     logger.info("==== ROLLOUT ====")
     for step in range(20):
+        start_time = time.time()
         master.add_cut(x_new, f_new, g_new)
         ub, _ = master.solve_master()
         _, delta, stop_flag = master.update_strategy(x_new, f_new, g_new, ub=ub)
         action, _ = model.predict(obs, deterministic=True)
         state, reward, terminated, truncated, info = env.step(action)
+        end_time = time.time()
+        
         # 保存数据
-        logger.info(f"delta: {delta}")
         delta_history.append(delta)
         reward_history.append(reward)
+        time_history.append(end_time - start_time)
+        logger.info(f"delta: {delta}, reward: {reward}, time: {time_history[-1]:.4f}s")
+        
         # 获取新的子问题得到的cut
         sub_result = env.bundle[-1]
         x_new = sub_result["pi"]
         f_new = sub_result["phi"]
         g_new = sub_result["g"]
-        logger.info(f"reward: {reward}")
 
     logger.info("Test finished successfully.")
+    
+    return delta_history, reward_history, time_history
 
-    # 绘制曲线
-    plt.figure(figsize=(12, 5))
-    # 绘制 Delta 收敛图
+
+def save_results(experiment_name, rl_delta, rl_reward, rl_time, baseline_delta, baseline_time):
+    """保存结果到 JSON 文件"""
+    results = {
+        "experiment_name": experiment_name,
+        "baseline": {
+            "delta_history": [float(d) for d in baseline_delta],
+            "time_history": [float(t) for t in baseline_time],
+            "total_time": float(sum(baseline_time))
+        },
+        "rl_model": {
+            "delta_history": [float(d) for d in rl_delta],
+            "reward_history": [float(r) for r in rl_reward],
+            "time_history": [float(t) for t in rl_time],
+            "total_time": float(sum(rl_time))
+        },
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+    }
+    
+    log_dir = os.path.join("log", experiment_name)
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    
+    file_path = os.path.join(log_dir, "results.json")
+    with open(file_path, 'w', encoding='utf-8') as f:
+        json.dump(results, f, indent=4, ensure_ascii=False)
+    
+    print(f"Results saved to: {file_path}")
+
+
+def plot_results(rl_delta, rl_reward, baseline_delta):
+    """绘制 RL 模型与传统算法的对比图"""
+    plt.figure(figsize=(14, 5))
+    
+    # 绘制 Delta 收敛对比图
     plt.subplot(1, 2, 1)
-    plt.plot(delta_history, marker='o', color='b', label='Delta (Gap)')
+    plt.plot(rl_delta, marker='o', color='b', label='RL Model')
+    plt.plot(baseline_delta, marker='s', color='r', label='Traditional Bundle')
     plt.xlabel('Iteration Step')
     plt.ylabel('Delta Value')
-    plt.title('Convergence of Bundle Method')
+    plt.title('Convergence Comparison (Delta)')
     plt.grid(True, alpha=0.5)
     plt.legend()
+    
     # 绘制 Reward 变化图
     plt.subplot(1, 2, 2)
-    plt.plot(reward_history, marker='s', color='r', label='Step Reward')
+    plt.plot(rl_reward, marker='s', color='r', label='Step Reward')
     plt.xlabel('Iteration Step')
     plt.ylabel('Reward')
-    plt.title('Reward during Rollout')
+    plt.title('Reward during Rollout (RL Model)')
     plt.grid(True, alpha=0.5)
     plt.legend()
+    
     plt.tight_layout()
     plt.show()
 
-
-def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_000, experiment_name="multi_config_exp"):
-    """
-    交错训练函数：在多个 config 之间交替训练
-
-    Args:
-        logger: 日志器
-        configs: 配置列表（每个 config 包含自己的 n 参数）
-        rounds: 训练轮数（每个 config 会被训练 rounds 次）
-        steps_per_config_per_round: 每轮每个 config 训练的步数
-        experiment_name: 实验名称，用于区分不同实验
-
-    Returns:
-        训练好的模型
-    """
-    model = None
-
-    for round_idx in range(rounds):
-        logger.info(f"===== 训练轮次 {round_idx + 1}/{rounds} =====")
-
-        for config_idx, config in enumerate(configs):
-            logger.info(f"  训练 Config {config_idx + 1}/{len(configs)} (realization {config.n})")
-
-            # 创建当前 config 的环境（n 已包含在 config 中）
-            env, _ = create_env(logger, config)
-
-            # 训练（如果 model 已存在则继续训练）
-            model = train(
-                env=env,
-                logger=logger,
-                model=model,
-                total_timesteps=steps_per_config_per_round,
-                experiment_name=experiment_name
-            )
-
-    return model
-
-
-def main_train(experiment_name):
-    logger = get_logger("log/bundle_env_train.log")
-    
-    # ===============================
-    # 2️⃣ 创建 config 列表
-    # ===============================
-    train_configs, test_configs = create_config_list()
-    logger.info(f"加载了 {len(train_configs)} 个配置")
-    
-    # ===============================
-    # 3️⃣ 交错训练
-    # ===============================
-    # 训练参数：3 轮 × 3 个 config × 每 config 20,000 步 = 180,000 总步数
-    model = train_interleaved(
-        logger=logger,
-        configs=train_configs,
-        rounds=3,
-        steps_per_config_per_round=20_000,
-        experiment_name=experiment_name
-    )
-    
-
-
-
-def main_test(experiment_name):
+def main(experiment_name):
     """加载最新训练的模型并进行测试"""
     import os
     from stable_baselines3 import PPO
-    
-    logger = get_logger("log/bundle_env_test.log")
+    from model_train import SimpleBundleExtractor  # 导入自定义特征提取器
+    log_dir = os.path.join("log", experiment_name)
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    logger = get_logger(os.path.join(log_dir, "bundle_env_test.log"))
 
     # ===============================
     # 1️⃣ 实验配置
@@ -233,11 +158,11 @@ def main_test(experiment_name):
         for file in os.listdir(experiment_dir):
             if file.startswith("ppo_bundle_") and file.endswith(".zip"):
                 model_files.append(file)
-    
+
     if not model_files:
         logger.error(f"在 {experiment_dir} 中未找到模型文件")
         return
-    
+
     # 按时间排序，取最新的
     model_files.sort(reverse=True)
     latest_model = model_files[0]
@@ -245,55 +170,60 @@ def main_test(experiment_name):
     logger.info(f"加载最新模型: {model_path}")
 
     # ===============================
-    # 3️⃣ 加载模型
+    # 3️⃣ 加载模型（指定 custom_objects 以支持自定义特征提取器）
     # ===============================
-    model = PPO.load(model_path)
+    model = PPO.load(
+        model_path,
+        custom_objects={
+            "SimpleBundleExtractor": SimpleBundleExtractor,
+            "policy_kwargs": dict(
+                features_extractor_class=SimpleBundleExtractor,
+                features_extractor_kwargs=dict(features_dim=128),
+                net_arch=dict(pi=[128, 128], vf=[128, 128])
+            )
+        }
+    )
 
     # ===============================
     # 4️⃣ 创建测试环境并测试
     # ===============================
-    train_configs, test_configs = create_config_list()
-    test_env, test_master = create_env(logger, test_configs[0])
-    test(test_env, model, test_master, logger)
+
+    test_configs = BundleConfig(
+        T=5,
+        N_VARS=13,
+        X_TRIAL=[-0.0, 1.0, 1.0],
+        Y_TRIAL=[0.0, 131.60809087723158, 45.0],
+        X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
+        SOC_TRIAL=[0.0],
+        PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
+        n=4,  # realization 索引
+    )
+
+    # ===============================
+    # 5️⃣ 使用传统 Bundle 算法求解作为 baseline
+    # ===============================
+    logger.info("==== Running Baseline (Traditional Bundle) ====")
+    baseline_delta, baseline_time = bundle_baseline(logger, test_configs)
+    
+    # ===============================
+    # 6️⃣ 使用 RL 模型求解
+    # ===============================
+    logger.info("==== Running RL Model ====")
+    test_env, test_master = create_env(logger, test_configs)
+    rl_delta, rl_reward, rl_time = test(test_env, model, test_master, logger)
+    
+    # ===============================
+    # 7️⃣ 保存结果到 JSON 文件
+    # ===============================
+    save_results(experiment_name, rl_delta, rl_reward, rl_time, baseline_delta, baseline_time)
+    
+    # ===============================
+    # 8️⃣ 绘制对比结果
+    # ===============================
+    plot_results(rl_delta, rl_reward, baseline_delta)
+
 
 
 if __name__ == "__main__":
     experiment_name = "multi_config_exp_01"  # 实验名称，用于区分不同实验
-    main_test(experiment_name)
-    
-
-
-
-"""
---------------------------------------------------
-[Rollout 阶段 - 业务表现]
-- ep_rew_mean: 
-    含义: 回合平均总奖励。
-    判断: 核心指标，必须长期看涨。如果不涨，检查 Reward 函数。
-- ep_len_mean: 
-    含义: 回合平均长度。
-    判断: 判定模型是“早死”还是“通关”。
-
-[Train 阶段 - 模型稳定性]
-- entropy_loss: 
-    含义: 策略熵（动作随机性）。
-    判断: 绝对值应缓慢下降。绝对值过快趋近0表示过早收敛（不再尝试新动作）；
-         一直很大表示模型在乱撞，学不到规律。
-- explained_variance: 
-    含义: 预测奖励的解释方差。
-    判断: 越接近 1.0 越好。如果小于 0，说明 Critic 网络预测得比瞎猜还差。
-- approx_kl: 
-    含义: 新旧策略的 KL 散度（策略更新步长）。
-    判断: 理想在 0.001 到 0.05 之间。若过大（如 >0.1），训练易崩溃。
-- clip_fraction: 
-    含义: 触发 PPO 截断机制的比例。
-    判断: 常用 0.1~0.2。如果过高，说明更新被频繁强制限制。
-- value_loss: 
-    含义: 价值函数误差。
-    判断: 代表评价员准不准，通常先升后降。
-
-[Time 阶段 - 性能]
-- fps: 
-    含义: 每秒处理步数。
-    判断: 衡量环境执行速度，主要受 env.step() 的复杂度影响。
-"""
+    main(experiment_name)
