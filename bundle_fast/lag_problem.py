@@ -214,51 +214,8 @@ class SubProblem:
 
         self.model.optimize()
 
-        print(f"obj_terms: {self.objective_terms.getValue()}")  # 1946.9484484730497
-        print(f"temp_terms: {temp_terms.getValue()}")  # -9061.207913979584
-        # print("x:")
-        trial_point_list = []
-        # for i in range(len(self.uc_bw.x)):
-        #     print(self.uc_bw.x[i].x)
-        # for i in range(len(self.uc_bw.x_bs)):
-        #     for j in range(len(self.uc_bw.x_bs[i])):
-        #         print(self.uc_bw.x_bs[i][j].x)
-        # for i in range(len(self.uc_bw.y)):
-        #     print(self.uc_bw.y[i].x)
-        # for i in range(len(self.uc_bw.soc)):
-        #     print(self.uc_bw.soc[i].x)
-        # for i in range(len(self.trial_point)):
-        #     # for j in range(len(self.trial_point[i])):
-        #         # trial_point_list.append(self.trial_point[i][j])
-        #     print(self.trial_point[i])
-        #
-        # print("z_x:")
-        # z_x_list = []
-        # for i in range(len(self.uc_bw.z_x)):
-        #     z_x_list.append(self.uc_bw.z_x[i].x)
-        # for i in range(len(self.uc_bw.z_y)):
-        #     z_x_list.append(self.uc_bw.z_y[i].x)
-        #
-        # for i in range(len(self.uc_bw.z_x_bs)):
-        #     for j in range(len(self.uc_bw.z_x_bs[i])):
-        #         z_x_list.append(self.uc_bw.z_x_bs[i][j].x)
-        #
-        # for i in range(len(self.uc_bw.z_soc)):
-        #     z_x_list.append(self.uc_bw.z_soc[i].x)
-        # print(np.array(z_x_list))
-
-        # print(np.array(trial_point_list) - np.array(z_x_list))
-        # print(f"pi: {pi}")
-        # print(pi * np.array(trial_point_list) - np.array(z_x_list))
-
-        #
-        # print(self.uc_bw.z_x.x)
-        # print(self.uc_bw.z_x_bs.x)
-        # print(self.uc_bw.z_y.x)
-        # print(self.uc_bw.z_soc.x)
-
-        # self.solver_time += self.model.Runtime
-
+        # print(f"obj_terms: {self.objective_terms.getValue()}")  # 1946.9484484730497
+        # print(f"temp_terms: {temp_terms.getValue()}")  # -9061.207913979584
         subgradient = np.array([t.getValue() for t in self.relaxed_terms])
         opt_value = self.model.getObjective().getValue()
 

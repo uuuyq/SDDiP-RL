@@ -1,5 +1,7 @@
 import numpy as np
 
+
+@DeprecationWarning
 def bundle_features(bundle, pi_t, w_prev, eta_prev, t):
     """
     bundle: list of (pi_j, g_j, phi_j)

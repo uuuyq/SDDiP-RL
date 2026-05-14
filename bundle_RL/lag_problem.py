@@ -4,12 +4,30 @@ from pathlib import Path
 
 import numpy as np
 import gurobipy as gp
-from matplotlib import pyplot as plt
+from gurobipy import GRB
 
 from bundle_RL.logger import get_logger
 from sddip.sddip import ucmodelclassical, parameters
 
 logger = logging.getLogger(__name__)
+
+
+class SolverResults:
+    """Bundle求解结果封装"""
+    def __init__(self):
+        self.obj_value = None
+        self.multipliers = None
+        self.solver_time = None
+        self.n_iterations = None
+
+    def set_values(self, obj_value, multipliers, n_iterations, solver_time):
+        self.obj_value = obj_value
+        self.multipliers = multipliers
+        self.n_iterations = n_iterations
+        self.solver_time = solver_time
+
+    def toString(self):
+        return f"{self.obj_value:.4f}, {self.multipliers}, {self.solver_time:.4f}, {self.n_iterations}"
 
 
 class SubProblem:
@@ -18,13 +36,21 @@ class SubProblem:
     该类充当 Oracle，为 Master 提供函数值和子梯度。
     """
 
-    def __init__(self, logger, problem_params, trial_point, t, n, i):
+    def __init__(self, logger, config, n, i_override=None):
+        """
+        Args:
+            logger: 日志器
+            config: BundleConfig 对象
+            n: realization 索引
+            i_override: 可选，覆盖 config 中的 iteration
+        """
         self.logger = logger
-        self.problem_params = problem_params
-        self.trial_point = trial_point
-        self.t = t
+        self.config = config
+        self.problem_params = config.PROBLEM_PARAMS
+        self.trial_point = config.trial_point
+        self.t = config.T
         self.n = n
-        self.i = i
+        self.i = i_override if i_override is not None else config.iteration
         # 子问题模型
         self.uc_bw, self.model, self.relaxed_terms, self.objective_terms = self.init_model()
     def init_model(self):
@@ -117,26 +143,46 @@ class SubProblem:
 
         model_builder.add_cut_lower_bound(self.problem_params.cut_lb[stage])
 
-        # TODO: cuts constrains
-        # if stage < self.problem_params.n_stages - 1 and iteration > 0:
-        #     if common.CutType.LAGRANGIAN in self.cut_types_added:
-        #         lagrangian_coefficients = self.cc_storage.get_stage_result(
-        #             stage
-        #         )
-        #         model_builder.add_cut_constraints_without_binary(
-        #             lagrangian_coefficients[ResultKeys.ci_key],
-        #             lagrangian_coefficients[ResultKeys.cg_key],
-        #         )
-        #     if bool(
-        #         self.cut_types_added
-        #         & {common.CutType.BENDERS, common.CutType.STRENGTHENED_BENDERS}
-        #     ):
-        #         benders_coefficients = self.bc_storage.get_stage_result(stage)
-        #         model_builder.add_benders_cuts_without_binary(
-        #             benders_coefficients[ResultKeys.bc_intercept_key],
-        #             benders_coefficients[ResultKeys.bc_gradient_key],
-        #             benders_coefficients[ResultKeys.bc_trial_point_key],
-        #         )
+        # 添加 cuts 约束
+        if stage < self.problem_params.n_stages - 1 and self.i > 0:
+            # 添加 Lagrangian cuts
+            if self.config.dual_solver_storage is not None:
+                try:
+                    # 获取所有阶段的 Lagrangian cuts
+                    for s in range(self.problem_params.n_stages):
+                        lagrangian_result = self.config.dual_solver_storage.get_stage_result(s)
+                        if lagrangian_result and 'dm' in lagrangian_result and 'dv' in lagrangian_result:
+                            cut_gradients = lagrangian_result['dm']
+                            cut_intercepts = lagrangian_result['dv']
+                            if cut_gradients and cut_intercepts:
+                                model_builder.add_cut_constraints_without_binary(
+                                    cut_intercepts,
+                                    cut_gradients,
+                                )
+                except Exception as e:
+                    self.logger.warning(f"Failed to add Lagrangian cuts: {e}")
+
+            # 添加 Benders cuts
+            if self.config.bc_storage is not None:
+                try:
+                    # 获取所有阶段的 Benders cuts
+                    for s in range(self.problem_params.n_stages):
+                        benders_result = self.config.bc_storage.get_stage_result(s)
+                        if benders_result and 'bc_gradient' in benders_result and 'bc_intercept' in benders_result:
+                            cut_gradients = benders_result['bc_gradient']
+                            cut_intercepts = benders_result['bc_intercept']
+                            # Benders cuts 需要 trial point，这里使用当前的 trial_point
+                            trial_points = [self.trial_point[0] + self.trial_point[1] +
+                                           [val for bs in self.trial_point[2] for val in bs] +
+                                           self.trial_point[3]] * len(cut_gradients)
+                            if cut_gradients and cut_intercepts:
+                                model_builder.add_benders_cuts_without_binary(
+                                    cut_intercepts,
+                                    cut_gradients,
+                                    trial_points,
+                                )
+                except Exception as e:
+                    self.logger.warning(f"Failed to add Benders cuts: {e}")
 
         return model_builder
 
@@ -147,10 +193,11 @@ class SubProblem:
         """
 
         gradient_len = len(self.relaxed_terms)
-
-        total_objective = self.objective_terms + gp.quicksum(
+        temp_terms = gp.quicksum(
             self.relaxed_terms[i] * pi[i] for i in range(gradient_len)
         )
+        total_objective = self.objective_terms + temp_terms
+
 
         self.model.setObjective(total_objective)
 
@@ -169,8 +216,8 @@ class SubProblem:
 
         self.model.optimize()
 
-        # self.solver_time += self.model.Runtime
-
+        # print(f"obj_terms: {self.objective_terms.getValue()}")  # 1946.9484484730497
+        # print(f"temp_terms: {temp_terms.getValue()}")  # -9061.207913979584
         subgradient = np.array([t.getValue() for t in self.relaxed_terms])
         opt_value = self.model.getObjective().getValue()
 
@@ -234,7 +281,7 @@ class MasterProblem:
         )
         self.model.setObjective(obj, gp.GRB.MAXIMIZE)
         self.model.optimize()
-        self.logger.info(self.model.status)
+        # self.logger.info(self.model.status)
 
 
         x_candidate = np.array([self.x_vars[j].x for j in range(self.n_vars)])
@@ -316,28 +363,26 @@ class MasterProblem:
             i_u = min(i_u - 1, -1) if u_new == u_current else -1
 
         return u_new, i_u, variation_estimate
-
-
+    def get_all_cuts(self):
+        """
+        从现有的 MasterProblem 实例中提取所有 cuts。
+        返回格式: List of (g_new, x_new, f_new)
+        """
+        return self.cuts_storage
 
 
 def bundle_test():
+    from bundle_RL.config import get_default_config
+    
     logger = get_logger("log/bundle_solver.log")
 
-    t = 0
-    n_vars = 13
-    x_trial = [1.0, 1.0, 1.0]
-    y_trial = [71.52627531002818, 59.02627531002818, 66.52627531002818]
-    x_bs_trial = [[1.0, 0.0], [1.0, 0.0], [1.0, 0.0]]
-    soc_trial = [5.0]
-    path = Path(r"D:\tools\workspace_pycharm\sddip-main-zou\data\01_test_cases\case6ww\t06_n06")
-    problem_params = parameters.Parameters(path)
-
-    sub = SubProblem(logger, problem_params, trial_point=(x_trial, y_trial, x_bs_trial, soc_trial), t=t, n=0, i=0)
-    master = MasterProblem(logger, n_vars, tolerance=1e-5)
+    config = get_default_config()
+    sub = SubProblem(logger, config, n=0)
+    master = MasterProblem(logger, config.N_VARS, tolerance=1e-5)
 
     delta_history = []
 
-    x_new = np.zeros(n_vars)
+    x_new = np.zeros(config.N_VARS)
 
     g_new, f_new = sub.solve(x_new)
     master.update_strategy(x_new, f_new, g_new, ub=None)
@@ -351,23 +396,6 @@ def bundle_test():
         logger.info(f"delta: {delta}")
         if stop_flag:
             break
-
-    plt.figure(figsize=(8, 5))
-    # 绘制折线
-    plt.plot(range(len(delta_history)), delta_history,
-             marker='o', linestyle='-', color='#1f77b4',
-             linewidth=1.5, markersize=4, label='$\Delta$ (Convergence Gap)')
-    plt.ylabel('Delta Value')
-    plt.xlabel('Iteration Step')
-    plt.title('Bundle Method Convergence (Delta)')
-    plt.grid(True, which="both", ls="--", alpha=0.6)
-    plt.legend()
-
-    # 自动调整布局并显示
-    plt.tight_layout()
-    plt.show()
-
-
 
 
 if __name__ == "__main__":
