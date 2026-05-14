@@ -720,7 +720,7 @@ class Algorithm:
                         i=i,
                         t=t,
                         n=n,
-                        T=self.problem_params.n_stages,
+                        T=t,
                         N_VARS=len(trial_point),
                         X_TRIAL=x_trial_point,
                         Y_TRIAL=y_trial_point,
