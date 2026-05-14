@@ -135,11 +135,10 @@ def test(env, model, master, logger):
     # 绘制 Delta 收敛图
     plt.subplot(1, 2, 1)
     plt.plot(delta_history, marker='o', color='b', label='Delta (Gap)')
-    plt.yscale('log')  # 通常 delta 跨度很大，建议开启对数坐标
     plt.xlabel('Iteration Step')
-    plt.ylabel('Delta Value (Log Scale)')
+    plt.ylabel('Delta Value')
     plt.title('Convergence of Bundle Method')
-    plt.grid(True, which="both", ls="-", alpha=0.5)
+    plt.grid(True, alpha=0.5)
     plt.legend()
     # 绘制 Reward 变化图
     plt.subplot(1, 2, 2)
@@ -260,7 +259,7 @@ def main_test(experiment_name):
 
 if __name__ == "__main__":
     experiment_name = "multi_config_exp_01"  # 实验名称，用于区分不同实验
-    main_train(experiment_name)
+    main_test(experiment_name)
     
 
 
