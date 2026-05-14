@@ -3,7 +3,7 @@ from pathlib import Path
 
 from bundle_RL.config import BundleConfig
 from bundle_RL.logger import get_logger
-from bundle_RL.tool import create_env
+from bundle_RL.utils import create_env
 from model_train import train
 
 def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_000, experiment_name="multi_config_exp"):
@@ -70,61 +70,68 @@ def main(experiment_name):
 
 
 def create_config_list():
-    """创建多个 config 列表，用于交错训练"""
-    # ===============================
-    # Config 1 (原始配置，realization 0)
-    # ===============================
-    config1 = BundleConfig(
-        T=5,
-        N_VARS=13,
-        X_TRIAL=[-0.0, 1.0, 1.0],
-        Y_TRIAL=[0.0, 131.60809087723158, 45.0],
-        X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
-        SOC_TRIAL=[0.0],
-        PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
-        n=0,  # realization 索引
-    )
-    config2 = BundleConfig(
-        T=5,
-        N_VARS=13,
-        X_TRIAL=[-0.0, 1.0, 1.0],
-        Y_TRIAL=[0.0, 131.60809087723158, 45.0],
-        X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
-        SOC_TRIAL=[0.0],
-        PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
-        n=1,  # realization 索引
-    )
-    config3 = BundleConfig(
-        T=5,
-        N_VARS=13,
-        X_TRIAL=[-0.0, 1.0, 1.0],
-        Y_TRIAL=[0.0, 131.60809087723158, 45.0],
-        X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
-        SOC_TRIAL=[0.0],
-        PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
-        n=2,  # realization 索引
-    )
-    config4 = BundleConfig(
-        T=5,
-        N_VARS=13,
-        X_TRIAL=[-0.0, 1.0, 1.0],
-        Y_TRIAL=[0.0, 131.60809087723158, 45.0],
-        X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
-        SOC_TRIAL=[0.0],
-        PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
-        n=3,  # realization 索引
-    )
-    config5 = BundleConfig(
-        T=5,
-        N_VARS=13,
-        X_TRIAL=[-0.0, 1.0, 1.0],
-        Y_TRIAL=[0.0, 131.60809087723158, 45.0],
-        X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
-        SOC_TRIAL=[0.0],
-        PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
-        n=4,  # realization 索引
-    )
-    return [config1, config2, config3, config4, config5]
+    # """创建多个 config 列表，用于交错训练"""
+    # # ===============================
+    # # Config 1 (原始配置，realization 0)
+    # # ===============================
+    # config1 = BundleConfig(
+    #     T=5,
+    #     N_VARS=13,
+    #     X_TRIAL=[-0.0, 1.0, 1.0],
+    #     Y_TRIAL=[0.0, 131.60809087723158, 45.0],
+    #     X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
+    #     SOC_TRIAL=[0.0],
+    #     PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
+    #     n=0,  # realization 索引
+    # )
+    # config2 = BundleConfig(
+    #     T=5,
+    #     N_VARS=13,
+    #     X_TRIAL=[-0.0, 1.0, 1.0],
+    #     Y_TRIAL=[0.0, 131.60809087723158, 45.0],
+    #     X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
+    #     SOC_TRIAL=[0.0],
+    #     PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
+    #     n=1,  # realization 索引
+    # )
+    # config3 = BundleConfig(
+    #     T=5,
+    #     N_VARS=13,
+    #     X_TRIAL=[-0.0, 1.0, 1.0],
+    #     Y_TRIAL=[0.0, 131.60809087723158, 45.0],
+    #     X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
+    #     SOC_TRIAL=[0.0],
+    #     PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
+    #     n=2,  # realization 索引
+    # )
+    # config4 = BundleConfig(
+    #     T=5,
+    #     N_VARS=13,
+    #     X_TRIAL=[-0.0, 1.0, 1.0],
+    #     Y_TRIAL=[0.0, 131.60809087723158, 45.0],
+    #     X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
+    #     SOC_TRIAL=[0.0],
+    #     PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
+    #     n=3,  # realization 索引
+    # )
+    # config5 = BundleConfig(
+    #     T=5,
+    #     N_VARS=13,
+    #     X_TRIAL=[-0.0, 1.0, 1.0],
+    #     Y_TRIAL=[0.0, 131.60809087723158, 45.0],
+    #     X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
+    #     SOC_TRIAL=[0.0],
+    #     PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
+    #     n=4,  # realization 索引
+    # )
+    configs = []
+    i = 1
+    for t in range(1, 24):
+        for n in range(6):
+            config_path = Path(f"./configs/config_{i}_{t}_{n}.pkl")
+            configs.append(BundleConfig.from_pkl(config_path))
+
+    return configs
 
 
 

@@ -7,7 +7,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from bundle_RL.config import BundleConfig
 from bundle_RL.logger import get_logger
-from bundle_RL.tool import create_env
+from bundle_RL.utils import create_env
 from bundle_RL.lag_problem import SubProblem, MasterProblem
 
 
@@ -135,7 +135,7 @@ def plot_results(rl_delta, rl_reward, baseline_delta):
     plt.tight_layout()
     plt.show()
 
-def main(experiment_name):
+def main(experiment_name, config):
     """加载最新训练的模型并进行测试"""
     import os
     from stable_baselines3 import PPO
@@ -184,32 +184,18 @@ def main(experiment_name):
         }
     )
 
-    # ===============================
-    # 4️⃣ 创建测试环境并测试
-    # ===============================
-
-    test_configs = BundleConfig(
-        T=5,
-        N_VARS=13,
-        X_TRIAL=[-0.0, 1.0, 1.0],
-        Y_TRIAL=[0.0, 131.60809087723158, 45.0],
-        X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
-        SOC_TRIAL=[0.0],
-        PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
-        n=4,  # realization 索引
-    )
 
     # ===============================
     # 5️⃣ 使用传统 Bundle 算法求解作为 baseline
     # ===============================
     logger.info("==== Running Baseline (Traditional Bundle) ====")
-    baseline_delta, baseline_time = bundle_baseline(logger, test_configs)
+    baseline_delta, baseline_time = bundle_baseline(logger, config)
     
     # ===============================
     # 6️⃣ 使用 RL 模型求解
     # ===============================
     logger.info("==== Running RL Model ====")
-    test_env, test_master = create_env(logger, test_configs)
+    test_env, test_master = create_env(logger, config)
     rl_delta, rl_reward, rl_time = test(test_env, model, test_master, logger)
     
     # ===============================
@@ -222,8 +208,26 @@ def main(experiment_name):
     # ===============================
     plot_results(rl_delta, rl_reward, baseline_delta)
 
+def loadConfig(i, t, n):
+
+    # config = BundleConfig(
+    #     T=5,
+    #     N_VARS=13,
+    #     X_TRIAL=[-0.0, 1.0, 1.0],
+    #     Y_TRIAL=[0.0, 131.60809087723158, 45.0],
+    #     X_BS_TRIAL=[[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]],
+    #     SOC_TRIAL=[0.0],
+    #     PATH=Path(r"..\data\01_test_cases\case6ww\t24_n06"),
+    #     n=4,  # realization 索引
+    # )
+
+    config_path = Path(f"./configs/config_{i}_{t}_{n}.pkl")
+    config = BundleConfig.from_pkl(config_path)
+    return config
+
 
 
 if __name__ == "__main__":
     experiment_name = "multi_config_exp_01"  # 实验名称，用于区分不同实验
-    main(experiment_name)
+    config = loadConfig(i=1, t=10, n=5)
+    main(experiment_name,  config)
