@@ -49,8 +49,8 @@ from pathlib import Path
 
 def main():
 
-    path = Path(r"D:\tools\workspace_pycharm\sddip-main-zou\data\01_test_cases\case6ww\t06_n06")
-    log_path = r"D:\tools\workspace_pycharm\sddip-main-zou\log"
+    path = Path(r".\data\01_test_cases\case6ww\t24_n06")
+    log_path = r".\log"
 
     # dual_solver_stop_tolerance: float = field(default=10 ** -6)
     #     dual_solver_time_limit: int = field(default=5 * 60)

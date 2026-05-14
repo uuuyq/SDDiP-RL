@@ -174,8 +174,8 @@ def plot_timing_results(timing_file: str, output_file: str = "sddip_timing_analy
 
 def main():
     # 数据路径
-    path = Path(r"D:\tools\workspace_pycharm\SDDiP-RL\data\01_test_cases\case6ww\t06_n06")
-    log_path = r"D:\tools\workspace_pycharm\SDDiP-RL\log"
+    path = Path(r".\data\01_test_cases\case6ww\t06_n06")
+    log_path = r".\log"
 
     # 配置 Bundle Method 对偶求解器
     # 参数: max_iterations, tolerance, log_dir, predicted_ascent, time_limit

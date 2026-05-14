@@ -24,6 +24,7 @@ class Parameters:
     ) -> None:
         """Initialize `Paramters` object from files."""
         importer = DataImporter(path)
+        self.path = path
 
         # DataFrames
         self.bus_df = importer.dataframe_from_csv(bus_file)

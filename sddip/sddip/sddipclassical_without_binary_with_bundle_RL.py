@@ -13,15 +13,15 @@ from sddip.sddip import common
 from bundle_RL.config import BundleConfig
 
 CONFIG_STORAGE = {}
-CONFIG_JSON_PATH = None
-CONFIG_PKL_PATH = None
+CONFIG_JSON_PATH = r"D:\tools\workspace_pycharm\SDDiP-RL\bundle_RL\configs\configs.json"
+CONFIG_PKL_PATH = r"D:\tools\workspace_pycharm\SDDiP-RL\bundle_RL\configs\configs.pkl"
 
 
-def set_config_file_paths(json_path: str, pkl_path: str) -> None:
-    """设置config持久化文件路径"""
-    global CONFIG_JSON_PATH, CONFIG_PKL_PATH
-    CONFIG_JSON_PATH = json_path
-    CONFIG_PKL_PATH = pkl_path
+# def set_config_file_paths(json_path: str, pkl_path: str) -> None:
+#     """设置config持久化文件路径"""
+#     global CONFIG_JSON_PATH, CONFIG_PKL_PATH
+#     CONFIG_JSON_PATH = json_path
+#     CONFIG_PKL_PATH = pkl_path
 
 
 def collect_and_save_config(
@@ -34,7 +34,7 @@ def collect_and_save_config(
     Y_TRIAL: list,
     X_BS_TRIAL: list,
     SOC_TRIAL: list,
-    PATH: str,
+    PATH: Path,
     bc_storage=None,
     dual_solver_storage=None,
 ) -> None:
@@ -702,9 +702,6 @@ class Algorithm:
                     objective_terms = uc_bw.objective_terms
                     relaxed_terms = uc_bw.relaxed_terms
 
-                    # if t == 1 and n == 1:
-                    #     self.logger.info(relaxed_terms)
-                    #     uc_bw.model.write("model.lp")
 
                     uc_bw.disable_output()
 
@@ -729,134 +726,7 @@ class Algorithm:
                         Y_TRIAL=y_trial_point,
                         X_BS_TRIAL=x_bs_trial_point,
                         SOC_TRIAL=soc_trial_point,
-                        PATH=str(self.problem_params.path),
-                        bc_storage=self.bc_storage,
-                        dual_solver_storage=self.dual_solver_storage,
-                    )
-
-                    _, sg_results = self.dual_solver.solve(
-                        uc_bw.model,
-                        objective_terms,
-                        relaxed_terms,
-                    )
-                    dual_multipliers = sg_results.multipliers.tolist()
-                    dual_value = sg_results.obj_value - np.array(
-                        dual_multipliers
-                    ).dot(trial_point)
-
-                    # Dual value and multiplier for each realization
-                    ds_dict[ResultKeys.dv_key].append(dual_value)
-                    ds_dict[ResultKeys.dm_key].append(dual_multipliers)
-
-                    dual_solver_dict[ResultKeys.ds_iterations].append(
-                        sg_results.n_iterations
-                    )
-                    dual_solver_dict[ResultKeys.ds_solver_time].append(
-                        sg_results.solver_time
-                    )
-
-                self.ds_storage.add_result(i, k, t, ds_dict)
-                self.dual_solver_storage.add_result(i, k, t, dual_solver_dict)
-
-                # Calculate and store cut coefficients
-                probabilities = self.problem_params.prob[t]
-                intercept = np.array(probabilities).dot(
-                    np.array(ds_dict[ResultKeys.dv_key])
-                )
-                gradient = np.array(probabilities).dot(
-                    np.array(ds_dict[ResultKeys.dm_key])
-                )
-
-                cc_dict[ResultKeys.ci_key] = intercept.tolist()
-                cc_dict[ResultKeys.cg_key] = gradient.tolist()
-
-                self.cc_storage.add_result(i, k, t - 1, cc_dict)
-
-
-    def backward_pass_RL(self, iteration: int, samples: list) -> None:
-        i = iteration
-        n_samples = len(samples)
-
-        for t in reversed(range(1, self.problem_params.n_stages)):
-            for k in range(n_samples):
-                n_realizations = self.problem_params.n_realizations_per_stage[
-                    t
-                ]
-                ds_dict = self.ds_storage.create_empty_result_dict()
-                cc_dict = self.cc_storage.create_empty_result_dict()
-                dual_solver_dict = (
-                    self.dual_solver_storage.create_empty_result_dict()
-                )
-
-                for n in range(n_realizations):
-                    # Get binary trial points
-                    y_trial_point = self.ps_storage.get_result(
-                        i - 1, k, t - 1
-                    )[ResultKeys.y_key]
-                    x_trial_point = self.ps_storage.get_result(
-                        i - 1, k, t - 1
-                    )[ResultKeys.x_key]
-                    x_bs_trial_point = self.ps_storage.get_result(
-                        i - 1, k, t - 1
-                    )[ResultKeys.x_bs_key]
-                    soc_trial_point = self.ps_storage.get_result(
-                        i - 1, k, t - 1
-                    )[ResultKeys.soc_key]
-
-                    # Build backward model
-                    uc_bw = ucmodelclassical.ClassicalModel(
-                        self.problem_params.n_buses,
-                        self.problem_params.n_lines,
-                        self.problem_params.n_gens,
-                        self.problem_params.n_storages,
-                        self.problem_params.gens_at_bus,
-                        self.problem_params.storages_at_bus,
-                        self.problem_params.backsight_periods,
-                    )
-
-                    # uc_bw.binary_approximation(
-                    #     self.bin_multipliers["y"], self.bin_multipliers["soc"]
-                    # )
-
-                    uc_bw: ucmodelclassical.ClassicalModel = (
-                        self.add_problem_constraints(uc_bw, t, n, i)
-                    )
-
-                    uc_bw.relaxed_terms_calculate_without_binary(
-                        x_trial_point,
-                        y_trial_point,
-                        x_bs_trial_point,
-                        soc_trial_point,
-                    )
-
-                    objective_terms = uc_bw.objective_terms
-                    relaxed_terms = uc_bw.relaxed_terms
-
-
-                    uc_bw.disable_output()
-
-                    trial_point = (
-                        x_trial_point
-                        + y_trial_point
-                        + [
-                            x_bs_g
-                            for x_bs in x_bs_trial_point
-                            for x_bs_g in x_bs
-                        ]
-                        + soc_trial_point
-                    )
-
-                    collect_and_save_config(
-                        i=i,
-                        t=t,
-                        n=n,
-                        T=self.problem_params.n_stages,
-                        N_VARS=len(trial_point),
-                        X_TRIAL=x_trial_point,
-                        Y_TRIAL=y_trial_point,
-                        X_BS_TRIAL=x_bs_trial_point,
-                        SOC_TRIAL=soc_trial_point,
-                        PATH=str(self.problem_params.path),
+                        PATH=self.problem_params.path,
                         bc_storage=self.bc_storage,
                         dual_solver_storage=self.dual_solver_storage,
                     )

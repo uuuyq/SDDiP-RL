@@ -1,9 +1,11 @@
 # from sddip.sddip.sddipclassical import Algorithm
-from sddip.sddip.sddipclassical_without_binary import Algorithm
+from pathlib import Path
+
 # from sddip.sddip.sddipclassical_without_binary_normalized import Algorithm
 # from sddip.sddip.sddipclassical_normalized import Algorithm
 from sddip.sddip import dualsolver
-from pathlib import Path
+from sddip.sddip.sddipclassical_without_binary_with_bundle_RL import Algorithm
+
 
 # @dataclass
 # class TestSetup:
