@@ -156,28 +156,28 @@ def test(env, model, master, logger):
 def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_000, experiment_name="multi_config_exp"):
     """
     交错训练函数：在多个 config 之间交替训练
-    
+
     Args:
         logger: 日志器
         configs: 配置列表（每个 config 包含自己的 n 参数）
         rounds: 训练轮数（每个 config 会被训练 rounds 次）
         steps_per_config_per_round: 每轮每个 config 训练的步数
         experiment_name: 实验名称，用于区分不同实验
-    
+
     Returns:
         训练好的模型
     """
     model = None
-    
+
     for round_idx in range(rounds):
         logger.info(f"===== 训练轮次 {round_idx + 1}/{rounds} =====")
-        
+
         for config_idx, config in enumerate(configs):
             logger.info(f"  训练 Config {config_idx + 1}/{len(configs)} (realization {config.n})")
-            
+
             # 创建当前 config 的环境（n 已包含在 config 中）
             env, _ = create_env(logger, config)
-            
+
             # 训练（如果 model 已存在则继续训练）
             model = train(
                 env=env,
@@ -186,17 +186,12 @@ def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_0
                 total_timesteps=steps_per_config_per_round,
                 experiment_name=experiment_name
             )
-    
+
     return model
 
 
-def main():
-    logger = get_logger("log/bundle_env_test.log")
-    
-    # ===============================
-    # 1️⃣ 实验配置
-    # ===============================
-    experiment_name = "multi_config_exp_01"  # 实验名称，用于区分不同实验
+def main_train(experiment_name):
+    logger = get_logger("log/bundle_env_train.log")
     
     # ===============================
     # 2️⃣ 创建 config 列表
@@ -216,15 +211,57 @@ def main():
         experiment_name=experiment_name
     )
     
+
+
+
+def main_test(experiment_name):
+    """加载最新训练的模型并进行测试"""
+    import os
+    from stable_baselines3 import PPO
+    
+    logger = get_logger("log/bundle_env_test.log")
+
     # ===============================
-    # 4️⃣ 在第一个 config 上测试
+    # 1️⃣ 实验配置
     # ===============================
+    experiment_dir = os.path.join("model", experiment_name)
+
+    # ===============================
+    # 2️⃣ 找到最新的模型文件
+    # ===============================
+    model_files = []
+    if os.path.exists(experiment_dir):
+        for file in os.listdir(experiment_dir):
+            if file.startswith("ppo_bundle_") and file.endswith(".zip"):
+                model_files.append(file)
+    
+    if not model_files:
+        logger.error(f"在 {experiment_dir} 中未找到模型文件")
+        return
+    
+    # 按时间排序，取最新的
+    model_files.sort(reverse=True)
+    latest_model = model_files[0]
+    model_path = os.path.join(experiment_dir, latest_model)
+    logger.info(f"加载最新模型: {model_path}")
+
+    # ===============================
+    # 3️⃣ 加载模型
+    # ===============================
+    model = PPO.load(model_path)
+
+    # ===============================
+    # 4️⃣ 创建测试环境并测试
+    # ===============================
+    train_configs, test_configs = create_config_list()
     test_env, test_master = create_env(logger, test_configs[0])
     test(test_env, model, test_master, logger)
 
 
 if __name__ == "__main__":
-    main()
+    experiment_name = "multi_config_exp_01"  # 实验名称，用于区分不同实验
+    main_train(experiment_name)
+    
 
 
 
