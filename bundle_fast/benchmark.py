@@ -49,7 +49,7 @@ def run_bundle_warmstart(
         result: 包含收敛历史的字典
     """
     if logger is None:
-        logger = get_logger("log/benchmark_warmstart.log")
+        logger = get_logger("log/benchmark_warmstart.test_result")
 
     trial_point = config.trial_point
     problem_params = config.PROBLEM_PARAMS
@@ -184,7 +184,7 @@ def run_bundle_baseline(
         result: 包含收敛历史的字典
     """
     if logger is None:
-        logger = get_logger("log/benchmark_baseline.log")
+        logger = get_logger("log/benchmark_baseline.test_result")
 
     trial_point = config.trial_point
     problem_params = config.PROBLEM_PARAMS

@@ -1,13 +1,6 @@
-import json
-import os
 import time
-from pathlib import Path
 
 import numpy as np
-from matplotlib import pyplot as plt
-from bundle_RL.script.config import BundleConfig
-from bundle_RL.script.logger import get_logger
-from bundle_RL.script.utils import create_env
 from bundle_RL.script.lag_problem import SubProblem, MasterProblem
 
 
@@ -18,9 +11,12 @@ def bundle_baseline(logger, config, tolerance=1e-5):
     
     delta_history = []
     time_history = []
+    ub_history = []      # 上界历史
+    f_best_history = []  # 最优下界历史
     x_new = np.zeros(config.N_VARS)
     g_new, f_new = sub.solve(x_new)
     master.update_strategy(x_new, f_new, g_new, ub=None)
+    f_best_history.append(master.f_best)
     
     for i in range(20):
         start_time = time.time()
@@ -32,17 +28,21 @@ def bundle_baseline(logger, config, tolerance=1e-5):
         
         delta_history.append(delta)
         time_history.append(end_time - start_time)
+        ub_history.append(ub)
+        f_best_history.append(master.f_best)
         logger.info(f"Baseline - rel_gap: {delta:.6e}, time: {time_history[-1]:.4f}s")
         if stop_flag:
             break
     
-    return delta_history, time_history
+    return delta_history, time_history, ub_history, f_best_history
 
 
 def bundle_RL(env, model, master, logger, deterministic):
     delta_history = []
     reward_history = []
     time_history = []
+    ub_history = []      # 上界历史
+    f_best_history = []  # 最优下界历史
 
     obs, _ = env.reset()
 
@@ -52,6 +52,7 @@ def bundle_RL(env, model, master, logger, deterministic):
     g_new = sub_result["g"]
     # 第一次，更新 f_best和x_best
     master.update_strategy(x_new, f_new, g_new, ub=None)
+    f_best_history.append(master.f_best)
 
     logger.info("==== ROLLOUT ====")
     for step in range(20):
@@ -67,6 +68,8 @@ def bundle_RL(env, model, master, logger, deterministic):
         delta_history.append(delta)
         reward_history.append(reward)
         time_history.append(end_time - start_time)
+        ub_history.append(ub)
+        f_best_history.append(master.f_best)
         logger.info(f"RL - rel_gap: {delta:.6e}, reward: {reward:.6e}, time: {time_history[-1]:.4f}s")
         
         # 获取新的子问题得到的cut
@@ -82,7 +85,7 @@ def bundle_RL(env, model, master, logger, deterministic):
 
     logger.info("Test finished successfully.")
     
-    return delta_history, reward_history, time_history
+    return delta_history, reward_history, time_history, ub_history, f_best_history
 
 
 def bundle_RL_warmstart(env, model, master, logger, warmstart_threshold=1e-6, patience=3, deterministic=True):
@@ -101,11 +104,15 @@ def bundle_RL_warmstart(env, model, master, logger, warmstart_threshold=1e-6, pa
         delta_history: delta 历史记录
         reward_history: 奖励历史记录（仅RL阶段）
         time_history: 时间历史记录
+        ub_history: 上界历史
+        f_best_history: 最优下界历史
         switch_step: 切换到 baseline 的步骤（None表示未切换）
     """
     delta_history = []
     reward_history = []
     time_history = []
+    ub_history = []      # 上界历史
+    f_best_history = []  # 最优下界历史
     switch_step = None
     consecutive_small_changes = 0
     
@@ -116,6 +123,7 @@ def bundle_RL_warmstart(env, model, master, logger, warmstart_threshold=1e-6, pa
     f_new = sub_result["phi"]
     g_new = sub_result["g"]
     master.update_strategy(x_new, f_new, g_new, ub=None)
+    f_best_history.append(master.f_best)
 
     logger.info("==== WARMSTART ROLLOUT ====")
     
@@ -132,6 +140,8 @@ def bundle_RL_warmstart(env, model, master, logger, warmstart_threshold=1e-6, pa
         delta_history.append(delta)
         reward_history.append(reward)
         time_history.append(end_time - start_time)
+        ub_history.append(ub)
+        f_best_history.append(master.f_best)
         logger.info(f"[RL] rel_gap: {delta:.6e}, reward: {reward:.6e}, time: {time_history[-1]:.4f}s")
         
         sub_result = env.bundle[-1]
@@ -142,7 +152,7 @@ def bundle_RL_warmstart(env, model, master, logger, warmstart_threshold=1e-6, pa
         # 检查是否满足终止条件
         if stop_flag:
             logger.info(f"Warmstart - RL阶段满足终止条件，rel_gap: {delta:.6e}")
-            return delta_history, reward_history, time_history, switch_step
+            return delta_history, reward_history, time_history, ub_history, f_best_history, switch_step
         
         # 检查 rel_gap 是否不再变化（用于判断是否切换到 baseline）
         if len(delta_history) >= 2:
@@ -172,6 +182,8 @@ def bundle_RL_warmstart(env, model, master, logger, warmstart_threshold=1e-6, pa
             
             delta_history.append(delta)
             time_history.append(end_time - start_time)
+            ub_history.append(ub)
+            f_best_history.append(master.f_best)
             logger.info(f"[Baseline] rel_gap: {delta:.6e}, time: {time_history[-1]:.4f}s")
             
             if stop_flag:
@@ -180,4 +192,4 @@ def bundle_RL_warmstart(env, model, master, logger, warmstart_threshold=1e-6, pa
 
     logger.info("Warmstart test finished successfully.")
     
-    return delta_history, reward_history, time_history, switch_step
+    return delta_history, reward_history, time_history, ub_history, f_best_history, switch_step

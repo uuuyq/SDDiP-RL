@@ -369,10 +369,10 @@ class MasterProblem:
         return self.cuts_storage
 
 
-def bundle_test():
-    from bundle_RL.script.config import get_default_config
+def main():
+    from bundle_RL.config import get_default_config
     
-    logger = get_logger("log/bundle_solver.log")
+    logger = get_logger("./lag_problem_main.log")
 
     config = get_default_config()
     sub = SubProblem(logger, config, n=0)
@@ -397,4 +397,4 @@ def bundle_test():
 
 
 if __name__ == "__main__":
-    bundle_test()
+    main()

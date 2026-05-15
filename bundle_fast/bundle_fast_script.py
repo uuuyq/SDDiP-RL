@@ -284,7 +284,7 @@ if __name__ == "__main__":
 # dual_solver = BundleMethod(
 #     max_iterations=1000,      # 最大迭代次数
 #     tolerance=1e-5,           # 收敛容差（预测上升量<=tolerance时停止）
-#     log_dir="log/",           # 日志目录
+#     log_dir="test_result/",           # 日志目录
 #     predicted_ascent="abs",   # 预测上升量计算方式: "abs"(绝对) 或 "rel"(相对)
 #     time_limit=3600.0         # 时间限制（秒），可选
 # )
