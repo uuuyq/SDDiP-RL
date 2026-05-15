@@ -11,10 +11,10 @@ from bundle_RL.utils import create_env
 from bundle_RL.lag_problem import SubProblem, MasterProblem
 
 
-def bundle_baseline(logger, config):
+def bundle_baseline(logger, config, tolerance=1e-5):
     """传统 Bundle 算法求解作为 baseline"""
     sub = SubProblem(logger, config, n=config.n)
-    master = MasterProblem(logger, config.N_VARS, tolerance=1e-5)
+    master = MasterProblem(logger, config.N_VARS, tolerance=tolerance)
     
     delta_history = []
     time_history = []
@@ -39,7 +39,7 @@ def bundle_baseline(logger, config):
     return delta_history, time_history
 
 
-def test(env, model, master, logger):
+def bundle_RL(env, model, master, logger):
     delta_history = []
     reward_history = []
     time_history = []
@@ -74,13 +74,114 @@ def test(env, model, master, logger):
         x_new = sub_result["pi"]
         f_new = sub_result["phi"]
         g_new = sub_result["g"]
+        
+        # 添加终止条件（与baseline保持一致）
+        if stop_flag:
+            logger.info(f"RL Model - 满足终止条件，提前停止，delta: {delta}")
+            break
 
     logger.info("Test finished successfully.")
     
     return delta_history, reward_history, time_history
 
 
-def save_results(experiment_name, rl_delta, rl_reward, rl_time, baseline_delta, baseline_time):
+def bundle_RL_warmstart(env, model, master, logger, warmstart_threshold=1e-6, patience=3):
+    """
+    Warm-start 测试方法：当 RL 的 delta 不再发生变化时，切换成 baseline 的计算方式
+    
+    Args:
+        env: 环境
+        model: RL 模型
+        master: MasterProblem 对象
+        logger: 日志记录器
+        warmstart_threshold: delta 变化阈值，小于此值认为不再变化
+        patience: 连续多少次 delta 变化小于阈值后切换到 baseline
+    
+    Returns:
+        delta_history: delta 历史记录
+        reward_history: 奖励历史记录（仅RL阶段）
+        time_history: 时间历史记录
+        switch_step: 切换到 baseline 的步骤（None表示未切换）
+    """
+    delta_history = []
+    reward_history = []
+    time_history = []
+    switch_step = None
+    consecutive_small_changes = 0
+    
+    obs, _ = env.reset()
+
+    sub_result = env.bundle[-1]
+    x_new = sub_result["pi"]
+    f_new = sub_result["phi"]
+    g_new = sub_result["g"]
+    master.update_strategy(x_new, f_new, g_new, ub=None)
+
+    logger.info("==== WARMSTART ROLLOUT ====")
+    
+    # RL阶段
+    for step in range(20):
+        start_time = time.time()
+        master.add_cut(x_new, f_new, g_new)
+        ub, _ = master.solve_master()
+        _, delta, stop_flag = master.update_strategy(x_new, f_new, g_new, ub=ub)
+        action, _ = model.predict(obs, deterministic=True)
+        state, reward, terminated, truncated, info = env.step(action)
+        end_time = time.time()
+        
+        delta_history.append(delta)
+        reward_history.append(reward)
+        time_history.append(end_time - start_time)
+        logger.info(f"[RL] delta: {delta}, reward: {reward}, time: {time_history[-1]:.4f}s")
+        
+        sub_result = env.bundle[-1]
+        x_new = sub_result["pi"]
+        f_new = sub_result["phi"]
+        g_new = sub_result["g"]
+        
+        # 检查是否满足终止条件
+        if stop_flag:
+            logger.info(f"Warmstart - RL阶段满足终止条件，delta: {delta}")
+            return delta_history, reward_history, time_history, switch_step
+        
+        # 检查 delta 是否不再变化（用于判断是否切换到 baseline）
+        if len(delta_history) >= 2:
+            delta_change = abs(delta_history[-1] - delta_history[-2])
+            if delta_change < warmstart_threshold:
+                consecutive_small_changes += 1
+                logger.info(f"Warmstart - delta变化: {delta_change}, 连续次数: {consecutive_small_changes}")
+                if consecutive_small_changes >= patience:
+                    logger.info(f"Warmstart - delta连续{patience}次变化小于阈值，切换到baseline模式")
+                    switch_step = step + 1
+                    break
+            else:
+                consecutive_small_changes = 0
+    
+    # 如果切换到 baseline 模式
+    if switch_step is not None:
+        logger.info("==== SWITCHING TO BASELINE ====")
+        for step in range(20 - switch_step):
+            start_time = time.time()
+            master.add_cut(x_new, f_new, g_new)
+            ub, x_new = master.solve_master()
+            g_new, f_new = env.subproblem.solve(x_new)
+            serious_step, delta, stop_flag = master.update_strategy(x_new, f_new, g_new, ub)
+            end_time = time.time()
+            
+            delta_history.append(delta)
+            time_history.append(end_time - start_time)
+            logger.info(f"[Baseline] delta: {delta}, time: {time_history[-1]:.4f}s")
+            
+            if stop_flag:
+                logger.info(f"Warmstart - Baseline阶段满足终止条件，delta: {delta}")
+                break
+
+    logger.info("Warmstart test finished successfully.")
+    
+    return delta_history, reward_history, time_history, switch_step
+
+
+def save_results(experiment_name, rl_delta, rl_reward, rl_time, baseline_delta, baseline_time, warmstart_delta=None, warmstart_time=None, switch_step=None):
     """保存结果到 JSON 文件"""
     results = {
         "experiment_name": experiment_name,
@@ -98,6 +199,14 @@ def save_results(experiment_name, rl_delta, rl_reward, rl_time, baseline_delta, 
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
     }
     
+    if warmstart_delta is not None:
+        results["warmstart"] = {
+            "delta_history": [float(d) for d in warmstart_delta],
+            "time_history": [float(t) for t in warmstart_time],
+            "total_time": float(sum(warmstart_time)),
+            "switch_step": switch_step
+        }
+    
     log_dir = os.path.join("log", experiment_name)
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
@@ -109,33 +218,65 @@ def save_results(experiment_name, rl_delta, rl_reward, rl_time, baseline_delta, 
     print(f"Results saved to: {file_path}")
 
 
-def plot_results(rl_delta, rl_reward, baseline_delta):
-    """绘制 RL 模型与传统算法的对比图"""
-    plt.figure(figsize=(14, 5))
+def plot_results(rl_delta, rl_reward, baseline_delta, warmstart_delta=None, switch_step=None):
+    """绘制对比结果图"""
     
-    # 绘制 Delta 收敛对比图
-    plt.subplot(1, 2, 1)
+    # 第一张图：RL 与 Baseline 对比
+    plt.figure(figsize=(8, 5))
     plt.plot(rl_delta, marker='o', color='b', label='RL Model')
     plt.plot(baseline_delta, marker='s', color='r', label='Traditional Bundle')
     plt.xlabel('Iteration Step')
     plt.ylabel('Delta Value')
-    plt.title('Convergence Comparison (Delta)')
+    plt.title('Convergence Comparison (RL vs Baseline)')
     plt.grid(True, alpha=0.5)
     plt.legend()
+    plt.tight_layout()
+    plt.show()
     
-    # 绘制 Reward 变化图
-    plt.subplot(1, 2, 2)
+    # 第二张图：Warmstart 与 Baseline 对比（如果有warmstart数据）
+    if warmstart_delta is not None:
+        plt.figure(figsize=(8, 5))
+        # 绘制 baseline
+        plt.plot(baseline_delta, marker='s', color='r', label='Traditional Bundle')
+        
+        # 绘制 warmstart，区分 RL 阶段和 Baseline 阶段
+        if switch_step is not None and switch_step > 0:
+            # RL 阶段（切换前）
+            plt.plot(
+                range(switch_step), 
+                warmstart_delta[:switch_step], 
+                marker='^', color='g', label='Warmstart (RL Phase)'
+            )
+            # Baseline 阶段（切换后）
+            plt.plot(
+                range(switch_step, len(warmstart_delta)), 
+                warmstart_delta[switch_step:], 
+                marker='v', color='orange', label='Warmstart (Baseline Phase)'
+            )
+        else:
+            # 没有切换，全部是 RL 阶段
+            plt.plot(warmstart_delta, marker='^', color='g', label='Warmstart (RL Phase)')
+        
+        plt.xlabel('Iteration Step')
+        plt.ylabel('Delta Value')
+        plt.title('Convergence Comparison (Warmstart vs Baseline)')
+        plt.grid(True, alpha=0.5)
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+    
+    # 第三张图：Reward 变化图（仅 RL 模型）
+    plt.figure(figsize=(8, 5))
     plt.plot(rl_reward, marker='s', color='r', label='Step Reward')
     plt.xlabel('Iteration Step')
     plt.ylabel('Reward')
     plt.title('Reward during Rollout (RL Model)')
     plt.grid(True, alpha=0.5)
     plt.legend()
-    
     plt.tight_layout()
     plt.show()
 
-def main(experiment_name, config):
+def main(experiment_name, config, tolerance=1e-5, warmstart_threshold=1e-6, warmstart_patience=3):
     """加载最新训练的模型并进行测试"""
     import os
     from stable_baselines3 import PPO
@@ -144,6 +285,8 @@ def main(experiment_name, config):
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
     logger = get_logger(os.path.join(log_dir, "bundle_env_test.log"))
+    
+    logger.info(f"实验参数: tolerance={tolerance}, warmstart_threshold={warmstart_threshold}, warmstart_patience={warmstart_patience}")
 
     # ===============================
     # 1️⃣ 实验配置
@@ -189,24 +332,40 @@ def main(experiment_name, config):
     # 5️⃣ 使用传统 Bundle 算法求解作为 baseline
     # ===============================
     logger.info("==== Running Baseline (Traditional Bundle) ====")
-    baseline_delta, baseline_time = bundle_baseline(logger, config)
+    baseline_delta, baseline_time = bundle_baseline(logger, config, tolerance=tolerance)
     
     # ===============================
     # 6️⃣ 使用 RL 模型求解
     # ===============================
     logger.info("==== Running RL Model ====")
-    test_env, test_master = create_env(logger, config)
-    rl_delta, rl_reward, rl_time = test(test_env, model, test_master, logger)
+    test_env, test_master = create_env(logger, config, tolerance=tolerance)
+    rl_delta, rl_reward, rl_time = bundle_RL(test_env, model, test_master, logger)
     
     # ===============================
-    # 7️⃣ 保存结果到 JSON 文件
+    # 7️⃣ 使用 Warmstart 模式求解（RL + Baseline 混合）
     # ===============================
-    save_results(experiment_name, rl_delta, rl_reward, rl_time, baseline_delta, baseline_time)
+    logger.info("==== Running Warmstart Model ====")
+    warmstart_env, warmstart_master = create_env(logger, config, tolerance=tolerance)
+    warmstart_delta, warmstart_reward, warmstart_time, switch_step = bundle_RL_warmstart(
+        warmstart_env, model, warmstart_master, logger,
+        warmstart_threshold=warmstart_threshold,
+        patience=warmstart_patience
+    )
+    logger.info(f"Warmstart - 切换步骤: {switch_step}")
     
     # ===============================
-    # 8️⃣ 绘制对比结果
+    # 8️⃣ 保存结果到 JSON 文件
     # ===============================
-    plot_results(rl_delta, rl_reward, baseline_delta)
+    save_results(
+        experiment_name, rl_delta, rl_reward, rl_time,
+        baseline_delta, baseline_time,
+        warmstart_delta, warmstart_time, switch_step
+    )
+    
+    # ===============================
+    # 9️⃣ 绘制对比结果
+    # ===============================
+    plot_results(rl_delta, rl_reward, baseline_delta, warmstart_delta, switch_step)
 
 def loadConfig(i, t, n):
 
@@ -228,6 +387,13 @@ def loadConfig(i, t, n):
 
 
 if __name__ == "__main__":
-    experiment_name = "multi_config_exp_01"  # 实验名称，用于区分不同实验
-    config = loadConfig(i=1, t=10, n=5)
-    main(experiment_name,  config)
+    experiment_name = "multi_config_exp_02"  # 实验名称，用于区分不同实验
+    config = loadConfig(i=2, t=12, n=3)
+    # 可自定义参数：tolerance(收敛阈值), warmstart_threshold(切换阈值), warmstart_patience(连续次数)
+    main(
+        experiment_name, 
+        config,
+        tolerance=100,
+        warmstart_threshold=100,
+        warmstart_patience=2
+    )

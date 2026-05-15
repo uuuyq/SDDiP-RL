@@ -2,7 +2,7 @@ from bundle_RL.bundle_env import BundleDualEnv
 from bundle_RL.lag_problem import MasterProblem
 
 
-def create_env(logger, config):
+def create_env(logger, config, tolerance=1e-5):
     """创建单个环境（使用 config 中的 n 参数）"""
 
     env = BundleDualEnv(
@@ -12,6 +12,5 @@ def create_env(logger, config):
         state_dim=config.N_VARS,
         K=20
     )
-    master = MasterProblem(logger, config.N_VARS, tolerance=1e-5)
-
+    master = MasterProblem(logger, config.N_VARS, tolerance=tolerance)
     return env, master
