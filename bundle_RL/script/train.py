@@ -38,9 +38,9 @@ class SimpleBundleExtractor(BaseFeaturesExtractor):
 
 def get_experiment_dirs(experiment_name):
     """获取实验相关的目录路径"""
-    experiment_dir = os.path.join("../train_result", "model", experiment_name)
+    experiment_dir = os.path.join("train_result", "model", experiment_name)
     checkpoints_dir = os.path.join(experiment_dir, "checkpoints")
-    tensorboard_dir = os.path.join("../train_result", "ppo_tensorboard", experiment_name)
+    tensorboard_dir = os.path.join("train_result", "ppo_tensorboard", experiment_name)
     save_dir = os.path.join(experiment_dir, "save")
 
     return experiment_dir, checkpoints_dir, tensorboard_dir, save_dir

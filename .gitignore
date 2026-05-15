@@ -1,2 +1,14 @@
 /bundle_RL/train_result/
 /bundle_RL/test_result/
+/bundle_fast/benchmark/
+/bundle_fast/fast_cut_gen/
+/bundle_fast/fast_g_gen/
+/bundle_fast/log/
+/.claude/
+/bundle_RL/configs/
+/bundle_RL/doc/
+/log/
+/CLAUDE.md
+/lag_without_binary.log
+/trial_point.log
+
