@@ -32,14 +32,14 @@ def bundle_baseline(logger, config, tolerance=1e-5):
         
         delta_history.append(delta)
         time_history.append(end_time - start_time)
-        logger.info(f"Baseline - delta: {delta}, time: {time_history[-1]:.4f}s")
+        logger.info(f"Baseline - rel_gap: {delta:.6e}, time: {time_history[-1]:.4f}s")
         if stop_flag:
             break
     
     return delta_history, time_history
 
 
-def bundle_RL(env, model, master, logger):
+def bundle_RL(env, model, master, logger, deterministic):
     delta_history = []
     reward_history = []
     time_history = []
@@ -59,7 +59,7 @@ def bundle_RL(env, model, master, logger):
         master.add_cut(x_new, f_new, g_new)
         ub, _ = master.solve_master()
         _, delta, stop_flag = master.update_strategy(x_new, f_new, g_new, ub=ub)
-        action, _ = model.predict(obs, deterministic=True)
+        action, _ = model.predict(obs, deterministic=deterministic)
         state, reward, terminated, truncated, info = env.step(action)
         end_time = time.time()
         
@@ -67,7 +67,7 @@ def bundle_RL(env, model, master, logger):
         delta_history.append(delta)
         reward_history.append(reward)
         time_history.append(end_time - start_time)
-        logger.info(f"delta: {delta}, reward: {reward}, time: {time_history[-1]:.4f}s")
+        logger.info(f"RL - rel_gap: {delta:.6e}, reward: {reward:.6e}, time: {time_history[-1]:.4f}s")
         
         # 获取新的子问题得到的cut
         sub_result = env.bundle[-1]
@@ -77,7 +77,7 @@ def bundle_RL(env, model, master, logger):
         
         # 添加终止条件（与baseline保持一致）
         if stop_flag:
-            logger.info(f"RL Model - 满足终止条件，提前停止，delta: {delta}")
+            logger.info(f"RL Model - 满足终止条件，提前停止，rel_gap: {delta:.6e}")
             break
 
     logger.info("Test finished successfully.")
@@ -85,7 +85,7 @@ def bundle_RL(env, model, master, logger):
     return delta_history, reward_history, time_history
 
 
-def bundle_RL_warmstart(env, model, master, logger, warmstart_threshold=1e-6, patience=3):
+def bundle_RL_warmstart(env, model, master, logger, warmstart_threshold=1e-6, patience=3, deterministic=True):
     """
     Warm-start 测试方法：当 RL 的 delta 不再发生变化时，切换成 baseline 的计算方式
     
@@ -125,14 +125,14 @@ def bundle_RL_warmstart(env, model, master, logger, warmstart_threshold=1e-6, pa
         master.add_cut(x_new, f_new, g_new)
         ub, _ = master.solve_master()
         _, delta, stop_flag = master.update_strategy(x_new, f_new, g_new, ub=ub)
-        action, _ = model.predict(obs, deterministic=True)
+        action, _ = model.predict(obs, deterministic=deterministic)
         state, reward, terminated, truncated, info = env.step(action)
         end_time = time.time()
         
         delta_history.append(delta)
         reward_history.append(reward)
         time_history.append(end_time - start_time)
-        logger.info(f"[RL] delta: {delta}, reward: {reward}, time: {time_history[-1]:.4f}s")
+        logger.info(f"[RL] rel_gap: {delta:.6e}, reward: {reward:.6e}, time: {time_history[-1]:.4f}s")
         
         sub_result = env.bundle[-1]
         x_new = sub_result["pi"]
@@ -141,17 +141,19 @@ def bundle_RL_warmstart(env, model, master, logger, warmstart_threshold=1e-6, pa
         
         # 检查是否满足终止条件
         if stop_flag:
-            logger.info(f"Warmstart - RL阶段满足终止条件，delta: {delta}")
+            logger.info(f"Warmstart - RL阶段满足终止条件，rel_gap: {delta:.6e}")
             return delta_history, reward_history, time_history, switch_step
         
-        # 检查 delta 是否不再变化（用于判断是否切换到 baseline）
+        # 检查 rel_gap 是否不再变化（用于判断是否切换到 baseline）
         if len(delta_history) >= 2:
-            delta_change = abs(delta_history[-1] - delta_history[-2])
-            if delta_change < warmstart_threshold:
+            rel_gap_change = abs(delta_history[-1] - delta_history[-2])
+            rel_gap_ref = max(abs(delta_history[-1]), 1)
+            rel_gap_relative_change = rel_gap_change / rel_gap_ref
+            if rel_gap_relative_change < warmstart_threshold:
                 consecutive_small_changes += 1
-                logger.info(f"Warmstart - delta变化: {delta_change}, 连续次数: {consecutive_small_changes}")
+                logger.info(f"Warmstart - rel_gap相对变化: {rel_gap_relative_change:.6e}, 连续次数: {consecutive_small_changes}")
                 if consecutive_small_changes >= patience:
-                    logger.info(f"Warmstart - delta连续{patience}次变化小于阈值，切换到baseline模式")
+                    logger.info(f"Warmstart - rel_gap相对变化连续{patience}次小于阈值，切换到baseline模式")
                     switch_step = step + 1
                     break
             else:
@@ -170,10 +172,10 @@ def bundle_RL_warmstart(env, model, master, logger, warmstart_threshold=1e-6, pa
             
             delta_history.append(delta)
             time_history.append(end_time - start_time)
-            logger.info(f"[Baseline] delta: {delta}, time: {time_history[-1]:.4f}s")
+            logger.info(f"[Baseline] rel_gap: {delta:.6e}, time: {time_history[-1]:.4f}s")
             
             if stop_flag:
-                logger.info(f"Warmstart - Baseline阶段满足终止条件，delta: {delta}")
+                logger.info(f"Warmstart - Baseline阶段满足终止条件，rel_gap: {delta:.6e}")
                 break
 
     logger.info("Warmstart test finished successfully.")
@@ -276,7 +278,7 @@ def plot_results(rl_delta, rl_reward, baseline_delta, warmstart_delta=None, swit
     plt.tight_layout()
     plt.show()
 
-def main(experiment_name, config, tolerance=1e-5, warmstart_threshold=1e-6, warmstart_patience=3):
+def main(experiment_name, config, tolerance=1e-5, warmstart_threshold=1e-6, warmstart_patience=3, deterministic=True):
     """加载最新训练的模型并进行测试"""
     import os
     from stable_baselines3 import PPO
@@ -339,7 +341,7 @@ def main(experiment_name, config, tolerance=1e-5, warmstart_threshold=1e-6, warm
     # ===============================
     logger.info("==== Running RL Model ====")
     test_env, test_master = create_env(logger, config, tolerance=tolerance)
-    rl_delta, rl_reward, rl_time = bundle_RL(test_env, model, test_master, logger)
+    rl_delta, rl_reward, rl_time = bundle_RL(test_env, model, test_master, logger, deterministic)
     
     # ===============================
     # 7️⃣ 使用 Warmstart 模式求解（RL + Baseline 混合）
@@ -349,7 +351,8 @@ def main(experiment_name, config, tolerance=1e-5, warmstart_threshold=1e-6, warm
     warmstart_delta, warmstart_reward, warmstart_time, switch_step = bundle_RL_warmstart(
         warmstart_env, model, warmstart_master, logger,
         warmstart_threshold=warmstart_threshold,
-        patience=warmstart_patience
+        patience=warmstart_patience,
+        deterministic=deterministic
     )
     logger.info(f"Warmstart - 切换步骤: {switch_step}")
     
@@ -388,12 +391,13 @@ def loadConfig(i, t, n):
 
 if __name__ == "__main__":
     experiment_name = "multi_config_exp_02"  # 实验名称，用于区分不同实验
-    config = loadConfig(i=2, t=12, n=3)
+    config = loadConfig(i=2, t=11, n=3)
     # 可自定义参数：tolerance(收敛阈值), warmstart_threshold(切换阈值), warmstart_patience(连续次数)
     main(
         experiment_name, 
         config,
-        tolerance=100,
-        warmstart_threshold=100,
-        warmstart_patience=2
+        tolerance=1e-2,
+        warmstart_threshold=1e-2,
+        warmstart_patience=2,
+        deterministic=True,  # 每次选择最优的动作
     )

@@ -308,15 +308,15 @@ class MasterProblem:
             # 此时初始化，还没有进行master求解，没有ub
             return None, None, None
 
-        # 计算预测增益 delta  上界-best下界
-        delta = max(ub - self.f_best, 0)
+        # 计算相对误差作为终止条件: rel_gap = (ub - f_best) / max(|f_best|, 1)
+        rel_gap = (ub - self.f_best) / max(abs(self.f_best), 1)
+        delta = rel_gap
 
         # Check stopping criterion
-        # self.logger.info(f"delta: {delta} tolerance: {self.tolerance}")
-        if delta <= self.tolerance:
+        # self.logger.info(f"rel_gap: {rel_gap} tolerance: {self.tolerance}")
+        if rel_gap <= self.tolerance:
             stop_flag = True
-            self.logger.info(f"算法已满足终止条件, delta: {delta} tolerance: {self.tolerance}")
-            # TODO 需要停止？
+            self.logger.info(f"算法已满足终止条件, rel_gap: {rel_gap:.6e} tolerance: {self.tolerance:.6e}")
 
         # 判定 Serious Step
         serious_step = (f_new - self.f_best) >= self.m_l * delta

@@ -39,7 +39,7 @@ class SimpleBundleExtractor(BaseFeaturesExtractor):
 
 
 
-def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000, checkpoint_freq=5000, experiment_name="default"):
+def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000, checkpoint_freq=5000, experiment_name="default", ent_coef=0):
     """
     训练函数
     
@@ -66,7 +66,7 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
         "learning_rate": 3e-4,
         "n_steps": 512,  # 建议比 128 稍大，PPO 更稳定
         "batch_size": 128,
-        "ent_coef": 0,  # 开启微量探索
+        "ent_coef": ent_coef,  # 开启微量探索
         "total_timesteps": total_timesteps,  # 训练总步数
         "features_dim": 128,  # 特征维度
         "net_arch": dict(pi=[128, 128], vf=[128, 128])  # 策略网络和价值网络结构

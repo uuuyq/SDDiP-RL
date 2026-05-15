@@ -37,7 +37,8 @@ def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_0
                 logger=logger,
                 model=model,
                 total_timesteps=steps_per_config_per_round,
-                experiment_name=experiment_name
+                experiment_name=experiment_name,
+                ent_coef=0.01  # 尝试微量探索
             )
 
     return model
@@ -137,7 +138,7 @@ def create_config_list():
 
 
 if __name__ == "__main__":
-    experiment_name = "multi_config_exp_02"  # 实验名称，用于区分不同实验
+    experiment_name = "multi_config_exp_03"  # 实验名称，用于区分不同实验
     main(experiment_name)
     
 
