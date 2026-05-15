@@ -1,7 +1,5 @@
-import json
 import logging
 import os
-import pickle
 from pathlib import Path
 from time import time
 
@@ -10,7 +8,7 @@ import numpy as np
 from scipy import linalg, stats
 
 from sddip.sddip import common
-from bundle_RL.config import BundleConfig
+from bundle_RL.script.config import BundleConfig
 
 CONFIG_STORAGE = {}
 CONFIG_JSON_PATH = r"D:\tools\workspace_pycharm\SDDiP-RL\bundle_RL\configs\configs.json"

@@ -1,5 +1,5 @@
-from bundle_RL.bundle_env import BundleDualEnv
-from bundle_RL.lag_problem import MasterProblem
+from bundle_RL.script.bundle_env import BundleDualEnv
+from bundle_RL.script.lag_problem import MasterProblem
 
 
 def create_env(logger, config, tolerance=1e-5):

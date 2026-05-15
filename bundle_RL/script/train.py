@@ -53,9 +53,9 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
         experiment_name: 实验名称，用于区分不同实验，训练结果将保存到 model/{experiment_name}/ 目录下
     """
     # 创建实验文件夹结构
-    experiment_dir = os.path.join("model", experiment_name)
+    experiment_dir = os.path.join("../model", experiment_name)
     checkpoints_dir = os.path.join(experiment_dir, "checkpoints")
-    tensorboard_dir = os.path.join("res", "ppo_tensorboard", experiment_name)
+    tensorboard_dir = os.path.join("../res", "ppo_tensorboard", experiment_name)
     
     os.makedirs(experiment_dir, exist_ok=True)
     os.makedirs(checkpoints_dir, exist_ok=True)

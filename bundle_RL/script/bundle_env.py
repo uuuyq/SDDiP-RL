@@ -1,8 +1,6 @@
 import gymnasium as gym
 import numpy as np
-from bundle_RL.lag_problem import SubProblem
-from bundle_RL.features import bundle_features
-
+from bundle_RL.script.lag_problem import SubProblem
 
 """
 state：当前的所有cuts，当前的pi值

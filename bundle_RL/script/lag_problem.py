@@ -1,13 +1,11 @@
 import copy
 import logging
-from pathlib import Path
 
 import numpy as np
 import gurobipy as gp
-from gurobipy import GRB
 
-from bundle_RL.logger import get_logger
-from sddip.sddip import ucmodelclassical, parameters
+from bundle_RL.script.logger import get_logger
+from sddip.sddip import ucmodelclassical
 
 logger = logging.getLogger(__name__)
 
@@ -372,7 +370,7 @@ class MasterProblem:
 
 
 def bundle_test():
-    from bundle_RL.config import get_default_config
+    from bundle_RL.script.config import get_default_config
     
     logger = get_logger("log/bundle_solver.log")
 
