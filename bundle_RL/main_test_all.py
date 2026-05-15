@@ -5,14 +5,13 @@ from pathlib import Path
 
 import numpy as np
 from matplotlib import pyplot as plt
+from stable_baselines3 import PPO
 
 from bundle_RL.config import BundleConfig
 from bundle_RL.script.logger import get_logger
 from bundle_RL.script.utils import create_env
-from bundle_RL.script.test import bundle_baseline
-
-
-
+from bundle_RL.script.test import bundle_baseline, bundle_RL, bundle_RL_warmstart
+from bundle_RL.script.train import SimpleBundleExtractor
 
 
 def compute_relative_gap(baseline_f_best, rl_f_best, rl_warmstart_f_best):
@@ -20,21 +19,11 @@ def compute_relative_gap(baseline_f_best, rl_f_best, rl_warmstart_f_best):
     计算相对 gap: rel_gap = (LR - B) / LR
     LR = baseline收敛后的最终 f_best（最优下界）
     B = 当前方法在各步的 f_best
-
-    Args:
-        baseline_f_best: baseline 的 f_best 历史
-        rl_f_best: RL 的 f_best 历史
-        rl_warmstart_f_best: RL warmstart 的 f_best 历史
-
-    Returns:
-        rel_gap_dict: 包含三种方法的相对 gap 历史
     """
     lr = baseline_f_best[-1] if len(baseline_f_best) > 0 else 1.0
 
     if abs(lr) < 1e-12:
         lr = 1.0
-
-    max_steps = max(len(baseline_f_best), len(rl_f_best), len(rl_warmstart_f_best))
 
     rel_gap_dict = {
         "baseline": [],
@@ -55,15 +44,7 @@ def compute_relative_gap(baseline_f_best, rl_f_best, rl_warmstart_f_best):
 
 
 def compute_average_results(all_results):
-    """
-    对所有 config 的结果求均值
-
-    Args:
-        all_results: 所有 config 的结果列表
-
-    Returns:
-        avg_results: 平均结果（按迭代步长）
-    """
+    """对所有 config 的结果求均值"""
     max_steps = 0
     for result in all_results:
         for method in ["baseline", "rl", "rl_warmstart"]:
@@ -180,64 +161,80 @@ def save_results_to_json(all_results, save_dir):
     print(f"Results saved to {results_file}")
 
 
-def run_test_for_configs(configs, config_info_list, experiment_name, logger, tolerance=1e-5, warmstart_threshold=1e-4, patience=3):
+def load_latest_model(train_experiment_name, logger):
+    """加载最新训练的模型"""
+    model_dir = os.path.join("train_result", "model", train_experiment_name, "save")
+
+    if not os.path.exists(model_dir):
+        error_msg = f"模型目录不存在: {model_dir}"
+        logger.error(error_msg)
+        raise FileNotFoundError(error_msg)
+
+    model_files = [f for f in os.listdir(model_dir) 
+                   if f.startswith("ppo_bundle_") and f.endswith(".zip")]
+
+    if not model_files:
+        error_msg = f"在 {model_dir} 中未找到模型文件"
+        logger.error(error_msg)
+        raise FileNotFoundError(error_msg)
+
+    latest_model = sorted(model_files, reverse=True)[0]
+    model_path = os.path.join(model_dir, latest_model)
+    logger.info(f"加载模型: {model_path}")
+
+    try:
+        model = PPO.load(
+            model_path,
+            custom_objects={
+                "SimpleBundleExtractor": SimpleBundleExtractor,
+                "policy_kwargs": dict(
+                    features_extractor_class=SimpleBundleExtractor,
+                    features_extractor_kwargs=dict(features_dim=128),
+                    net_arch=dict(pi=[128, 128], vf=[128, 128])
+                )
+            }
+        )
+        return model
+    except Exception as e:
+        error_msg = f"模型加载失败: {e}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
+
+
+def run_test_for_configs(configs, config_info_list, experiment_name, logger, model,
+                         tolerance=1e-5, warmstart_threshold=1e-4, patience=3):
     """
     对一组 config 运行测试，计算相对 gap
-
-    Args:
-        configs: config 列表
-        config_info_list: config 信息列表（包含 i, t, n）
-        experiment_name: 实验名称（用于保存结果）
-        logger: 日志记录器
-        tolerance: 收敛阈值
-        warmstart_threshold: warmstart 切换阈值
-        patience: warmstart 耐心值
-
-    Returns:
-        all_results: 所有 config 的测试结果
     """
     all_results = []
 
     for idx, (config, config_info) in enumerate(zip(configs, config_info_list)):
         logger.info(f"=== Testing config {idx+1}/{len(configs)}: i={config_info['i']}, t={config_info['t']}, n={config_info['n']} ===")
 
+        # 1. 运行 baseline
         logger.info("Running Baseline...")
         baseline_delta, baseline_time, baseline_ub, baseline_f_best = bundle_baseline(logger, config, tolerance=tolerance)
 
+        # 2. 运行 RL
         logger.info("Running RL...")
         test_env, test_master = create_env(logger, config, tolerance=tolerance)
-        try:
-            rl_delta = baseline_delta.copy()
-            rl_time = baseline_time.copy()
-            rl_ub = baseline_ub.copy()
-            rl_f_best = baseline_f_best.copy()
-            rl_switch_step = None
-        except Exception as e:
-            logger.error(f"RL test failed: {e}")
-            rl_delta = []
-            rl_time = []
-            rl_ub = []
-            rl_f_best = []
-            rl_switch_step = None
+        rl_delta, rl_reward, rl_time, rl_ub, rl_f_best = bundle_RL(
+            test_env, model, test_master, logger, deterministic=True)
+        rl_switch_step = None
 
+        # 3. 运行 RL Warmstart
         logger.info("Running RL Warmstart...")
-        test_env_ws, test_master_ws = create_env(logger, config, tolerance=tolerance)
-        try:
-            ws_delta = baseline_delta.copy()
-            ws_time = baseline_time.copy()
-            ws_ub = baseline_ub.copy()
-            ws_f_best = baseline_f_best.copy()
-            ws_switch_step = None
-        except Exception as e:
-            logger.error(f"RL warmstart test failed: {e}")
-            ws_delta = []
-            ws_time = []
-            ws_ub = []
-            ws_f_best = []
-            ws_switch_step = None
+        warmstart_env, warmstart_master = create_env(logger, config, tolerance=tolerance)
+        ws_delta, ws_reward, ws_time, ws_ub, ws_f_best, ws_switch_step = bundle_RL_warmstart(
+            warmstart_env, model, warmstart_master, logger,
+            warmstart_threshold=warmstart_threshold,
+            patience=patience,
+            deterministic=True)
 
+        # 4. 计算相对 gap
         rel_gap_dict, lr = compute_relative_gap(baseline_f_best, rl_f_best, ws_f_best)
 
+        # 5. 保存结果
         result = {
             "config_info": config_info,
             "lr": lr,
@@ -272,22 +269,21 @@ def run_test_for_configs(configs, config_info_list, experiment_name, logger, tol
     return all_results
 
 
-def main(experiment_name, i=2, tolerance=1e-5, warmstart_threshold=1e-4, patience=3):
-    """
-    主测试函数
+def main(experiment_name, train_experiment_name=None, i=2, tolerance=1e-5, warmstart_threshold=1e-4, patience=3):
+    """主测试函数"""
+    if train_experiment_name is None:
+        train_experiment_name = experiment_name
 
-    Args:
-        experiment_name: 实验名称（用于创建结果文件夹）
-        i: 迭代次数索引
-        tolerance: 收敛阈值
-        warmstart_threshold: warmstart 切换阈值
-        patience: warmstart 耐心值
-    """
     save_dir = os.path.join("test_result", experiment_name)
     os.makedirs(save_dir, exist_ok=True)
 
     logger = get_logger(os.path.join(save_dir, "test_all.log"))
 
+    # 加载训练好的模型（失败时直接抛出异常）
+    logger.info(f"加载模型: {train_experiment_name}")
+    model = load_latest_model(train_experiment_name, logger)
+
+    # 收集 configs
     logger.info(f"Collecting configs for i={i}...")
     configs, config_info_list = collect_configs(i=i)
     logger.info(f"Loaded {len(configs)} configs")
@@ -296,23 +292,28 @@ def main(experiment_name, i=2, tolerance=1e-5, warmstart_threshold=1e-4, patienc
         logger.error("No configs found!")
         return
 
+    # 运行测试
     logger.info("Running tests for all configs...")
     all_results = run_test_for_configs(
         configs,
         config_info_list,
         experiment_name,
         logger,
+        model,
         tolerance=tolerance,
         warmstart_threshold=warmstart_threshold,
         patience=patience
     )
 
+    # 计算平均结果
     logger.info("Computing average results...")
     avg_results = compute_average_results(all_results)
 
+    # 保存结果
     logger.info("Saving results...")
     save_results_to_json(all_results, save_dir)
 
+    # 绘制图表
     logger.info("Plotting results...")
     plot_results(avg_results, save_dir)
 
@@ -340,7 +341,8 @@ def collect_configs(i=2):
 
 if __name__ == "__main__":
     main(
-        experiment_name="multi_config_test_exp_01",
+        experiment_name="multi_config_all_exp_01",        # 测试结果保存目录名
+        train_experiment_name="multi_config_exp_02",     # 训练模型所在的实验名
         i=2,
         tolerance=1e-3,
         warmstart_threshold=0.01,

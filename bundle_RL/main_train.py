@@ -32,7 +32,8 @@ def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_0
             env, _ = create_env(logger, config)
 
             # 训练（如果 model 已存在则继续训练）
-            model = train(
+            # train() 返回 (model, remaining_timesteps, total_trained_steps)，只取模型
+            model, _, _ = train(
                 env=env,
                 logger=logger,
                 model=model,
