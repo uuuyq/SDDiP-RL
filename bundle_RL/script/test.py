@@ -154,17 +154,33 @@ def bundle_RL_warmstart(env, model, master, logger, warmstart_threshold=1e-6, pa
             logger.info(f"Warmstart - RL阶段满足终止条件，rel_gap: {delta:.6e}")
             return delta_history, reward_history, time_history, ub_history, f_best_history, switch_step
         
-        # 检查 rel_gap 是否不再变化（用于判断是否切换到 baseline）
+        # 检查 rel_gap 是否不再变化或反向上升（用于判断是否切换到 baseline）
         if len(delta_history) >= 2:
             rel_gap_change = abs(delta_history[-1] - delta_history[-2])
             rel_gap_ref = max(abs(delta_history[-1]), 1)
             rel_gap_relative_change = rel_gap_change / rel_gap_ref
-            if rel_gap_relative_change < warmstart_threshold:
+            
+            # 判断条件：gap反向上升 OR 下降不明显
+            gap_increased = delta_history[-1] > delta_history[-2]
+            gap_not_decreasing = rel_gap_relative_change < warmstart_threshold
+            
+            if gap_increased or gap_not_decreasing:
                 consecutive_small_changes += 1
-                logger.info(f"Warmstart - rel_gap相对变化: {rel_gap_relative_change:.6e}, 连续次数: {consecutive_small_changes}")
+                if gap_increased:
+                    logger.info(f"Warmstart - rel_gap反向上升: {delta_history[-2]:.6e} -> {delta_history[-1]:.6e}, 连续次数: {consecutive_small_changes}")
+                else:
+                    logger.info(f"Warmstart - rel_gap相对变化: {rel_gap_relative_change:.6e}, 连续次数: {consecutive_small_changes}")
+                
                 if consecutive_small_changes >= patience:
-                    logger.info(f"Warmstart - rel_gap相对变化连续{patience}次小于阈值，切换到baseline模式")
+                    logger.info(f"Warmstart - rel_gap连续{patience}次反向上升或变化过小，切换到baseline模式")
                     switch_step = step + 1
+                    # 使用 env.bundle[-2] 的结果，因为 bundle[-1] 的结果不好
+                    if len(env.bundle) >= 2:
+                        sub_result = env.bundle[-2]
+                        x_new = sub_result["pi"]
+                        f_new = sub_result["phi"]
+                        g_new = sub_result["g"]
+                        logger.info(f"Warmstart - 使用 bundle[-2] 的结果作为 baseline 起点")
                     break
             else:
                 consecutive_small_changes = 0

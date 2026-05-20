@@ -82,6 +82,16 @@ def plot_results(avg_results, save_dir):
     """绘制收敛对比图"""
     plt.figure(figsize=(12, 5))
 
+    # 计算 y 轴范围
+    all_rel_gaps = (avg_results["baseline"]["rel_gap"] + 
+                    avg_results["rl"]["rel_gap"] + 
+                    avg_results["rl_warmstart"]["rel_gap"])
+    if all_rel_gaps:
+        y_min = min(all_rel_gaps)
+        y_max = max(all_rel_gaps) * 1.1  # 留出 10% 的上边距
+    else:
+        y_min, y_max = 0, 1
+
     plt.subplot(1, 2, 1)
     plt.plot(avg_results["baseline"]["rel_gap"], marker='s', color='r', label='Baseline')
     plt.plot(avg_results["rl"]["rel_gap"], marker='o', color='b', label='RL')
@@ -91,7 +101,7 @@ def plot_results(avg_results, save_dir):
     plt.title('Convergence Comparison (Relative Gap)')
     plt.grid(True, alpha=0.5)
     plt.legend()
-    plt.yscale('log')
+    plt.ylim(y_min, y_max)
 
     plt.subplot(1, 2, 2)
     baseline_cum_time = np.cumsum(avg_results["baseline"]["time"])
@@ -106,7 +116,7 @@ def plot_results(avg_results, save_dir):
     plt.title('Convergence vs Time')
     plt.grid(True, alpha=0.5)
     plt.legend()
-    plt.yscale('log')
+    plt.ylim(y_min, y_max)
 
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, 'convergence_comparison.png'))
@@ -342,7 +352,7 @@ def collect_configs(i=2):
 if __name__ == "__main__":
     main(
         experiment_name="multi_config_all_exp_01",        # 测试结果保存目录名
-        train_experiment_name="multi_config_exp_02",     # 训练模型所在的实验名
+        train_experiment_name="multi_config_exp_01",     # 训练模型所在的实验名
         i=2,
         tolerance=1e-3,
         warmstart_threshold=0.01,
