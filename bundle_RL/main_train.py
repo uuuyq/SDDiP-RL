@@ -46,10 +46,10 @@ def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_0
 
 
 def main(experiment_name):
-    log_dir = os.path.join("test_result", experiment_name)
+    log_dir = os.path.join("train_result", experiment_name)
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
-    logger = get_logger(os.path.join(log_dir, "bundle_env_train.test_result"))
+    logger = get_logger(os.path.join(log_dir, "bundle_env_train.log"))
     
     # ===============================
     # 2️⃣ 创建 config 列表

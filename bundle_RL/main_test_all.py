@@ -227,14 +227,14 @@ def run_test_for_configs(configs, config_info_list, experiment_name, logger, mod
 
         # 2. 运行 RL
         logger.info("Running RL...")
-        test_env, test_master = create_env(logger, config, tolerance=tolerance)
+        test_env, test_master = create_env(logger, config, tolerance=tolerance, verbose=True)  # 测试时启用详细日志
         rl_delta, rl_reward, rl_time, rl_ub, rl_f_best = bundle_RL(
             test_env, model, test_master, logger, deterministic=True)
         rl_switch_step = None
 
         # 3. 运行 RL Warmstart
         logger.info("Running RL Warmstart...")
-        warmstart_env, warmstart_master = create_env(logger, config, tolerance=tolerance)
+        warmstart_env, warmstart_master = create_env(logger, config, tolerance=tolerance, verbose=True)  # 测试时启用详细日志
         ws_delta, ws_reward, ws_time, ws_ub, ws_f_best, ws_switch_step = bundle_RL_warmstart(
             warmstart_env, model, warmstart_master, logger,
             warmstart_threshold=warmstart_threshold,

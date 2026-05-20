@@ -14,7 +14,7 @@ reward：pi对应的子问题最优解对应的目标函数值，求解的真实
 
 
 class BundleDualEnv(gym.Env):
-    def __init__(self, logger, config, n, state_dim, K):
+    def __init__(self, logger, config, n, state_dim, K, verbose=False):
         """
 
         :param logger: 日志器
@@ -22,6 +22,7 @@ class BundleDualEnv(gym.Env):
         :param n: realization 索引
         :param state_dim: cut中次梯度的维度
         :param K: 使用padding的方式，K代表最大的cuts数，同时也是输出的lambda维度
+        :param verbose: 是否输出详细日志（用于test模式）
         """
         super().__init__()
 
@@ -29,6 +30,8 @@ class BundleDualEnv(gym.Env):
         self.K = K
         self.state_dim = state_dim
         self.action_dim = K + 1  # 输出lambda以及步长
+        self.logger = logger
+        self.verbose = verbose
 
         # shape = (K, state_dim)
         # 使用Box，padding部分为0
@@ -123,6 +126,18 @@ class BundleDualEnv(gym.Env):
 
         self.t += 1
         terminated = self.t >= self.K
+        
+        # 记录每次step的输出值（仅在verbose模式下）
+        if self.verbose:
+            self.logger.debug(f"[BundleEnv Step {self.t}] "
+                             f"raw_lambda={raw_lambda},"
+                             # f"raw_lambda_sum={np.sum(raw_lambda):.4f}, "
+                             f"raw_eta={raw_eta:.4f}, "
+                             f"eta={eta:.4f}, "
+                             f"pi_norm={np.linalg.norm(self.pi):.6f}, "
+                             f"phi_new={phi_new:.6f}, "
+                             f"reward={reward:.6f}, "
+                             f"terminated={terminated}")
 
         return self._get_state(), reward, terminated, False, {}
 

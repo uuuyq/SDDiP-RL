@@ -169,14 +169,14 @@ def main(experiment_name, config, tolerance=1e-5, warmstart_threshold=1e-6, warm
     # 6️⃣ 使用 RL 模型求解
     # ===============================
     logger.info("==== Running RL Model ====")
-    test_env, test_master = create_env(logger, config, tolerance=tolerance)
+    test_env, test_master = create_env(logger, config, tolerance=tolerance, verbose=True)  # 测试时启用详细日志
     rl_delta, rl_reward, rl_time, rl_ub, rl_f_best = bundle_RL(test_env, model, test_master, logger, deterministic)
 
     # ===============================
     # 7️⃣ 使用 Warmstart 模式求解（RL + Baseline 混合）
     # ===============================
     logger.info("==== Running Warmstart Model ====")
-    warmstart_env, warmstart_master = create_env(logger, config, tolerance=tolerance)
+    warmstart_env, warmstart_master = create_env(logger, config, tolerance=tolerance, verbose=True)  # 测试时启用详细日志
     warmstart_delta, warmstart_reward, warmstart_time, warmstart_ub, warmstart_f_best, switch_step = bundle_RL_warmstart(
         warmstart_env, model, warmstart_master, logger,
         warmstart_threshold=warmstart_threshold,
