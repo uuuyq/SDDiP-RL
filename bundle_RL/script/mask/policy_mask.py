@@ -37,6 +37,10 @@ class BundleActorCriticPolicy(MultiInputActorCriticPolicy):
         self.hidden_dim = hidden_dim
         self.K = action_space.shape[0] - 1
 
+        kwargs.pop('features_extractor_class', None)
+        kwargs.pop('features_extractor_kwargs', None)
+        kwargs.pop('net_arch', None)
+
         super().__init__(
             observation_space,
             action_space,
@@ -52,15 +56,14 @@ class BundleActorCriticPolicy(MultiInputActorCriticPolicy):
         self._eta_beta = None
         self._valid_mask = None
 
-    def _build_actor(self, features_dim):
         self.shared_net = nn.Sequential(
-            nn.Linear(features_dim, self.hidden_dim),
+            nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
-            nn.Linear(self.hidden_dim, self.hidden_dim),
+            nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU()
         )
-        self.lambda_net = nn.Linear(self.hidden_dim, self.K)
-        self.eta_net = nn.Linear(self.hidden_dim, 2)
+        self.lambda_net = nn.Linear(hidden_dim, self.K)
+        self.eta_net = nn.Linear(hidden_dim, 2)
 
     def _get_distribution(self, obs):
         features = self.extract_features(obs)
@@ -94,11 +97,15 @@ class BundleActorCriticPolicy(MultiInputActorCriticPolicy):
 
         action = torch.cat([lambda_action, eta_action.unsqueeze(-1)], dim=-1)
 
+        log_prob_lambda = dirichlet_dist.log_prob(lambda_action)
+        log_prob_eta = beta_dist.log_prob(clamp_probs(eta_action / self.eta_scale))
+        log_prob = log_prob_lambda + log_prob_eta
+
         features = self.extract_features(obs)
         latent_vf = self.mlp_extractor.forward_critic(features)
         value = self.value_net(latent_vf)
 
-        return action, value
+        return action, value, log_prob
 
     def evaluate_actions(self, obs, actions):
         dirichlet_dist, beta_dist = self._get_distribution(obs)
@@ -111,6 +118,8 @@ class BundleActorCriticPolicy(MultiInputActorCriticPolicy):
         log_prob = log_prob_lambda + log_prob_eta
 
         entropy_lambda = dirichlet_dist.entropy()
+        entropy_lambda = entropy_lambda.clamp(max=100.0)
+        
         entropy_eta = beta_dist.entropy()
         entropy = entropy_lambda + entropy_eta
 

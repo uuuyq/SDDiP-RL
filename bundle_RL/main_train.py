@@ -4,9 +4,9 @@ from pathlib import Path
 from bundle_RL.config import BundleConfig
 from bundle_RL.script.logger import get_logger
 from bundle_RL.script.utils import create_env
-from bundle_RL.script.mask.train import train
 
-def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_000, experiment_name="multi_config_exp"):
+
+def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_000, experiment_name="multi_config_exp", ent_coef=0):
     """
     交错训练函数：在多个 config 之间交替训练
 
@@ -39,13 +39,13 @@ def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_0
                 model=model,
                 total_timesteps=steps_per_config_per_round,
                 experiment_name=experiment_name,
-                ent_coef=0.01  # 尝试微量探索
+                ent_coef=ent_coef  # 尝试微量探索
             )
 
     return model
 
 
-def main(experiment_name):
+def main(experiment_name, ent_coef):
     log_dir = os.path.join("train_result", experiment_name)
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
@@ -66,7 +66,8 @@ def main(experiment_name):
         configs=train_configs,
         rounds=3,
         steps_per_config_per_round=20_000,
-        experiment_name=experiment_name
+        experiment_name=experiment_name,
+        ent_coef=ent_coef
     )
     
 
@@ -85,8 +86,9 @@ def create_config_list():
 
 
 if __name__ == "__main__":
-    experiment_name = "multi_config_exp_03"  # 实验名称，用于区分不同实验
-    main(experiment_name)
+    from bundle_RL.script.mask.train import train
+    experiment_name = "multi_config_exp_05"  # 实验名称，用于区分不同实验
+    main(experiment_name, ent_coef=0)
     
 
 
