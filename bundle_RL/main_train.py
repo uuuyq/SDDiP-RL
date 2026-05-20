@@ -4,7 +4,7 @@ from pathlib import Path
 from bundle_RL.config import BundleConfig
 from bundle_RL.script.logger import get_logger
 from bundle_RL.script.utils import create_env
-from bundle_RL.script.train import train
+from bundle_RL.script.mask.train import train
 
 def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_000, experiment_name="multi_config_exp"):
     """

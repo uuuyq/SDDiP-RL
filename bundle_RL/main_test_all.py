@@ -11,7 +11,7 @@ from bundle_RL.config import BundleConfig
 from bundle_RL.script.logger import get_logger
 from bundle_RL.script.utils import create_env
 from bundle_RL.script.test import bundle_baseline, bundle_RL, bundle_RL_warmstart
-from bundle_RL.script.train import SimpleBundleExtractor
+from bundle_RL.script.mask.train import SimpleBundleExtractor
 
 
 def compute_relative_gap(baseline_f_best, rl_f_best, rl_warmstart_f_best):

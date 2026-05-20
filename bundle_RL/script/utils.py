@@ -1,4 +1,4 @@
-from bundle_RL.script.bundle_env import BundleDualEnv
+from bundle_RL.script.mask.bundle_env_mask import BundleDualEnv
 from bundle_RL.script.lag_problem import MasterProblem
 
 

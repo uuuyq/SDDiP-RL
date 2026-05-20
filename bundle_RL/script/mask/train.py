@@ -2,38 +2,10 @@ import csv
 import os
 import re
 from datetime import datetime
-import torch
-import torch.nn as nn
 from stable_baselines3 import PPO
-from stable_baselines3.common.policies import MultiInputActorCriticPolicy
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
+from bundle_RL.script.mask.policy_mask import BundleActorCriticPolicy, SimpleBundleExtractor
 
-class SimpleBundleExtractor(BaseFeaturesExtractor):
-    def __init__(self, observation_space, features_dim=128):
-        super().__init__(observation_space, features_dim)
-
-        cuts_shape = observation_space["cuts"].shape
-        pi_shape = observation_space["pi"].shape
-
-        self.cuts_dim = cuts_shape[0] * cuts_shape[1]
-        self.pi_dim = pi_shape[0]
-
-        input_dim = self.cuts_dim + self.pi_dim
-
-        self.net = nn.Sequential(
-            nn.Linear(input_dim, 128),
-            nn.ReLU(),
-            nn.Linear(128, features_dim),
-            nn.ReLU(),
-        )
-
-    def forward(self, observations):
-        cuts = observations["cuts"].view(observations["cuts"].shape[0], -1)
-        pi = observations["pi"]
-
-        x = torch.cat([cuts, pi], dim=1)
-        return self.net(x)
 
 
 def get_experiment_dirs(experiment_name):
@@ -84,16 +56,18 @@ def load_latest_checkpoint(experiment_name, env):
     print(f"找到 checkpoint: {latest_checkpoint}, 已训练步数: {steps}")
 
     policy_kwargs = dict(
-        features_extractor_class=SimpleBundleExtractor,
-        features_extractor_kwargs=dict(features_dim=128),
-        net_arch=dict(pi=[128, 128], vf=[128, 128])
-    )
+            eta_scale=1.0,
+            features_extractor_class=SimpleBundleExtractor,
+            features_extractor_kwargs=dict(features_dim=128),
+            net_arch=dict(pi=[128, 128], vf=[128, 128])
+        )
 
     model = PPO.load(
         checkpoint_path,
         env=env,
         custom_objects={
             "SimpleBundleExtractor": SimpleBundleExtractor,
+            "BundleActorCriticPolicy": BundleActorCriticPolicy,
             "policy_kwargs": policy_kwargs
         }
     )
@@ -138,10 +112,12 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
         "ent_coef": ent_coef,
         "total_timesteps": total_timesteps,
         "features_dim": 128,
-        "net_arch": dict(pi=[128, 128], vf=[128, 128])
+        "net_arch": dict(pi=[128, 128], vf=[128, 128]),
+        "eta_scale": 1.0
     }
 
     policy_kwargs = dict(
+        eta_scale=hparams["eta_scale"],
         features_extractor_class=SimpleBundleExtractor,
         features_extractor_kwargs=dict(features_dim=hparams["features_dim"]),
         net_arch=hparams["net_arch"]
@@ -156,7 +132,7 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
     if model is None:
         print(f"创建新模型，实验: {experiment_name}")
         model = PPO(
-            policy=MultiInputActorCriticPolicy,
+            policy=BundleActorCriticPolicy,
             env=env,
             policy_kwargs=policy_kwargs,
             verbose=1,

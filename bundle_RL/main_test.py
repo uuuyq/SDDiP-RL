@@ -9,7 +9,7 @@ from stable_baselines3 import PPO
 from bundle_RL.config import BundleConfig
 from bundle_RL.script.logger import get_logger
 from bundle_RL.script.test import bundle_baseline, bundle_RL, bundle_RL_warmstart
-from bundle_RL.script.train import SimpleBundleExtractor  # 导入自定义特征提取器
+from bundle_RL.script.mask.train import SimpleBundleExtractor  # 导入自定义特征提取器
 from bundle_RL.script.utils import create_env
 
 
