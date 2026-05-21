@@ -5,7 +5,7 @@ from bundle_RL.config import BundleConfig
 from bundle_RL.script.logger import get_logger
 
 
-def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_000, experiment_name="multi_config_exp", ent_coef=0):
+def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_000, experiment_name="multi_config_exp", ent_coef=0, K=20):
     """
     交错训练函数：在多个 config 之间交替训练
 
@@ -28,7 +28,7 @@ def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_0
             logger.info(f"  训练 Config {config_idx + 1}/{len(configs)} (realization {config.n})")
 
             # 创建当前 config 的环境（n 已包含在 config 中）
-            env, _ = create_env(logger, config)
+            env, _ = create_env(logger, config, K=K)
 
             # 训练（如果 model 已存在则继续训练）
             # train() 返回 (model, remaining_timesteps, total_trained_steps)，只取模型
@@ -44,7 +44,7 @@ def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_0
     return model
 
 
-def main(experiment_name, ent_coef):
+def main(experiment_name, ent_coef, K, steps_per_config_per_round, rounds):
     # 获取项目根目录的绝对路径
     project_root = Path(__file__).parent.absolute()
     
@@ -73,10 +73,11 @@ def main(experiment_name, ent_coef):
     model = train_interleaved(
         logger=logger,
         configs=train_configs,
-        rounds=3,
-        steps_per_config_per_round=20_000,
+        rounds=rounds,
+        steps_per_config_per_round=steps_per_config_per_round,
         experiment_name=experiment_name,
-        ent_coef=ent_coef
+        ent_coef=ent_coef,
+        K=K,
     )
     
     logger.info("训练完成！")
@@ -87,24 +88,24 @@ def create_config_list(config_dir):
     """从指定目录加载配置文件"""
     configs = []
     i = 1
-    for t in range(1, 24):
-        for n in range(6):
-            config_path = config_dir / f"config_{i}_{t}_{n}.pkl"
-            if config_path.exists():
-                configs.append(BundleConfig.from_pkl(config_path))
-            else:
-                print(f"警告：配置文件不存在: {config_path}")
+    t=5
+    for n in range(6):
+        config_path = config_dir / f"config_{i}_{t}_{n}.pkl"
+        if config_path.exists():
+            configs.append(BundleConfig.from_pkl(config_path))
+        else:
+            print(f"警告：配置文件不存在: {config_path}")
     return configs
 
 
 if __name__ == "__main__":
     # 动态导入（避免启动时的依赖问题）
-    from bundle_RL.script.default_feature.train import train
-    from bundle_RL.script.default_feature.utils import create_env
+    from bundle_RL.script.default.train import train
+    from bundle_RL.script.default.utils import create_env
     
     # 训练参数
-    experiment_name = "multi_config_exp_04"  # 实验名称，用于区分不同实验
+    experiment_name = "multi_config_exp_06"  # 实验名称，用于区分不同实验
     ent_coef = 0.001  # 探索系数
     
     # 启动训练
-    main(experiment_name, ent_coef)
+    main(experiment_name, ent_coef, K=20, steps_per_config_per_round=20_00, rounds=30)

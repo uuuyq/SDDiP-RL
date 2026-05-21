@@ -40,7 +40,8 @@ def get_experiment_dirs(experiment_name):
     """获取实验相关的目录路径"""
     # 获取当前文件所在目录的绝对路径，定位到 bundle_RL/
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    base_dir = os.path.dirname(current_dir)  # 上一级目录 bundle_RL/script/ -> bundle_RL/
+    # 上移两级目录：bundle_RL/script/default/ -> bundle_RL/script/ -> bundle_RL/
+    base_dir = os.path.dirname(os.path.dirname(current_dir))
     # 确保 base_dir 是 str 类型，避免类型检查警告
     base_dir = str(base_dir)
     experiment_dir = os.path.join(base_dir, "train_result", "model", experiment_name)
