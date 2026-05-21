@@ -10,9 +10,14 @@ from bundle_RL.script.mask.policy_mask import BundleActorCriticPolicy, SimpleBun
 
 def get_experiment_dirs(experiment_name):
     """获取实验相关的目录路径"""
-    experiment_dir = os.path.join("train_result", "model", experiment_name)
+    # 获取当前文件所在目录的绝对路径，定位到 bundle_RL/
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = os.path.dirname(current_dir)  # 上一级目录 bundle_RL/script/ -> bundle_RL/
+    # 确保 base_dir 是 str 类型，避免类型检查警告
+    base_dir = str(base_dir)
+    experiment_dir = os.path.join(base_dir, "train_result", "model", experiment_name)
     checkpoints_dir = os.path.join(experiment_dir, "checkpoints")
-    tensorboard_dir = os.path.join("train_result", "ppo_tensorboard", experiment_name)
+    tensorboard_dir = os.path.join(base_dir, "train_result", "ppo_tensorboard", experiment_name)
     save_dir = os.path.join(experiment_dir, "save")
 
     return experiment_dir, checkpoints_dir, tensorboard_dir, save_dir
@@ -145,6 +150,7 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
     else:
         print(f"继续训练已有模型，已训练步数: {existing_steps}")
         model.set_env(env)
+        model.tensorboard_log = tensorboard_dir  # 恢复tensorboard日志配置
 
     if existing_steps >= total_timesteps:
         msg = f"模型已训练 {existing_steps} 步（目标 {total_timesteps} 步），无需继续训练"
@@ -171,7 +177,7 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
         total_timesteps=remaining_timesteps,
         reset_num_timesteps=False,
         callback=checkpoint_callback,
-        tb_log_name=experiment_name
+        tb_log_name="log"  # 使用固定名称，避免在tensorboard_dir下创建额外子目录
     )
 
     total_trained_steps = existing_steps + remaining_timesteps

@@ -101,8 +101,6 @@ Y_TRIAL = [0.0, 131.60809087723158, 45.0]
 X_BS_TRIAL = [[-0.0, 0.0], [1.0, 1.0], [1.0, 1.0]]
 SOC_TRIAL = [0.0]
 
-# 数据路径
-PATH = Path(r"D:\tools\workspace_pycharm\sddip-main-zou\data\01_test_cases\case6ww\t06_n06")
 
 
 
@@ -115,5 +113,5 @@ def get_default_config() -> BundleConfig:
         Y_TRIAL=Y_TRIAL,
         X_BS_TRIAL=X_BS_TRIAL,
         SOC_TRIAL=SOC_TRIAL,
-        PATH=PATH
+        PATH=Path(r"D:\tools\workspace_pycharm\SDDiP-RL\data\01_test_cases\case6ww\t06_n06")
     )

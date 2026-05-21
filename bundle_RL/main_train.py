@@ -5,7 +5,6 @@ from bundle_RL.config import BundleConfig
 from bundle_RL.script.logger import get_logger
 
 
-
 def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_000, experiment_name="multi_config_exp", ent_coef=0):
     """
     交错训练函数：在多个 config 之间交替训练
@@ -46,21 +45,31 @@ def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_0
 
 
 def main(experiment_name, ent_coef):
-    log_dir = os.path.join("train_result", "model", experiment_name)
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-    logger = get_logger(os.path.join(log_dir, "bundle_env_train.log"))
+    # 获取项目根目录的绝对路径
+    project_root = Path(__file__).parent.absolute()
+    
+    # 日志目录
+    log_dir = project_root / "train_result" / "model" / experiment_name
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    logger = get_logger(str(log_dir / "bundle_env_train.log"))
+    logger.info(f"项目根目录: {project_root}")
     
     # ===============================
-    # 2️⃣ 创建 config 列表
+    # 创建 config 列表
     # ===============================
-    train_configs = create_config_list()
+    config_dir = project_root / "configs"
+    train_configs = create_config_list(config_dir)
     logger.info(f"加载了 {len(train_configs)} 个配置")
     
+    if not train_configs:
+        logger.error("没有找到任何配置文件！")
+        return
+    
     # ===============================
-    # 3️⃣ 交错训练
+    # 交错训练
     # ===============================
-    # 训练参数：3 轮 × 3 个 config × 每 config 20,000 步 = 180,000 总步数
+    # 训练参数：3 轮 × 多个 config × 每 config 20,000 步
     model = train_interleaved(
         logger=logger,
         configs=train_configs,
@@ -70,60 +79,32 @@ def main(experiment_name, ent_coef):
         ent_coef=ent_coef
     )
     
+    logger.info("训练完成！")
+    return model
 
 
-def create_config_list():
+def create_config_list(config_dir):
+    """从指定目录加载配置文件"""
     configs = []
     i = 1
     for t in range(1, 24):
         for n in range(6):
-            config_path = Path(f"./configs/config_{i}_{t}_{n}.pkl")
-            configs.append(BundleConfig.from_pkl(config_path))
-
+            config_path = config_dir / f"config_{i}_{t}_{n}.pkl"
+            if config_path.exists():
+                configs.append(BundleConfig.from_pkl(config_path))
+            else:
+                print(f"警告：配置文件不存在: {config_path}")
     return configs
 
 
-
-
 if __name__ == "__main__":
+    # 动态导入（避免启动时的依赖问题）
     from bundle_RL.script.default_feature.train import train
     from bundle_RL.script.default_feature.utils import create_env
-    experiment_name = "multi_config_exp_04"  # 实验名称，用于区分不同实验
-    main(experiment_name, ent_coef=0.001)
     
-
-
-
-"""
---------------------------------------------------
-[Rollout 阶段 - 业务表现]
-- ep_rew_mean: 
-    含义: 回合平均总奖励。
-    判断: 核心指标，必须长期看涨。如果不涨，检查 Reward 函数。
-- ep_len_mean: 
-    含义: 回合平均长度。
-    判断: 判定模型是“早死”还是“通关”。
-
-[Train 阶段 - 模型稳定性]
-- entropy_loss: 
-    含义: 策略熵（动作随机性）。
-    判断: 绝对值应缓慢下降。绝对值过快趋近0表示过早收敛（不再尝试新动作）；
-         一直很大表示模型在乱撞，学不到规律。
-- explained_variance: 
-    含义: 预测奖励的解释方差。
-    判断: 越接近 1.0 越好。如果小于 0，说明 Critic 网络预测得比瞎猜还差。
-- approx_kl: 
-    含义: 新旧策略的 KL 散度（策略更新步长）。
-    判断: 理想在 0.001 到 0.05 之间。若过大（如 >0.1），训练易崩溃。
-- clip_fraction: 
-    含义: 触发 PPO 截断机制的比例。
-    判断: 常用 0.1~0.2。如果过高，说明更新被频繁强制限制。
-- value_loss: 
-    含义: 价值函数误差。
-    判断: 代表评价员准不准，通常先升后降。
-
-[Time 阶段 - 性能]
-- fps: 
-    含义: 每秒处理步数。
-    判断: 衡量环境执行速度，主要受 env.step() 的复杂度影响。
-"""
+    # 训练参数
+    experiment_name = "multi_config_exp_04"  # 实验名称，用于区分不同实验
+    ent_coef = 0.001  # 探索系数
+    
+    # 启动训练
+    main(experiment_name, ent_coef)
