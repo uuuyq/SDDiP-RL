@@ -8,10 +8,10 @@ def create_env(logger, config, tolerance=1e-5, verbose=False, K=20):
     env = BundleDualEnv(
         logger=logger,
         config=config,
-        n=config.n,  # 直接使用 config 中的 realization 索引
+        n=config.n,
         state_dim=config.N_VARS,
-        K=20,
-        verbose=verbose  # 是否输出详细日志
+        K=K,
+        verbose=verbose
     )
     master = MasterProblem(logger, config.N_VARS, tolerance=tolerance)
     return env, master

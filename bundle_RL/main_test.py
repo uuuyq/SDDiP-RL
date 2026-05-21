@@ -219,7 +219,7 @@ def loadConfig(i, t, n):
 
 
 if __name__ == "__main__":
-    experiment_name = "multi_config_exp_02"  # 实验名称，用于区分不同实验
+    experiment_name = "exp02"  # 实验名称，用于区分不同实验
     config = loadConfig(i=2, t=11, n=4)
     # 可自定义参数：tolerance(收敛阈值), warmstart_threshold(切换阈值), warmstart_patience(连续次数)
     main(

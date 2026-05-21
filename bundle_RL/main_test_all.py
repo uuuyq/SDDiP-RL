@@ -371,11 +371,11 @@ def collect_configs(i=2):
 
 if __name__ == "__main__":
 
-    from bundle_RL.script.default.utils import create_env
-    from bundle_RL.script.default.train import SimpleBundleExtractor
+    from bundle_RL.script.default_feature.utils import create_env
+    from bundle_RL.script.default_feature.train import SimpleBundleExtractor
     main(
-        experiment_name="multi_config_all_exp_06",        # 测试结果保存目录名
-        train_experiment_name="multi_config_exp_06",     # 训练模型所在的实验名
+        experiment_name="exp11",        # 测试结果保存目录名
+        train_experiment_name="exp11",     # 训练模型所在的实验名
         i=2,
         tolerance=1e-3,
         warmstart_threshold=0.01,

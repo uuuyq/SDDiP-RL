@@ -164,9 +164,17 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
     if model is None and resume and not overwrite:
         model, existing_steps = load_latest_checkpoint(experiment_name, env)
 
+    # 使用可变对象存储 clip_range 值，以便在训练过程中可以修改
+    current_clip_range = [clip_range]
+    
+    # clip_range 需要是可调用对象（函数）
+    def clip_range_fn(_):
+        return current_clip_range[0]
+    
     if model is None:
         print(f"创建新模型，实验: {experiment_name}")
         print(f"超参数: learning_rate={learning_rate}, ent_coef={ent_coef}, clip_range={clip_range}")
+        
         model = PPO(
             policy=MultiInputActorCriticPolicy,
             env=env,
@@ -176,7 +184,7 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
             n_steps=hparams["n_steps"],
             batch_size=hparams["batch_size"],
             ent_coef=ent_coef,
-            clip_range=clip_range,
+            clip_range=clip_range_fn,
             tensorboard_log=tensorboard_dir
         )
     else:
@@ -185,7 +193,8 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
         model.tensorboard_log = tensorboard_dir  # 恢复tensorboard日志配置
         model.learning_rate = learning_rate      # 更新学习率
         model.ent_coef = ent_coef                # 更新熵系数
-        model.clip_range = clip_range            # 更新clip范围
+        current_clip_range[0] = clip_range       # 更新clip范围（通过可变对象）
+        model.clip_range = clip_range_fn         # 确保是可调用对象
 
     if existing_steps >= total_timesteps:
         msg = f"模型已训练 {existing_steps} 步（目标 {total_timesteps} 步），无需继续训练"
@@ -210,20 +219,25 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
         from stable_baselines3.common.callbacks import BaseCallback
         
         class ClipRangeDecayCallback(BaseCallback):
-            def __init__(self, initial_clip_range, final_clip_range=0.05, verbose=0):
+            def __init__(self, current_clip_range, initial_clip_range, remaining_timesteps, total_timesteps, final_clip_range=0.05, verbose=0):
                 super().__init__(verbose)
+                self.current_clip_range = current_clip_range  # 可变列表引用
                 self.initial_clip_range = initial_clip_range
                 self.final_clip_range = final_clip_range
-            
-            def _on_training_start(self):
-                self.total_timesteps = self.training_env.num_envs * self.model.n_steps * self.model.n_epochs
+                self.remaining_timesteps = remaining_timesteps  # 剩余需要训练的步数
+                self.total_timesteps = total_timesteps  # 总步数
+                self.start_timesteps = total_timesteps - remaining_timesteps  # 续训前的累计步数
             
             def _on_step(self):
-                progress = self.num_timesteps / self.total_timesteps
-                self.model.clip_range = self.initial_clip_range - (self.initial_clip_range - self.final_clip_range) * progress
+                # progress 应该基于本次续训的进度，而不是全局累计
+                # self.num_timesteps 从 start_timesteps 开始累加
+                current_progress = self.num_timesteps - self.start_timesteps
+                progress = min(current_progress / self.remaining_timesteps, 1.0) if self.remaining_timesteps > 0 else 1.0
+                # 通过可变对象修改 clip_range 值
+                self.current_clip_range[0] = self.initial_clip_range - (self.initial_clip_range - self.final_clip_range) * progress
                 return True
         
-        clip_decay_callback = ClipRangeDecayCallback(initial_clip_range=clip_range)
+        clip_decay_callback = ClipRangeDecayCallback(current_clip_range, clip_range, remaining_timesteps, total_timesteps)
         callbacks.append(clip_decay_callback)
         print(f"启用 clip_range 衰减: 从 {clip_range} 线性衰减到 0.05")
 

@@ -113,19 +113,18 @@ def create_config_list(config_dir):
             print(f"警告：配置文件不存在: {config_path}")
     return configs
 
-
+from bundle_RL.script.default_feature.train import train
+from bundle_RL.script.default_feature.utils import create_env
 if __name__ == "__main__":
     # 动态导入（避免启动时的依赖问题）
-    from bundle_RL.script.default.train import train
-    from bundle_RL.script.default.utils import create_env
-    
+
     # ========================================================
     # 训练参数配置（修改后）
     # 调整目的：降低 approx_kl 和 clip_fraction，保持探索度，让训练更稳定
     # ========================================================
     
     # ------------------- 原始配置（作为参照） -------------------
-    # experiment_name = "multi_config_exp_06"
+    # experiment_name = "exp06"
     # ent_coef = 0.001          # 熵系数
     # K = 20                    # 样本数量参数
     # steps_per_config_per_round = 20_000  # 每轮每个config训练步数
