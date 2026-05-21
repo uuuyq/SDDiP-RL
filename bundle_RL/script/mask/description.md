@@ -1,0 +1,2 @@
+使用mask的方式将 padding的处理放到 policy网络中，应该可以让模型理解padding信息
+自定义policy网络

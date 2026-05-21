@@ -3,7 +3,7 @@ from pathlib import Path
 
 from bundle_RL.config import BundleConfig
 from bundle_RL.script.logger import get_logger
-from bundle_RL.script.utils import create_env
+
 
 
 def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_000, experiment_name="multi_config_exp", ent_coef=0):
@@ -46,7 +46,7 @@ def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_0
 
 
 def main(experiment_name, ent_coef):
-    log_dir = os.path.join("train_result", experiment_name)
+    log_dir = os.path.join("train_result", "model", experiment_name)
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
     logger = get_logger(os.path.join(log_dir, "bundle_env_train.log"))
@@ -86,8 +86,9 @@ def create_config_list():
 
 
 if __name__ == "__main__":
-    from bundle_RL.script.mask.train import train
-    experiment_name = "multi_config_exp_05"  # 实验名称，用于区分不同实验
+    from bundle_RL.script.default.train import train
+    from bundle_RL.script.default.utils import create_env
+    experiment_name = "multi_config_exp_04"  # 实验名称，用于区分不同实验
     main(experiment_name, ent_coef=0)
     
 

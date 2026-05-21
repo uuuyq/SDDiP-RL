@@ -9,9 +9,9 @@ from stable_baselines3 import PPO
 
 from bundle_RL.config import BundleConfig
 from bundle_RL.script.logger import get_logger
-from bundle_RL.script.utils import create_env
+
 from bundle_RL.script.test import bundle_baseline, bundle_RL, bundle_RL_warmstart
-from bundle_RL.script.mask.train import SimpleBundleExtractor
+from bundle_RL.script.default.train import SimpleBundleExtractor
 
 
 def compute_relative_gap(baseline_f_best, rl_f_best, rl_warmstart_f_best):
@@ -350,8 +350,10 @@ def collect_configs(i=2):
 
 
 if __name__ == "__main__":
+
+    from bundle_RL.script.default.utils import create_env
     main(
-        experiment_name="multi_config_all_exp_01",        # 测试结果保存目录名
+        experiment_name="multi_config_all_exp_05",        # 测试结果保存目录名
         train_experiment_name="multi_config_exp_01",     # 训练模型所在的实验名
         i=2,
         tolerance=1e-3,

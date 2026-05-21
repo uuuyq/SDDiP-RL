@@ -10,7 +10,7 @@ from bundle_RL.config import BundleConfig
 from bundle_RL.script.logger import get_logger
 from bundle_RL.script.test import bundle_baseline, bundle_RL, bundle_RL_warmstart
 from bundle_RL.script.mask.train import SimpleBundleExtractor  # 导入自定义特征提取器
-from bundle_RL.script.utils import create_env
+from bundle_RL.script.mask.utils import create_env
 
 
 def save_results(experiment_name, rl_delta, rl_reward, rl_time, baseline_delta, baseline_time, warmstart_delta=None, warmstart_time=None, switch_step=None):
