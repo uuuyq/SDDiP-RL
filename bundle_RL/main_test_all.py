@@ -19,7 +19,12 @@ def compute_relative_gap(baseline_f_best, rl_f_best, rl_warmstart_f_best):
     计算相对 gap: rel_gap = (LR - B) / LR
     LR = baseline收敛后的最终 f_best（最优下界）
     B = 当前方法在各步的 f_best
+    
+    返回的 rel_gap 数组长度应与对应的 f_best 数组长度一致
+    
+    负数表示当前方法找到的解比 baseline 最终收敛值更好（B > LR），这是期望的结果。
     """
+    # 获取 baseline 最终收敛值作为 LR（最优下界）
     lr = baseline_f_best[-1] if len(baseline_f_best) > 0 else 1.0
 
     if abs(lr) < 1e-12:
@@ -31,14 +36,20 @@ def compute_relative_gap(baseline_f_best, rl_f_best, rl_warmstart_f_best):
         "rl_warmstart": []
     }
 
+    # 计算 baseline 的相对 gap（应单调递减到 0）
     for b in baseline_f_best:
-        rel_gap_dict["baseline"].append((lr - b) / lr)
+        gap = (lr - b) / lr
+        rel_gap_dict["baseline"].append(gap)
 
+    # 计算 RL 的相对 gap（负数表示比 baseline 更好）
     for b in rl_f_best:
-        rel_gap_dict["rl"].append((lr - b) / lr)
+        gap = (lr - b) / lr
+        rel_gap_dict["rl"].append(gap)
 
+    # 计算 RL Warmstart 的相对 gap（负数表示比 baseline 更好）
     for b in rl_warmstart_f_best:
-        rel_gap_dict["rl_warmstart"].append((lr - b) / lr)
+        gap = (lr - b) / lr
+        rel_gap_dict["rl_warmstart"].append(gap)
 
     return rel_gap_dict, lr
 
@@ -65,11 +76,20 @@ def compute_average_results(all_results):
 
             for result in all_results:
                 if method in result:
-                    if step < len(result[method].get("rel_gap", [])):
-                        rel_gap_sum += result[method]["rel_gap"][step]
-                        count += 1
-                    if step < len(result[method].get("time", [])):
-                        time_sum += result[method]["time"][step]
+                    rel_gap_list = result[method].get("rel_gap", [])
+                    time_list = result[method].get("time", [])
+                    
+                    # 关键修复：如果配置已收敛（数组长度不够），使用最后一个值
+                    if step < len(rel_gap_list):
+                        rel_gap_sum += rel_gap_list[step]
+                    elif len(rel_gap_list) > 0:
+                        # 已收敛，使用最后一个收敛值（gap 应为 0 或接近 0）
+                        rel_gap_sum += rel_gap_list[-1]
+                    
+                    if step < len(time_list):
+                        time_sum += time_list[step]
+                    
+                    count += 1  # 每个配置都计入，无论是否已收敛
 
             if count > 0:
                 avg_results[method]["rel_gap"].append(rel_gap_sum / count)

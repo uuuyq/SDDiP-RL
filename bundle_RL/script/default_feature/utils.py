@@ -2,7 +2,7 @@ from bundle_RL.script.default_feature.bundle_env import BundleDualEnv
 from bundle_RL.script.lag_problem import MasterProblem
 
 
-def create_env(logger, config, tolerance=1e-5, verbose=False):
+def create_env(logger, config, tolerance=1e-5, verbose=False, K=20):
     """创建单个环境（使用 config 中的 n 参数）"""
 
     env = BundleDualEnv(
