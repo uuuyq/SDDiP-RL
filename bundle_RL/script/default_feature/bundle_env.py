@@ -34,6 +34,27 @@ class BundleDualEnv(gym.Env):
         self.action_dim = K + 1  # 输出lambda以及步长
         self.logger = logger
         self.verbose = verbose
+        
+        # 保存 config 用于获取额外特征
+        self.config = config
+        self.n = n  # realization 索引
+        
+        # 从 config 中获取 trial_point 并展平
+        self.trial_point = self._flatten_trial_point(config.trial_point)
+        self.trial_point_dim = len(self.trial_point)
+        
+        # 从 PROBLEM_PARAMS 中获取当前阶段和realization的数据
+        # config.T 是当前阶段索引（0-based），config.n 是 realization 索引
+        self.problem_params = config.PROBLEM_PARAMS
+        self.stage = config.T
+        
+        # 获取当前 realization 的数据
+        self.p_d = np.array(self.problem_params.p_d[self.stage][self.n], dtype=np.float32)
+        self.re = np.array(self.problem_params.re[self.stage][self.n], dtype=np.float32)
+        self.prob = float(self.problem_params.prob[self.stage][self.n])
+        
+        # 计算 realization 特征维度
+        self.realization_dim = len(self.p_d) + len(self.re) + 1  # p_d + re + prob
 
         # shape = (K, state_dim)
         # 使用Box，padding部分为0
@@ -49,10 +70,19 @@ class BundleDualEnv(gym.Env):
                 high=np.inf,
                 shape=(self.state_dim,),
                 dtype=np.float32
+            ),
+            "trial_point": gym.spaces.Box(
+                low=-np.inf,
+                high=np.inf,
+                shape=(self.trial_point_dim,),
+                dtype=np.float32
+            ),
+            "realization": gym.spaces.Box(
+                low=-np.inf,
+                high=np.inf,
+                shape=(self.realization_dim,),
+                dtype=np.float32
             )
-            "trail_point":
-
-            "realization":
         })
 
         # ========== 动作空间 ==========
@@ -65,6 +95,20 @@ class BundleDualEnv(gym.Env):
         )
 
         self.reset()
+
+    def _flatten_trial_point(self, trial_point):
+        """
+        将 trial_point 展平为一维数组
+        trial_point = (X_TRIAL, Y_TRIAL, X_BS_TRIAL, SOC_TRIAL)
+        """
+        X_TRIAL, Y_TRIAL, X_BS_TRIAL, SOC_TRIAL = trial_point
+        
+        # 展平 X_BS_TRIAL（二维列表）
+        X_BS_flat = [val for bs in X_BS_TRIAL for val in bs]
+        
+        # 合并所有部分
+        flat = np.array(X_TRIAL + Y_TRIAL + X_BS_flat + SOC_TRIAL, dtype=np.float32)
+        return flat
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -150,7 +194,7 @@ class BundleDualEnv(gym.Env):
     def _get_state(self):
         """
         获取当前最新的状态，从self.bundle中抽取最新的数据，padding出cuts矩阵
-        :return: cuts，pi
+        :return: cuts，pi，trial_point，realization
         """
         cuts = np.zeros((self.K, self.state_dim), dtype=np.float32)
         # 取出最后K个最新数据（为了应对迭代次数超过K的情况，丢弃旧数据）
@@ -161,9 +205,18 @@ class BundleDualEnv(gym.Env):
         for i, cut in enumerate(active):
             cuts[start + i] = cut["g"]
 
+        # 构建 realization 特征向量
+        realization_feature = np.concatenate([
+            self.p_d,
+            self.re,
+            np.array([self.prob], dtype=np.float32)
+        ])
+
         return {
             "cuts": cuts,
-            "pi": self.pi.astype(np.float32)
+            "pi": self.pi.astype(np.float32),
+            "trial_point": self.trial_point,
+            "realization": realization_feature
         }
 
 

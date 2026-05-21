@@ -86,10 +86,10 @@ def create_config_list():
 
 
 if __name__ == "__main__":
-    from bundle_RL.script.default.train import train
-    from bundle_RL.script.default.utils import create_env
+    from bundle_RL.script.default_feature.train import train
+    from bundle_RL.script.default_feature.utils import create_env
     experiment_name = "multi_config_exp_04"  # 实验名称，用于区分不同实验
-    main(experiment_name, ent_coef=0)
+    main(experiment_name, ent_coef=0.001)
     
 
 

@@ -353,9 +353,9 @@ if __name__ == "__main__":
 
     from bundle_RL.script.default.utils import create_env
     main(
-        experiment_name="multi_config_all_exp_05",        # 测试结果保存目录名
+        experiment_name="multi_config_all_exp_04",        # 测试结果保存目录名
         train_experiment_name="multi_config_exp_01",     # 训练模型所在的实验名
-        i=2,
+        i=1,
         tolerance=1e-3,
         warmstart_threshold=0.01,
         patience=3

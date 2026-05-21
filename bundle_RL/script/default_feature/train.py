@@ -15,24 +15,30 @@ class SimpleBundleExtractor(BaseFeaturesExtractor):
 
         cuts_shape = observation_space["cuts"].shape
         pi_shape = observation_space["pi"].shape
+        trial_point_shape = observation_space["trial_point"].shape
+        realization_shape = observation_space["realization"].shape
 
         self.cuts_dim = cuts_shape[0] * cuts_shape[1]
         self.pi_dim = pi_shape[0]
+        self.trial_point_dim = trial_point_shape[0]
+        self.realization_dim = realization_shape[0]
 
-        input_dim = self.cuts_dim + self.pi_dim
+        input_dim = self.cuts_dim + self.pi_dim + self.trial_point_dim + self.realization_dim
 
         self.net = nn.Sequential(
-            nn.Linear(input_dim, 128),
+            nn.Linear(input_dim, 256),
             nn.ReLU(),
-            nn.Linear(128, features_dim),
+            nn.Linear(256, features_dim),
             nn.ReLU(),
         )
 
     def forward(self, observations):
         cuts = observations["cuts"].view(observations["cuts"].shape[0], -1)
         pi = observations["pi"]
+        trial_point = observations["trial_point"]
+        realization = observations["realization"]
 
-        x = torch.cat([cuts, pi], dim=1)
+        x = torch.cat([cuts, pi, trial_point, realization], dim=1)
         return self.net(x)
 
 
