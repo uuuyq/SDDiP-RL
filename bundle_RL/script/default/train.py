@@ -109,7 +109,7 @@ def load_latest_checkpoint(experiment_name, env):
 
 def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
           checkpoint_freq=5000, experiment_name="default", ent_coef=0,
-          resume=True, overwrite=False):
+          resume=True, overwrite=False, learning_rate=3e-4, clip_range=0.2, clip_range_decay=True):
     """
     训练函数，支持断点续训
 
@@ -121,9 +121,12 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
         total_timesteps: 训练总步数
         checkpoint_freq: 检查点保存频率
         experiment_name: 实验名称，用于区分不同实验
-        ent_coef: 探索系数
+        ent_coef: 熵系数，控制探索程度
         resume: 是否自动从最新 checkpoint 继续训练（默认 True）
         overwrite: 是否覆盖已有模型重新训练（默认 False，即支持断点续训）
+        learning_rate: 学习率（默认 3e-4）
+        clip_range: PPO clip 范围（默认 0.2）
+        clip_range_decay: 是否启用 clip_range 线性衰减（从 clip_range 衰减到 0.05）
 
     Returns:
         model: 训练后的模型
@@ -138,10 +141,12 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
     os.makedirs(save_dir, exist_ok=True)
 
     hparams = {
-        "learning_rate": 3e-4,
+        "learning_rate": learning_rate,
         "n_steps": 512,
         "batch_size": 128,
         "ent_coef": ent_coef,
+        "clip_range": clip_range,
+        "clip_range_decay": clip_range_decay,
         "total_timesteps": total_timesteps,
         "features_dim": 128,
         "net_arch": dict(pi=[128, 128], vf=[128, 128])
@@ -161,21 +166,26 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
 
     if model is None:
         print(f"创建新模型，实验: {experiment_name}")
+        print(f"超参数: learning_rate={learning_rate}, ent_coef={ent_coef}, clip_range={clip_range}")
         model = PPO(
             policy=MultiInputActorCriticPolicy,
             env=env,
             policy_kwargs=policy_kwargs,
             verbose=1,
-            learning_rate=hparams["learning_rate"],
+            learning_rate=learning_rate,
             n_steps=hparams["n_steps"],
             batch_size=hparams["batch_size"],
-            ent_coef=hparams["ent_coef"],
+            ent_coef=ent_coef,
+            clip_range=clip_range,
             tensorboard_log=tensorboard_dir
         )
     else:
         print(f"继续训练已有模型，已训练步数: {existing_steps}")
         model.set_env(env)
         model.tensorboard_log = tensorboard_dir  # 恢复tensorboard日志配置
+        model.learning_rate = learning_rate      # 更新学习率
+        model.ent_coef = ent_coef                # 更新熵系数
+        model.clip_range = clip_range            # 更新clip范围
 
     if existing_steps >= total_timesteps:
         msg = f"模型已训练 {existing_steps} 步（目标 {total_timesteps} 步），无需继续训练"
@@ -194,6 +204,29 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
         name_prefix="ppo_bundle_checkpoint"
     )
 
+    # 创建 clip_range 衰减回调
+    callbacks = [checkpoint_callback]
+    if clip_range_decay:
+        from stable_baselines3.common.callbacks import BaseCallback
+        
+        class ClipRangeDecayCallback(BaseCallback):
+            def __init__(self, initial_clip_range, final_clip_range=0.05, verbose=0):
+                super().__init__(verbose)
+                self.initial_clip_range = initial_clip_range
+                self.final_clip_range = final_clip_range
+            
+            def _on_training_start(self):
+                self.total_timesteps = self.training_env.num_envs * self.model.n_steps * self.model.n_epochs
+            
+            def _on_step(self):
+                progress = self.num_timesteps / self.total_timesteps
+                self.model.clip_range = self.initial_clip_range - (self.initial_clip_range - self.final_clip_range) * progress
+                return True
+        
+        clip_decay_callback = ClipRangeDecayCallback(initial_clip_range=clip_range)
+        callbacks.append(clip_decay_callback)
+        print(f"启用 clip_range 衰减: 从 {clip_range} 线性衰减到 0.05")
+
     print(f"开始训练，剩余步数: {remaining_timesteps}/{total_timesteps}")
     if logger:
         logger.info(f"开始训练，剩余步数: {remaining_timesteps}/{total_timesteps}")
@@ -205,7 +238,7 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
     model.learn(
         total_timesteps=remaining_timesteps,
         reset_num_timesteps=False,
-        callback=checkpoint_callback,
+        callback=callbacks,
         tb_log_name="log"  # 使用固定名称，避免在tensorboard_dir下创建额外子目录
     )
 
