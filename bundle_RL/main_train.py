@@ -34,7 +34,7 @@ def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_0
             logger.info(f"  训练 Config {config_idx + 1}/{len(configs)} (realization {config.n})")
 
             # 创建当前 config 的环境（n 已包含在 config 中）
-            env, _ = create_env(logger, config, K=K)
+            env, _ = BundleDualEnv.create_env(logger, config, K=K)
 
             # 训练（如果 model 已存在则继续训练）
             # train() 返回 (model, remaining_timesteps, total_trained_steps)，只取模型
@@ -114,7 +114,7 @@ def create_config_list(config_dir):
     return configs
 
 from bundle_RL.script.default_feature.train import train
-from bundle_RL.script.default_feature.utils import create_env
+from bundle_RL.script.default_feature.env import BundleDualEnv
 if __name__ == "__main__":
     # 动态导入（避免启动时的依赖问题）
 

@@ -10,7 +10,7 @@ from bundle_RL.config import BundleConfig
 from bundle_RL.script.logger import get_logger
 from bundle_RL.script.test import bundle_baseline, bundle_RL, bundle_RL_warmstart
 from bundle_RL.script.mask.train import SimpleBundleExtractor  # 导入自定义特征提取器
-from bundle_RL.script.mask.utils import create_env
+from bundle_RL.script.mask.env import BundleDualEnv
 
 
 def save_results(experiment_name, rl_delta, rl_reward, rl_time, baseline_delta, baseline_time, warmstart_delta=None, warmstart_time=None, switch_step=None):
@@ -169,7 +169,7 @@ def main(experiment_name, config, tolerance=1e-5, warmstart_threshold=1e-6, warm
     # 6️⃣ 使用 RL 模型求解
     # ===============================
     logger.info("==== Running RL Model ====")
-    test_env, test_master = create_env(logger, config, tolerance=tolerance, verbose=True)  # 测试时启用详细日志
+    test_env, test_master = BundleDualEnv.create_env(logger, config, tolerance=tolerance, verbose=True)  # 测试时启用详细日志
     rl_delta, rl_reward, rl_time, rl_ub, rl_f_best = bundle_RL(test_env, model, test_master, logger, deterministic)
 
     # ===============================

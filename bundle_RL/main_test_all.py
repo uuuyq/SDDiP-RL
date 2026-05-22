@@ -291,14 +291,14 @@ def run_test_for_configs(configs, config_info_list, experiment_name, logger, mod
 
         # 2. 运行 RL
         logger.info("Running RL...")
-        test_env, test_master = create_env(logger, config, tolerance=tolerance, verbose=True, K=K)  # 测试时启用详细日志
+        test_env, test_master = BundleDualEnv.create_env(logger, config, tolerance=tolerance, verbose=True, K=K)  # 测试时启用详细日志
         rl_delta, rl_reward, rl_time, rl_ub, rl_f_best = bundle_RL(
             test_env, model, test_master, logger, deterministic=True)
         rl_switch_step = None
 
         # 3. 运行 RL Warmstart
         logger.info("Running RL Warmstart...")
-        warmstart_env, warmstart_master = create_env(logger, config, tolerance=tolerance, verbose=True, K=K)  # 测试时启用详细日志
+        warmstart_env, warmstart_master = BundleDualEnv.create_env(logger, config, tolerance=tolerance, verbose=True, K=K)  # 测试时启用详细日志
         ws_delta, ws_reward, ws_time, ws_ub, ws_f_best, ws_switch_step = bundle_RL_warmstart(
             warmstart_env, model, warmstart_master, logger,
             warmstart_threshold=warmstart_threshold,
@@ -416,19 +416,49 @@ def collect_configs(i=2):
 
 if __name__ == "__main__":
 
-    from bundle_RL.script.default_feature.utils import create_env
+    from bundle_RL.script.default_feature.env import BundleDualEnv
     from bundle_RL.script.default_feature.train import SimpleBundleExtractor
 
     # ==============================================
-    # 批量测试配置列表
+    # 批量测试配置列表（从实验配置文档读取）
+    # ==============================================
+    # 格式: (experiment_name, train_experiment_name, K)
+    # ==============================================
+    # 第一轮实验（exp01-exp06）
     # ==============================================
     test_configs = [
-        # (experiment_name, train_experiment_name, K)
+        # ("exp01_test", "exp01", 20),  # default, K=20
+        # ("exp02_test", "exp02", 20),  # default, K=20
+        # ("exp03_test", "exp03", 20),  # default, K=20
+        ("exp04_test", "exp04", 20),  # default_feature, K=20
+        ("exp05_test", "exp05", 10),  # default_feature, K=10
+        # ("exp06_test", "exp06", 20),  # default, K=20
+        # ==============================================
+        # 第二轮实验（exp07-exp15）- 优化探索
+        # ==============================================
+        ("exp07_test", "exp07", 20),  # default_feature, K=20
+        ("exp08_test", "exp08", 20),  # default_feature, K=20
+        ("exp09_test", "exp09", 20),  # default_feature, K=20
+        ("exp10_test", "exp10", 20),  # default_feature, K=20
+        ("exp11_test", "exp11", 20),  # default_feature, K=20
+        ("exp12_test", "exp12", 20),  # default_feature, K=20
+        ("exp13_test", "exp13", 20),  # default_feature, K=20
+        ("exp14_test", "exp14", 20),  # default_feature, K=20
+        ("exp15_test", "exp15", 20),  # default_feature, K=20
+        # ==============================================
+        # 第三轮实验（exp16-exp25）- 充分训练 + ent_coef探索
+        # ==============================================
+        ("exp16_test", "exp16", 10),  # default_feature, K=10
+        ("exp17_test", "exp17", 10),  # default_feature, K=10
+        ("exp18_test", "exp18", 10),  # default_feature, K=10
+        ("exp19_test", "exp19", 10),  # default_feature, K=10
+        ("exp20_test", "exp20", 10),  # default_feature, K=10
+        ("exp21_test", "exp21", 10),  # default_feature, K=10
+        ("exp22_test", "exp22", 10),  # default_feature, K=10
+        ("exp23_test", "exp23", 10),  # default_feature, K=10
+        ("exp24_test", "exp24", 10),  # default_feature, K=10
+        ("exp25_test", "exp25", 10),  # default_feature, K=10
     ]
-    for i in range(16, 26):
-        test_configs.append(
-            (f"exp{i:02d}", f"exp{i:02d}", 10)
-        )
 
     # ==============================================
     # TensorBoard 根目录（所有 runs 的父目录）
@@ -442,8 +472,8 @@ if __name__ == "__main__":
     # 遍历所有配置进行批量测试（每个测试作为独立的 TensorBoard run）
     # ==============================================
     for idx, (exp_name, train_exp_name, K_val) in enumerate(test_configs):
-        # 每个测试作为独立的 run，命名格式为 exp{i:02d}
-        run_name = f"exp{idx+16:02d}"  # 从 exp16 开始
+        # 每个测试作为独立的 run，使用测试名作为 run 名
+        run_name = exp_name  # 使用测试名作为 TensorBoard run 名
         tb_log_dir = os.path.join(tb_root_dir, run_name)
         
         print(f"\n{'='*60}")
