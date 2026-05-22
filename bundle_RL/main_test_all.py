@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 from matplotlib import pyplot as plt
 from stable_baselines3 import PPO
+from torch.utils.tensorboard import SummaryWriter
 
 from bundle_RL.config import BundleConfig
 from bundle_RL.script.logger import get_logger
@@ -98,10 +99,9 @@ def compute_average_results(all_results):
     return avg_results
 
 
-def plot_results(avg_results, save_dir):
-    """绘制收敛对比图"""
-    plt.figure(figsize=(12, 5))
-
+def plot_results(avg_results, save_dir, experiment_name=None, tb_writer=None):
+    """绘制收敛对比图，支持保存为图片和 TensorBoard 格式"""
+    
     # 计算 y 轴范围
     all_rel_gaps = (avg_results["baseline"]["rel_gap"] + 
                     avg_results["rl"]["rel_gap"] + 
@@ -112,37 +112,81 @@ def plot_results(avg_results, save_dir):
     else:
         y_min, y_max = 0, 1
 
-    plt.subplot(1, 2, 1)
-    plt.plot(avg_results["baseline"]["rel_gap"], marker='s', color='r', label='Baseline')
-    plt.plot(avg_results["rl"]["rel_gap"], marker='o', color='b', label='RL')
-    plt.plot(avg_results["rl_warmstart"]["rel_gap"], marker='^', color='g', label='RL Warmstart')
+    # 图1：gap随迭代次数的收敛图
+    plt.figure(figsize=(8, 5))
+    # 使用同一颜色的不同深浅区分三个方法
+    plt.plot(avg_results["baseline"]["rel_gap"], marker='s', color='#1a1a1a', label='Baseline', linewidth=2)  # 最深
+    plt.plot(avg_results["rl"]["rel_gap"], marker='o', color='#666666', label='RL', linewidth=2)  # 中等
+    plt.plot(avg_results["rl_warmstart"]["rel_gap"], marker='^', color='#b3b3b3', label='RL Warmstart', linewidth=2)  # 最浅
     plt.xlabel('Iteration Step')
     plt.ylabel('Relative Gap')
-    plt.title('Convergence Comparison (Relative Gap)')
+    plt.title('Convergence vs Iteration')
     plt.grid(True, alpha=0.5)
     plt.legend()
     plt.ylim(y_min, y_max)
+    plt.tight_layout()
+    
+    # 保存图片
+    conv_plot_path = os.path.join(save_dir, 'convergence_iteration.png')
+    plt.savefig(conv_plot_path)
+    
+    # 添加到 TensorBoard
+    if tb_writer is not None:
+        import io
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        buf.seek(0)
+        from PIL import Image
+        image = Image.open(buf)
+        tb_writer.add_image('convergence_iteration', np.array(image).transpose(2, 0, 1), 0)
+    
+    plt.close()
 
-    plt.subplot(1, 2, 2)
+    # 图2：gap随运行时间的收敛图
+    plt.figure(figsize=(8, 5))
     baseline_cum_time = np.cumsum(avg_results["baseline"]["time"])
     rl_cum_time = np.cumsum(avg_results["rl"]["time"])
     rl_warmstart_cum_time = np.cumsum(avg_results["rl_warmstart"]["time"])
 
-    plt.plot(baseline_cum_time, avg_results["baseline"]["rel_gap"], marker='s', color='r', label='Baseline')
-    plt.plot(rl_cum_time, avg_results["rl"]["rel_gap"], marker='o', color='b', label='RL')
-    plt.plot(rl_warmstart_cum_time, avg_results["rl_warmstart"]["rel_gap"], marker='^', color='g', label='RL Warmstart')
+    # 使用同一颜色的不同深浅区分三个方法
+    plt.plot(baseline_cum_time, avg_results["baseline"]["rel_gap"], marker='s', color='#1a1a1a', label='Baseline', linewidth=2)  # 最深
+    plt.plot(rl_cum_time, avg_results["rl"]["rel_gap"], marker='o', color='#666666', label='RL', linewidth=2)  # 中等
+    plt.plot(rl_warmstart_cum_time, avg_results["rl_warmstart"]["rel_gap"], marker='^', color='#b3b3b3', label='RL Warmstart', linewidth=2)  # 最浅
     plt.xlabel('Cumulative Time (s)')
     plt.ylabel('Relative Gap')
     plt.title('Convergence vs Time')
     plt.grid(True, alpha=0.5)
     plt.legend()
     plt.ylim(y_min, y_max)
-
     plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, 'convergence_comparison.png'))
+    
+    # 保存图片
+    time_plot_path = os.path.join(save_dir, 'convergence_time.png')
+    plt.savefig(time_plot_path)
+    
+    # 添加到 TensorBoard
+    if tb_writer is not None:
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        buf.seek(0)
+        image = Image.open(buf)
+        tb_writer.add_image('convergence_time', np.array(image).transpose(2, 0, 1), 0)
+    
     plt.close()
 
-    print(f"Convergence plot saved to {os.path.join(save_dir, 'convergence_comparison.png')}")
+    print(f"Convergence plots saved to {save_dir}")
+    
+    # 同时保存数值数据（用于对比分析）
+    if tb_writer is not None:
+        # 收敛曲线数据（用于 TensorBoard 的 scalar 对比）
+        for step, gap in enumerate(avg_results["baseline"]["rel_gap"]):
+            tb_writer.add_scalar('metrics/baseline_gap', gap, step)
+        for step, gap in enumerate(avg_results["rl"]["rel_gap"]):
+            tb_writer.add_scalar('metrics/rl_gap', gap, step)
+        for step, gap in enumerate(avg_results["rl_warmstart"]["rel_gap"]):
+            tb_writer.add_scalar('metrics/rl_warmstart_gap', gap, step)
+        
+        print(f"TensorBoard data saved")
 
 
 def save_results_to_json(all_results, save_dir):
@@ -232,7 +276,7 @@ def load_latest_model(train_experiment_name, logger):
 
 
 def run_test_for_configs(configs, config_info_list, experiment_name, logger, model,
-                         tolerance=1e-5, warmstart_threshold=1e-4, patience=3):
+                         tolerance=1e-5, warmstart_threshold=1e-4, patience=3, K=20):
     """
     对一组 config 运行测试，计算相对 gap
     """
@@ -247,14 +291,14 @@ def run_test_for_configs(configs, config_info_list, experiment_name, logger, mod
 
         # 2. 运行 RL
         logger.info("Running RL...")
-        test_env, test_master = create_env(logger, config, tolerance=tolerance, verbose=True)  # 测试时启用详细日志
+        test_env, test_master = create_env(logger, config, tolerance=tolerance, verbose=True, K=K)  # 测试时启用详细日志
         rl_delta, rl_reward, rl_time, rl_ub, rl_f_best = bundle_RL(
             test_env, model, test_master, logger, deterministic=True)
         rl_switch_step = None
 
         # 3. 运行 RL Warmstart
         logger.info("Running RL Warmstart...")
-        warmstart_env, warmstart_master = create_env(logger, config, tolerance=tolerance, verbose=True)  # 测试时启用详细日志
+        warmstart_env, warmstart_master = create_env(logger, config, tolerance=tolerance, verbose=True, K=K)  # 测试时启用详细日志
         ws_delta, ws_reward, ws_time, ws_ub, ws_f_best, ws_switch_step = bundle_RL_warmstart(
             warmstart_env, model, warmstart_master, logger,
             warmstart_threshold=warmstart_threshold,
@@ -299,7 +343,7 @@ def run_test_for_configs(configs, config_info_list, experiment_name, logger, mod
     return all_results
 
 
-def main(experiment_name, train_experiment_name=None, i=2, tolerance=1e-5, warmstart_threshold=1e-4, patience=3):
+def main(experiment_name, train_experiment_name=None, i=2, tolerance=1e-5, warmstart_threshold=1e-4, patience=3, K=20, tb_writer=None):
     """主测试函数"""
     if train_experiment_name is None:
         train_experiment_name = experiment_name
@@ -332,7 +376,8 @@ def main(experiment_name, train_experiment_name=None, i=2, tolerance=1e-5, warms
         model,
         tolerance=tolerance,
         warmstart_threshold=warmstart_threshold,
-        patience=patience
+        patience=patience,
+        K=K
     )
 
     # 计算平均结果
@@ -343,9 +388,9 @@ def main(experiment_name, train_experiment_name=None, i=2, tolerance=1e-5, warms
     logger.info("Saving results...")
     save_results_to_json(all_results, save_dir)
 
-    # 绘制图表
+    # 绘制图表（支持 TensorBoard）
     logger.info("Plotting results...")
-    plot_results(avg_results, save_dir)
+    plot_results(avg_results, save_dir, experiment_name=experiment_name, tb_writer=tb_writer)
 
     logger.info("All tests completed!")
 
@@ -373,11 +418,66 @@ if __name__ == "__main__":
 
     from bundle_RL.script.default_feature.utils import create_env
     from bundle_RL.script.default_feature.train import SimpleBundleExtractor
-    main(
-        experiment_name="exp11",        # 测试结果保存目录名
-        train_experiment_name="exp11",     # 训练模型所在的实验名
-        i=2,
-        tolerance=1e-3,
-        warmstart_threshold=0.01,
-        patience=3
-    )
+
+    # ==============================================
+    # 批量测试配置列表
+    # ==============================================
+    test_configs = [
+        # (experiment_name, train_experiment_name, K)
+    ]
+    for i in range(16, 26):
+        test_configs.append(
+            (f"exp{i:02d}", f"exp{i:02d}", 10)
+        )
+
+    # ==============================================
+    # TensorBoard 根目录（所有 runs 的父目录）
+    # ==============================================
+    tb_root_dir = os.path.join("test_result", "tb_summary")
+    os.makedirs(tb_root_dir, exist_ok=True)
+    print(f"TensorBoard 根目录: {tb_root_dir}")
+    print(f"运行命令查看: tensorboard --logdir={tb_root_dir}")
+
+    # ==============================================
+    # 遍历所有配置进行批量测试（每个测试作为独立的 TensorBoard run）
+    # ==============================================
+    for idx, (exp_name, train_exp_name, K_val) in enumerate(test_configs):
+        # 每个测试作为独立的 run，命名格式为 exp{i:02d}
+        run_name = f"exp{idx+16:02d}"  # 从 exp16 开始
+        tb_log_dir = os.path.join(tb_root_dir, run_name)
+        
+        print(f"\n{'='*60}")
+        print(f"开始测试: {exp_name}")
+        print(f"训练模型: {train_exp_name}, K={K_val}")
+        print(f"TensorBoard Run: {run_name}")
+        print(f"{'='*60}")
+        
+        # 为每个 run 创建独立的 SummaryWriter
+        tb_writer = SummaryWriter(log_dir=tb_log_dir)
+        
+        try:
+            main(
+                experiment_name=exp_name,           # 测试结果保存目录名
+                train_experiment_name=train_exp_name,  # 训练模型所在的实验名
+                i=2,
+                tolerance=1e-3,
+                warmstart_threshold=0.01,
+                patience=3,
+                K=K_val,  # 必须与训练时的 K 值一致！
+                tb_writer=tb_writer  # 传递独立的 TensorBoard writer
+            )
+            print(f"\n✅ {exp_name} 测试完成!")
+        except Exception as e:
+            print(f"\n❌ {exp_name} 测试失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
+        
+        # 关闭当前 run 的 writer
+        tb_writer.close()
+        print(f"\n{'='*60}")
+    
+    print(f"\n{'='*60}")
+    print(f"所有测试完成!")
+    print(f"TensorBoard 日志已保存到: {tb_root_dir}")
+    print(f"运行以下命令查看:")
+    print(f"  tensorboard --logdir={tb_root_dir}")

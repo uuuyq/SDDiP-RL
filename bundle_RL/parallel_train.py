@@ -141,6 +141,7 @@ if __name__ == "__main__":
     sys.stderr.reconfigure(encoding='utf-8')
     
     experiments = [
+        # ====== 第二轮实验（已完成） ======
         # {
         #     'experiment_name': 'exp07',
         #     'ent_coef': 0.01,
@@ -191,46 +192,150 @@ if __name__ == "__main__":
         #     'clip_range': 0.15,
         #     'clip_range_decay': True
         # },
+        # {
+        #     'experiment_name': 'exp12',
+        #     'ent_coef': 0.01,
+        #     'K': 10,
+        #     'steps_per_config_per_round': 2000,
+        #     'rounds': 10,
+        #     'learning_rate': 1e-4,
+        #     'clip_range': 0.2,
+        #     'clip_range_decay': False
+        # },
+        # {
+        #     'experiment_name': 'exp13',
+        #     'ent_coef': 0.015,
+        #     'K': 10,
+        #     'steps_per_config_per_round': 2000,
+        #     'rounds': 10,
+        #     'learning_rate': 8e-5,
+        #     'clip_range': 0.15,
+        #     'clip_range_decay': True
+        # },
+        # {
+        #     'experiment_name': 'exp14',
+        #     'ent_coef': 0.02,
+        #     'K': 10,
+        #     'steps_per_config_per_round': 2000,
+        #     'rounds': 10,
+        #     'learning_rate': 5e-5,
+        #     'clip_range': 0.15,
+        #     'clip_range_decay': True
+        # },
+        # {
+        #     'experiment_name': 'exp15',
+        #     'ent_coef': 0.01,
+        #     'K': 10,
+        #     'steps_per_config_per_round': 1000,
+        #     'rounds': 20,
+        #     'learning_rate': 1e-4,
+        #     'clip_range': 0.2,
+        #     'clip_range_decay': True
+        # },
+
+        # ====== 第三轮实验 Group A：lr=1e-4, rounds=20 ======
+        # {
+        #     'experiment_name': 'exp16',
+        #     'ent_coef': 0.005,
+        #     'K': 10,
+        #     'steps_per_config_per_round': 2000,
+        #     'rounds': 20,
+        #     'learning_rate': 1e-4,
+        #     'clip_range': 0.2,
+        #     'clip_range_decay': False
+        # },
+        # {
+        #     'experiment_name': 'exp17',
+        #     'ent_coef': 0.01,
+        #     'K': 10,
+        #     'steps_per_config_per_round': 2000,
+        #     'rounds': 20,
+        #     'learning_rate': 1e-4,
+        #     'clip_range': 0.2,
+        #     'clip_range_decay': False
+        # },
+        # {
+        #     'experiment_name': 'exp18',
+        #     'ent_coef': 0.015,
+        #     'K': 10,
+        #     'steps_per_config_per_round': 2000,
+        #     'rounds': 20,
+        #     'learning_rate': 1e-4,
+        #     'clip_range': 0.2,
+        #     'clip_range_decay': False
+        # },
+        # {
+        #     'experiment_name': 'exp19',
+        #     'ent_coef': 0.02,
+        #     'K': 10,
+        #     'steps_per_config_per_round': 2000,
+        #     'rounds': 20,
+        #     'learning_rate': 1e-4,
+        #     'clip_range': 0.2,
+        #     'clip_range_decay': False
+        # },
+        # {
+        #     'experiment_name': 'exp20',
+        #     'ent_coef': 0.03,
+        #     'K': 10,
+        #     'steps_per_config_per_round': 2000,
+        #     'rounds': 20,
+        #     'learning_rate': 1e-4,
+        #     'clip_range': 0.2,
+        #     'clip_range_decay': False
+        # },
+
+        # ====== 第三轮实验 Group B：lr=5e-5, rounds=30 ======
         {
-            'experiment_name': 'exp12',
-            'ent_coef': 0.01,
+            'experiment_name': 'exp21',
+            'ent_coef': 0.005,
             'K': 10,
             'steps_per_config_per_round': 2000,
-            'rounds': 10,
-            'learning_rate': 1e-4,
+            'rounds': 30,
+            'learning_rate': 5e-5,
             'clip_range': 0.2,
             'clip_range_decay': False
         },
         {
-            'experiment_name': 'exp13',
+            'experiment_name': 'exp22',
+            'ent_coef': 0.01,
+            'K': 10,
+            'steps_per_config_per_round': 2000,
+            'rounds': 30,
+            'learning_rate': 5e-5,
+            'clip_range': 0.2,
+            'clip_range_decay': False
+        },
+        {
+            'experiment_name': 'exp23',
             'ent_coef': 0.015,
             'K': 10,
             'steps_per_config_per_round': 2000,
-            'rounds': 10,
-            'learning_rate': 8e-5,
-            'clip_range': 0.15,
-            'clip_range_decay': True
+            'rounds': 30,
+            'learning_rate': 5e-5,
+            'clip_range': 0.2,
+            'clip_range_decay': False
         },
         {
-            'experiment_name': 'exp14',
+            'experiment_name': 'exp24',
             'ent_coef': 0.02,
             'K': 10,
             'steps_per_config_per_round': 2000,
-            'rounds': 10,
+            'rounds': 30,
             'learning_rate': 5e-5,
-            'clip_range': 0.15,
-            'clip_range_decay': True
+            'clip_range': 0.2,
+            'clip_range_decay': False
         },
         {
-            'experiment_name': 'exp15',
-            'ent_coef': 0.01,
+            'experiment_name': 'exp25',
+            'ent_coef': 0.03,
             'K': 10,
-            'steps_per_config_per_round': 1000,
-            'rounds': 20,
-            'learning_rate': 1e-4,
+            'steps_per_config_per_round': 2000,
+            'rounds': 30,
+            'learning_rate': 5e-5,
             'clip_range': 0.2,
-            'clip_range_decay': True
-        }
+            'clip_range_decay': False
+        },
     ]
 
     run_parallel_experiments(experiments)
