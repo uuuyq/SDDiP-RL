@@ -37,13 +37,14 @@ def extract_steps_from_checkpoint(filename):
     return 0
 
 
-def load_latest_checkpoint(experiment_name, env):
+def load_latest_checkpoint(experiment_name, env, policy_kwargs):
     """
     加载最新的 checkpoint（如果存在）
 
     Args:
         experiment_name: 实验名称
         env: 环境（用于加载模型）
+        policy_kwargs: 策略参数字典
 
     Returns:
         model: 加载的模型，如果不存在则返回 None
@@ -66,12 +67,6 @@ def load_latest_checkpoint(experiment_name, env):
 
     print(f"找到 checkpoint: {latest_checkpoint}, 已训练步数: {steps}")
 
-    policy_kwargs = dict(
-        features_extractor_class=AttentionBundleExtractor,
-        features_extractor_kwargs=dict(features_dim=128),
-        net_arch=dict(pi=[128, 128], vf=[128, 128])
-    )
-
     model = PPO.load(
         checkpoint_path,
         env=env,
@@ -86,7 +81,11 @@ def load_latest_checkpoint(experiment_name, env):
 
 def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
           checkpoint_freq=5000, experiment_name="attention_default", ent_coef=0,
-          resume=True, overwrite=False, learning_rate=3e-4, clip_range=0.2, clip_range_decay=True):
+          resume=True, overwrite=False, learning_rate=3e-4, clip_range=0.2, clip_range_decay=True,
+          n_steps=512, batch_size=128, gamma=0.99, gae_lambda=0.95, n_epochs=10,
+          vf_coef=0.5, max_grad_norm=0.5,
+          features_dim=128, hidden_dim=64, num_heads=4, num_layers=1, ffn_dim=128, dropout=0.1,
+          actor_net_arch=None, critic_net_arch=None):
     """
     Attention-based PPO 训练函数，支持断点续训
 
@@ -104,12 +103,33 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
         learning_rate: 学习率（默认 3e-4）
         clip_range: PPO clip 范围（默认 0.2）
         clip_range_decay: 是否启用 clip_range 线性衰减（从 clip_range 衰减到 0.05）
+        n_steps: 每次更新采集的步数
+        batch_size: 批大小
+        gamma: 折扣因子
+        gae_lambda: GAE 参数
+        n_epochs: 训练轮数
+        vf_coef: 价值函数系数
+        max_grad_norm: 最大梯度范数
+        features_dim: 特征提取器维度
+        hidden_dim: 编码器隐藏层维度
+        num_heads: Attention 头数
+        num_layers: Attention 层数
+        ffn_dim: FFN 维度
+        dropout: Dropout 概率
+        actor_net_arch: Actor 网络结构
+        critic_net_arch: Critic 网络结构
 
     Returns:
         model: 训练后的模型
         trained_steps: 本次训练的步数
         total_trained_steps: 累计训练的步数
     """
+    # 默认网络结构
+    if actor_net_arch is None:
+        actor_net_arch = [128, 128]
+    if critic_net_arch is None:
+        critic_net_arch = [128, 128]
+    
     experiment_dir, checkpoints_dir, tensorboard_dir, save_dir = get_experiment_dirs(experiment_name)
 
     os.makedirs(experiment_dir, exist_ok=True)
@@ -119,27 +139,47 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
 
     hparams = {
         "learning_rate": learning_rate,
-        "n_steps": 512,
-        "batch_size": 128,
+        "n_steps": n_steps,
+        "batch_size": batch_size,
         "ent_coef": ent_coef,
         "clip_range": clip_range,
         "clip_range_decay": clip_range_decay,
         "total_timesteps": total_timesteps,
-        "features_dim": 128,
-        "net_arch": dict(pi=[128, 128], vf=[128, 128])
+        "gamma": gamma,
+        "gae_lambda": gae_lambda,
+        "n_epochs": n_epochs,
+        "vf_coef": vf_coef,
+        "max_grad_norm": max_grad_norm,
+        "features_dim": features_dim,
+        "hidden_dim": hidden_dim,
+        "num_heads": num_heads,
+        "num_layers": num_layers,
+        "ffn_dim": ffn_dim,
+        "dropout": dropout,
+        "net_arch": dict(pi=actor_net_arch, vf=critic_net_arch)
     }
+
+    # 特征提取器参数
+    features_extractor_kwargs = dict(
+        features_dim=features_dim,
+        hidden_dim=hidden_dim,
+        num_heads=num_heads,
+        num_layers=num_layers,
+        ffn_dim=ffn_dim,
+        dropout=dropout
+    )
 
     policy_kwargs = dict(
         features_extractor_class=AttentionBundleExtractor,
-        features_extractor_kwargs=dict(features_dim=hparams["features_dim"]),
-        net_arch=hparams["net_arch"]
+        features_extractor_kwargs=features_extractor_kwargs,
+        net_arch=dict(pi=actor_net_arch, vf=critic_net_arch)
     )
 
     loaded_from_checkpoint = False
     existing_steps = 0
 
     if model is None and resume and not overwrite:
-        model, existing_steps = load_latest_checkpoint(experiment_name, env)
+        model, existing_steps = load_latest_checkpoint(experiment_name, env, policy_kwargs)
 
     # 使用可变对象存储 clip_range 值，以便在训练过程中可以修改
     current_clip_range = [clip_range]
@@ -151,6 +191,9 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
     if model is None:
         print(f"创建新模型，实验: {experiment_name}")
         print(f"超参数: learning_rate={learning_rate}, ent_coef={ent_coef}, clip_range={clip_range}")
+        print(f"         n_steps={n_steps}, batch_size={batch_size}, gamma={gamma}")
+        print(f"         features_dim={features_dim}, hidden_dim={hidden_dim}")
+        print(f"         actor_net={actor_net_arch}, critic_net={critic_net_arch}")
         
         model = PPO(
             policy=MultiInputActorCriticPolicy,
@@ -158,10 +201,15 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
             policy_kwargs=policy_kwargs,
             verbose=1,
             learning_rate=learning_rate,
-            n_steps=hparams["n_steps"],
-            batch_size=hparams["batch_size"],
+            n_steps=n_steps,
+            batch_size=batch_size,
+            gamma=gamma,
+            gae_lambda=gae_lambda,
+            n_epochs=n_epochs,
             ent_coef=ent_coef,
             clip_range=clip_range_fn,
+            vf_coef=vf_coef,
+            max_grad_norm=max_grad_norm,
             tensorboard_log=tensorboard_dir
         )
     else:
@@ -170,6 +218,11 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
         model.tensorboard_log = tensorboard_dir  # 恢复tensorboard日志配置
         model.learning_rate = learning_rate      # 更新学习率
         model.ent_coef = ent_coef                # 更新熵系数
+        model.gamma = gamma
+        model.gae_lambda = gae_lambda
+        model.n_epochs = n_epochs
+        model.vf_coef = vf_coef
+        model.max_grad_norm = max_grad_norm
         current_clip_range[0] = clip_range       # 更新clip范围（通过可变对象）
         model.clip_range = clip_range_fn         # 确保是可调用对象
 

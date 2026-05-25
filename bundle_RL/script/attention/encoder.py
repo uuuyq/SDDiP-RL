@@ -14,7 +14,7 @@ Attention Encoder 模块
 
 编码流程:
 1. CutEncoder: 对每个cut独立编码
-   输入: [g_i, phi_i, pi_i] (state_dim + 1 + state_dim)
+   输入: g_i (state_dim)
    输出: h_i (hidden_dim)
 
 2. SelfAttention (多层): 对cut序列进行自注意力
@@ -44,21 +44,17 @@ class CutEncoder(nn.Module):
     """
     Cut Encoder: 对每个 cut 进行独立编码
     
-    输入: cut_feature = [g_i, phi_i, pi_i]
-        - g_i: subgradient, shape (state_dim,)
-        - phi_i: cut 对应目标值, scalar
-        - pi_i: 生成该 cut 时的 dual point, shape (state_dim,)
-    
+    输入: g_i (subgradient, shape (state_dim,))
     输出: h_i, shape (hidden_dim,)
+    
+    注意: 当前只使用 g，后续可以添加 phi 和 pi
     """
     
     def __init__(self, state_dim: int, hidden_dim: int = 64):
         super().__init__()
         
-        input_dim = state_dim + 1 + state_dim
-        
         self.encoder = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
+            nn.Linear(state_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU()
@@ -67,7 +63,7 @@ class CutEncoder(nn.Module):
     def forward(self, cut_features: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            cut_features: shape (batch_size, K, input_dim)
+            cut_features: shape (batch_size, K, state_dim)
         
         Returns:
             embeddings: shape (batch_size, K, hidden_dim)
@@ -108,15 +104,19 @@ class SelfAttention(nn.Module):
     def forward(self, x: torch.Tensor, key_padding_mask: torch.Tensor = None) -> torch.Tensor:
         """
         Args:
-            x: shape (batch_size, K, d_model)
-            key_padding_mask: shape (batch_size, K), True 表示无效位置
+            x: shape (batch_size, seq_len, d_model)
+            key_padding_mask: shape (batch_size, seq_len), True 表示需要 mask
         
         Returns:
-            output: shape (batch_size, K, d_model)
+            output: shape (batch_size, seq_len, d_model)
         """
-        attn_output, _ = self.self_attn(x, x, x, key_padding_mask=key_padding_mask)
-        x = self.norm1(x + self.dropout(attn_output))
+        attn_output, _ = self.self_attn(
+            x, x, x,
+            key_padding_mask=key_padding_mask,
+            need_weights=False
+        )
         
+        x = self.norm1(x + self.dropout(attn_output))
         ffn_output = self.ffn(x)
         x = self.norm2(x + self.dropout(ffn_output))
         
@@ -128,22 +128,27 @@ class GlobalEncoder(nn.Module):
     Global Encoder: 编码全局信息
     
     输入: [pi, trial_point, realization]
-    输出: global_embedding, shape (hidden_dim,)
+    输出: global_embedding (hidden_dim)
     """
     
     def __init__(self, state_dim: int, trial_point_dim: int, realization_dim: int, hidden_dim: int = 64):
         super().__init__()
         
-        input_dim = state_dim + trial_point_dim + realization_dim
+        global_input_dim = state_dim + trial_point_dim + realization_dim
         
         self.encoder = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
+            nn.Linear(global_input_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU()
         )
     
-    def forward(self, pi: torch.Tensor, trial_point: torch.Tensor, realization: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        pi: torch.Tensor,
+        trial_point: torch.Tensor,
+        realization: torch.Tensor
+    ) -> torch.Tensor:
         """
         Args:
             pi: shape (batch_size, state_dim)
@@ -153,15 +158,15 @@ class GlobalEncoder(nn.Module):
         Returns:
             global_embedding: shape (batch_size, hidden_dim)
         """
-        x = torch.cat([pi, trial_point, realization], dim=-1)
-        return self.encoder(x)
+        global_features = torch.cat([pi, trial_point, realization], dim=-1)
+        return self.encoder(global_features)
 
 
 class AttentionBundleEncoder(nn.Module):
     """
-    Attention Bundle Encoder: 完整的编码器
+    Attention-based Bundle Encoder
     
-    整合 CutEncoder, SelfAttention, GlobalEncoder
+    整合 CutEncoder、SelfAttention、GlobalEncoder
     """
     
     def __init__(
@@ -178,6 +183,9 @@ class AttentionBundleEncoder(nn.Module):
     ):
         super().__init__()
         
+        self.state_dim = state_dim
+        self.trial_point_dim = trial_point_dim
+        self.realization_dim = realization_dim
         self.K = K
         self.hidden_dim = hidden_dim
         
@@ -238,26 +246,16 @@ class AttentionBundleEncoder(nn.Module):
         return cut_embeddings, global_embedding, cls_embedding
     
     def _build_cut_features(self, cuts: torch.Tensor, pi: torch.Tensor) -> torch.Tensor:
-        # TODO 后面可以进一步完善cuts的特征，当前只使用 g
         """
-        构建 cut 特征: [g_i, phi_i, pi_i]
+        构建 cut 特征
         
-        由于当前环境只提供 g，phi 和 pi 需要从其他信息推断或使用默认值
-        这里简化为: [g_i, phi_approx, pi_current]
+        后面可以进一步完善cuts的特征，当前只使用 g
         
         Args:
             cuts: shape (batch_size, K, state_dim) - 只有 g
             pi: shape (batch_size, state_dim)
         
         Returns:
-            cut_features: shape (batch_size, K, state_dim + 1 + state_dim)
+            cut_features: shape (batch_size, K, state_dim)
         """
-        # batch_size, K, state_dim = cuts.shape
-        #
-        # phi_approx = torch.zeros(batch_size, K, 1, device=cuts.device)
-        #
-        # pi_expanded = pi.unsqueeze(1).expand(-1, K, -1)
-        #
-        # cut_features = torch.cat([cuts, phi_approx, pi_expanded], dim=-1)
-        
         return cuts

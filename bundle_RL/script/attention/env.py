@@ -10,7 +10,7 @@ action：lambda 和 步长
 
 状态转移：lambda + 步长 -> 归一化 -> pi -> sub求解得到子问题
 
-reward：相对改进 (phi_new - phi_old) / (|phi_old| + ε)
+reward：Log-Gap: log(gap_old) - log(gap_new)，其中 gap = max(0, -phi)
 
 特点:
 1. 使用 valid_mask 标记有效的 cuts
@@ -181,9 +181,18 @@ class BundleDualEnv(gym.Env):
         # 子问题求解
         g, phi_new = self.subproblem.solve(self.pi)
 
-        # reward 使用相对改进
+        # ========== Log-Gap Reward ==========
+        # gap = max(0, -phi)，对于最小化问题，gap 越小越好
+        # log-gap reward: gap 减小时为正，gap 增大时为负
         phi_old = self.bundle[-1]["phi"]
-        reward = (phi_new - phi_old) / (abs(phi_old) + 1e-8)
+        eps = 1e-8
+        gap_old = max(0, -phi_old) + eps
+        gap_new = max(0, -phi_new) + eps
+        
+        raw_reward = np.log(gap_old) - np.log(gap_new)
+        
+        # 归一化: 使用 tanh 压缩到合理范围
+        reward = np.tanh(raw_reward * 0.1)  # 缩放系数可调
 
         # 更新 cut age
         for cut in self.bundle:
@@ -209,6 +218,8 @@ class BundleDualEnv(gym.Env):
                              f"eta={eta:.4f}, "
                              f"pi_norm={np.linalg.norm(self.pi):.6f}, "
                              f"phi_new={phi_new:.6f}, "
+                             f"gap_new={gap_new:.6f}, "
+                             f"raw_reward={raw_reward:.6f}, "
                              f"reward={reward:.6f}, "
                              f"active_cuts={int(np.sum(valid_mask))}, "
                              f"terminated={terminated}")
