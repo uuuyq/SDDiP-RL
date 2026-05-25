@@ -3,15 +3,18 @@ import numpy as np
 from bundle_RL.script.lag_problem import SubProblem
 
 """
-尝试增加输入的feature
+Attention-based Bundle Environment
 
-state：当前的所有cuts，当前的pi值，当前的trail_point、以及场景 realization
+state：当前的所有cuts，valid_mask，当前的pi值，当前的trial_point、以及场景 realization
 action：lambda 和 步长
 
 状态转移：lambda + 步长 -> 归一化 -> pi -> sub求解得到子问题
 
-reward：pi对应的子问题最优解对应的目标函数值，求解的真实值，让子问题的解尽可能大
+reward：相对改进 (phi_new - phi_old) / (|phi_old| + ε)
 
+特点:
+1. 使用 valid_mask 标记有效的 cuts
+2. bundle 数据结构预留 age 和 error 字段
 """
 
 
@@ -55,6 +58,7 @@ class BundleDualEnv(gym.Env):
         # 计算 realization 特征维度（不包含 prob）
         self.realization_dim = len(self.p_d) + len(self.re)  # p_d + re
 
+        # ========== 状态空间 ==========
         # shape = (K, state_dim)
         # 使用Box，padding部分为0
         self.observation_space = gym.spaces.Dict({
@@ -62,6 +66,12 @@ class BundleDualEnv(gym.Env):
                 low=-np.inf,
                 high=np.inf,
                 shape=(self.K, self.state_dim),
+                dtype=np.float32
+            ),
+            "valid_mask": gym.spaces.Box(
+                low=0,
+                high=1,
+                shape=(self.K,),
                 dtype=np.float32
             ),
             "pi": gym.spaces.Box(
@@ -113,7 +123,7 @@ class BundleDualEnv(gym.Env):
         super().reset(seed=seed)
 
         self.bundle = []
-        self.pi = np.zeros(self.state_dim)
+        self.pi = np.zeros(self.state_dim)  # 初始化pi
         self.t = 0  # 迭代次数
 
         # 初始solve
@@ -121,11 +131,14 @@ class BundleDualEnv(gym.Env):
 
         # 使用第一次计算的g对reward进行缩放
         self.scale = np.linalg.norm(g) + 1e-8
+        self.phi_prev = phi
 
         sub_result = {
             "pi": self.pi.copy(),
             "g": g.copy(),
             "phi": phi,
+            "age": 0,
+            "error": 0.0
         }
 
         self.bundle.append(sub_result)
@@ -143,18 +156,24 @@ class BundleDualEnv(gym.Env):
         raw_eta = action[-1]
 
         # ---------- lambda 归一化 ----------
-        exp_lambda = np.exp(raw_lambda)
+        exp_lambda = np.exp(raw_lambda - np.max(raw_lambda))
         lambdas = exp_lambda / (np.sum(exp_lambda) + 1e-8)
 
         # ---------- 步长映射 ----------
         # 用sigmoid保证正值，并限制最大步长
-        # TODO: 步长的上界具体设置可以查看bundle算法中的步长大小
         eta = 1.0 * (1 / (1 + np.exp(-raw_eta)))
 
         # ---------- 用 state 聚合 ----------
         state = self._get_state()
         G = state["cuts"]
-        d = lambdas @ G  # (state_dim,)
+        valid_mask = state["valid_mask"]
+
+        # 使用 mask 过滤无效 cuts
+        masked_lambdas = lambdas * valid_mask
+        lambda_sum = np.sum(masked_lambdas) + 1e-8
+        normalized_lambdas = masked_lambdas / lambda_sum
+
+        d = normalized_lambdas @ G  # (state_dim,)
 
         # 更新pi
         self.pi = self.pi + eta * d
@@ -162,14 +181,22 @@ class BundleDualEnv(gym.Env):
         # 子问题求解
         g, phi_new = self.subproblem.solve(self.pi)
 
+        # reward 使用相对改进
+        phi_old = self.bundle[-1]["phi"]
+        reward = (phi_new - phi_old) / (abs(phi_old) + 1e-8)
+
+        # 更新 cut age
+        for cut in self.bundle:
+            cut["age"] += 1
+
         cut_new = {
             "pi": self.pi.copy(),
             "g": g.copy(),
             "phi": phi_new,
+            "age": 0,
+            "error": 0.0
         }
 
-        # reward 使用子问题的目标函数的提升值
-        reward = (phi_new - self.bundle[-1]["phi"]) / self.scale
         self.bundle.append(cut_new)
 
         self.t += 1
@@ -178,13 +205,12 @@ class BundleDualEnv(gym.Env):
         # 记录每次step的输出值（仅在verbose模式下）
         if self.verbose:
             self.logger.debug(f"[BundleEnv Step {self.t}] "
-                             f"raw_lambda={raw_lambda},"
-                             # f"raw_lambda_sum={np.sum(raw_lambda):.4f}, "
                              f"raw_eta={raw_eta:.4f}, "
                              f"eta={eta:.4f}, "
                              f"pi_norm={np.linalg.norm(self.pi):.6f}, "
                              f"phi_new={phi_new:.6f}, "
                              f"reward={reward:.6f}, "
+                             f"active_cuts={int(np.sum(valid_mask))}, "
                              f"terminated={terminated}")
 
         return self._get_state(), reward, terminated, False, {}
@@ -193,9 +219,11 @@ class BundleDualEnv(gym.Env):
     def _get_state(self):
         """
         获取当前最新的状态，从self.bundle中抽取最新的数据，padding出cuts矩阵
-        :return: cuts，pi，trial_point，realization
+        :return: cuts，valid_mask，pi，trial_point，realization
         """
         cuts = np.zeros((self.K, self.state_dim), dtype=np.float32)
+        valid_mask = np.zeros(self.K, dtype=np.float32)
+        
         # 取出最后K个最新数据（为了应对迭代次数超过K的情况，丢弃旧数据）
         active = self.bundle[-self.K:]
 
@@ -203,6 +231,7 @@ class BundleDualEnv(gym.Env):
 
         for i, cut in enumerate(active):
             cuts[start + i] = cut["g"]
+            valid_mask[start + i] = 1.0
 
         # 构建 realization 特征向量（不包含 prob）
         realization_feature = np.concatenate([
@@ -212,6 +241,7 @@ class BundleDualEnv(gym.Env):
 
         return {
             "cuts": cuts,
+            "valid_mask": valid_mask,
             "pi": self.pi.astype(np.float32),
             "trial_point": self.trial_point,
             "realization": realization_feature

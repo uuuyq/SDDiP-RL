@@ -113,39 +113,23 @@ def create_config_list(config_dir):
             print(f"警告：配置文件不存在: {config_path}")
     return configs
 
-from bundle_RL.script.default_feature.train import train
-from bundle_RL.script.default_feature.env import BundleDualEnv
+from bundle_RL.script.attention.train import train
+from bundle_RL.script.attention.env import BundleDualEnv
 if __name__ == "__main__":
-    # 动态导入（避免启动时的依赖问题）
-
     # ========================================================
-    # 训练参数配置（修改后）
-    # 调整目的：降低 approx_kl 和 clip_fraction，保持探索度，让训练更稳定
+    # 训练参数配置
+    # 基于第三轮实验分析结果，选择最佳可信配置（exp21）
+    # 要点：lr=5e-5稳定训练 + 低ent防止entropy上升 + 足够rounds充分收敛
     # ========================================================
     
-    # ------------------- 原始配置（作为参照） -------------------
-    # experiment_name = "exp06"
-    # ent_coef = 0.001          # 熵系数
-    # K = 20                    # 样本数量参数
-    # steps_per_config_per_round = 20_000  # 每轮每个config训练步数
-    # rounds = 3                # 训练轮数
-    # learning_rate = 3e-4      # 学习率（固定）
-    # clip_range = 0.2          # PPO clip范围（固定）
-    # clip_range_decay = False  # 不启用clip_range衰减
-    
-    # ------------------- 当前配置 -------------------
-    experiment_name = "multi_config_exp_07"  # 实验名称，用于区分不同实验
-    ent_coef = 0.01            # 熵系数，提高到0.01以保持探索度，防止过早收敛
-    K = 20                     # 样本数量参数
-    steps_per_config_per_round = 20_000  # 每轮每个config训练步数
-    rounds = 3                 # 训练轮数
-    
-    # 学习率调整：从3e-4降低到1e-4，减少策略更新步长
-    learning_rate = 1e-4       # 降低学习率，压低approx_kl和clip_fraction
-    
-    # Clip范围调整：启用线性衰减
-    clip_range = 0.2           # 初始clip范围
-    clip_range_decay = True    # 启用clip_range线性衰减（从0.2衰减到0.05）
+    experiment_name = "exp21"          # 实验名称
+    ent_coef = 0.005                   # 低熵系数，确保entropy下降、std收敛
+    K = 10                             # 样本数量参数
+    steps_per_config_per_round = 2000  # 每轮每个config训练步数（小步数更稳定）
+    rounds = 30                        # 训练轮数（总步数 = 10×2000×30 = 600K）
+    learning_rate = 5e-5               # 低学习率，避免KL散度过高
+    clip_range = 0.2                   # PPO clip范围
+    clip_range_decay = False           # 不启用clip衰减（exp12证明关闭更好）
     
     # ========================================================
     # 启动训练
