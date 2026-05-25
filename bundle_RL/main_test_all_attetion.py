@@ -114,10 +114,10 @@ def plot_results(avg_results, save_dir, experiment_name=None, tb_writer=None):
 
     # 图1：gap随迭代次数的收敛图
     plt.figure(figsize=(8, 5))
-    # 使用同一颜色的不同深浅区分三个方法
-    plt.plot(avg_results["baseline"]["rel_gap"], marker='s', color='#1a1a1a', label='Baseline', linewidth=2)  # 最深
-    plt.plot(avg_results["rl"]["rel_gap"], marker='o', color='#666666', label='RL', linewidth=2)  # 中等
-    plt.plot(avg_results["rl_warmstart"]["rel_gap"], marker='^', color='#b3b3b3', label='RL Warmstart', linewidth=2)  # 最浅
+    # 使用不同颜色区分三种方法
+    plt.plot(avg_results["baseline"]["rel_gap"], marker='s', color='#2196F3', label='Baseline', linewidth=2)     # 蓝色
+    plt.plot(avg_results["rl"]["rel_gap"], marker='o', color='#FF5722', label='RL', linewidth=2)                  # 橙红色
+    plt.plot(avg_results["rl_warmstart"]["rel_gap"], marker='^', color='#4CAF50', label='RL Warmstart', linewidth=2)  # 绿色
     plt.xlabel('Iteration Step')
     plt.ylabel('Relative Gap')
     plt.title('Convergence vs Iteration')
@@ -148,10 +148,10 @@ def plot_results(avg_results, save_dir, experiment_name=None, tb_writer=None):
     rl_cum_time = np.cumsum(avg_results["rl"]["time"])
     rl_warmstart_cum_time = np.cumsum(avg_results["rl_warmstart"]["time"])
 
-    # 使用同一颜色的不同深浅区分三个方法
-    plt.plot(baseline_cum_time, avg_results["baseline"]["rel_gap"], marker='s', color='#1a1a1a', label='Baseline', linewidth=2)  # 最深
-    plt.plot(rl_cum_time, avg_results["rl"]["rel_gap"], marker='o', color='#666666', label='RL', linewidth=2)  # 中等
-    plt.plot(rl_warmstart_cum_time, avg_results["rl_warmstart"]["rel_gap"], marker='^', color='#b3b3b3', label='RL Warmstart', linewidth=2)  # 最浅
+    # 使用不同颜色区分三种方法
+    plt.plot(baseline_cum_time, avg_results["baseline"]["rel_gap"], marker='s', color='#2196F3', label='Baseline', linewidth=2)     # 蓝色
+    plt.plot(rl_cum_time, avg_results["rl"]["rel_gap"], marker='o', color='#FF5722', label='RL', linewidth=2)                          # 橙红色
+    plt.plot(rl_warmstart_cum_time, avg_results["rl_warmstart"]["rel_gap"], marker='^', color='#4CAF50', label='RL Warmstart', linewidth=2)  # 绿色
     plt.xlabel('Cumulative Time (s)')
     plt.ylabel('Relative Gap')
     plt.title('Convergence vs Time')
@@ -176,15 +176,15 @@ def plot_results(avg_results, save_dir, experiment_name=None, tb_writer=None):
 
     print(f"Convergence plots saved to {save_dir}")
     
-    # 同时保存数值数据（用于对比分析）
+    # 同时保存数值数据到 TensorBoard（使用不同 tag 名称区分方法）
     if tb_writer is not None:
-        # 收敛曲线数据（用于 TensorBoard 的 scalar 对比）
+        # 使用清晰的方法名称作为 tag
         for step, gap in enumerate(avg_results["baseline"]["rel_gap"]):
-            tb_writer.add_scalar('metrics/baseline_gap', gap, step)
+            tb_writer.add_scalar('convergence/Baseline', gap, step)
         for step, gap in enumerate(avg_results["rl"]["rel_gap"]):
-            tb_writer.add_scalar('metrics/rl_gap', gap, step)
+            tb_writer.add_scalar('convergence/RL', gap, step)
         for step, gap in enumerate(avg_results["rl_warmstart"]["rel_gap"]):
-            tb_writer.add_scalar('metrics/rl_warmstart_gap', gap, step)
+            tb_writer.add_scalar('convergence/RL_Warmstart', gap, step)
         
         print(f"TensorBoard data saved")
 
@@ -235,8 +235,15 @@ def save_results_to_json(all_results, save_dir):
     print(f"Results saved to {results_file}")
 
 
-def load_latest_model(train_experiment_name, logger):
+def load_latest_model(train_experiment_name, logger, features_dim=128, hidden_dim=64, 
+                      num_heads=4, num_layers=1, ffn_dim=128, dropout=0.1,
+                      actor_net_arch=None, critic_net_arch=None):
     """加载最新训练的模型"""
+    if actor_net_arch is None:
+        actor_net_arch = [128, 128]
+    if critic_net_arch is None:
+        critic_net_arch = [128, 128]
+    
     model_dir = os.path.join("train_result", "model", train_experiment_name, "save")
 
     if not os.path.exists(model_dir):
@@ -260,11 +267,18 @@ def load_latest_model(train_experiment_name, logger):
         model = PPO.load(
             model_path,
             custom_objects={
-                "SimpleBundleExtractor": AttentionBundleExtractor,
+                "AttentionBundleExtractor": AttentionBundleExtractor,
                 "policy_kwargs": dict(
                     features_extractor_class=AttentionBundleExtractor,
-                    features_extractor_kwargs=dict(features_dim=128),
-                    net_arch=dict(pi=[128, 128], vf=[128, 128])
+                    features_extractor_kwargs=dict(
+                        features_dim=features_dim,
+                        hidden_dim=hidden_dim,
+                        num_heads=num_heads,
+                        num_layers=num_layers,
+                        ffn_dim=ffn_dim,
+                        dropout=dropout
+                    ),
+                    net_arch=dict(pi=actor_net_arch, vf=critic_net_arch)
                 )
             }
         )
@@ -343,10 +357,17 @@ def run_test_for_configs(configs, config_info_list, experiment_name, logger, mod
     return all_results
 
 
-def main(experiment_name, train_experiment_name=None, i=2, tolerance=1e-5, warmstart_threshold=1e-4, patience=3, K=20, tb_writer=None):
+def main(experiment_name, train_experiment_name=None, i=2, tolerance=1e-5, warmstart_threshold=1e-4, patience=3, K=20, tb_writer=None,
+         features_dim=128, hidden_dim=64, num_heads=4, num_layers=1, ffn_dim=128, dropout=0.1,
+         actor_net_arch=None, critic_net_arch=None):
     """主测试函数"""
     if train_experiment_name is None:
         train_experiment_name = experiment_name
+    
+    if actor_net_arch is None:
+        actor_net_arch = [128, 128]
+    if critic_net_arch is None:
+        critic_net_arch = [128, 128]
 
     save_dir = os.path.join("test_result", experiment_name)
     os.makedirs(save_dir, exist_ok=True)
@@ -355,7 +376,17 @@ def main(experiment_name, train_experiment_name=None, i=2, tolerance=1e-5, warms
 
     # 加载训练好的模型（失败时直接抛出异常）
     logger.info(f"加载模型: {train_experiment_name}")
-    model = load_latest_model(train_experiment_name, logger)
+    model = load_latest_model(
+        train_experiment_name, logger,
+        features_dim=features_dim,
+        hidden_dim=hidden_dim,
+        num_heads=num_heads,
+        num_layers=num_layers,
+        ffn_dim=ffn_dim,
+        dropout=dropout,
+        actor_net_arch=actor_net_arch,
+        critic_net_arch=critic_net_arch
+    )
 
     # 收集 configs
     logger.info(f"Collecting configs for i={i}...")
@@ -399,17 +430,17 @@ def collect_configs(i=2):
     """收集指定 i 的所有 config"""
     configs = []
     config_info = []
-
-    for t in range(1, 24):
-        for n in range(1):
-            config_path = Path(f"./configs/config_{i}_{t}_{n}.pkl")
-            if config_path.exists():
-                config = BundleConfig.from_pkl(config_path)
-                configs.append(config)
-                config_info.append({"i": i, "t": t, "n": n})
-                print(f"Loaded config_{i}_{t}_{n}.pkl")
-            else:
-                print(f"Config file not found: {config_path}")
+    t = 5
+    # for t in range(1, 24):
+    for n in range(6):
+        config_path = Path(f"./configs/config_{i}_{t}_{n}.pkl")
+        if config_path.exists():
+            config = BundleConfig.from_pkl(config_path)
+            configs.append(config)
+            config_info.append({"i": i, "t": t, "n": n})
+            print(f"Loaded config_{i}_{t}_{n}.pkl")
+        else:
+            print(f"Config file not found: {config_path}")
 
     return configs, config_info
 
@@ -459,7 +490,7 @@ if __name__ == "__main__":
             main(
                 experiment_name=exp_name,           # 测试结果保存目录名
                 train_experiment_name=train_exp_name,  # 训练模型所在的实验名
-                i=2,
+                i=1,
                 tolerance=1e-3,
                 warmstart_threshold=0.01,
                 patience=3,

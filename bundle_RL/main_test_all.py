@@ -114,10 +114,10 @@ def plot_results(avg_results, save_dir, experiment_name=None, tb_writer=None):
 
     # 图1：gap随迭代次数的收敛图
     plt.figure(figsize=(8, 5))
-    # 使用同一颜色的不同深浅区分三个方法
-    plt.plot(avg_results["baseline"]["rel_gap"], marker='s', color='#1a1a1a', label='Baseline', linewidth=2)  # 最深
-    plt.plot(avg_results["rl"]["rel_gap"], marker='o', color='#666666', label='RL', linewidth=2)  # 中等
-    plt.plot(avg_results["rl_warmstart"]["rel_gap"], marker='^', color='#b3b3b3', label='RL Warmstart', linewidth=2)  # 最浅
+    # 使用不同颜色区分三种方法
+    plt.plot(avg_results["baseline"]["rel_gap"], marker='s', color='#2196F3', label='Baseline', linewidth=2)     # 蓝色
+    plt.plot(avg_results["rl"]["rel_gap"], marker='o', color='#FF5722', label='RL', linewidth=2)                  # 橙红色
+    plt.plot(avg_results["rl_warmstart"]["rel_gap"], marker='^', color='#4CAF50', label='RL Warmstart', linewidth=2)  # 绿色
     plt.xlabel('Iteration Step')
     plt.ylabel('Relative Gap')
     plt.title('Convergence vs Iteration')
@@ -148,10 +148,10 @@ def plot_results(avg_results, save_dir, experiment_name=None, tb_writer=None):
     rl_cum_time = np.cumsum(avg_results["rl"]["time"])
     rl_warmstart_cum_time = np.cumsum(avg_results["rl_warmstart"]["time"])
 
-    # 使用同一颜色的不同深浅区分三个方法
-    plt.plot(baseline_cum_time, avg_results["baseline"]["rel_gap"], marker='s', color='#1a1a1a', label='Baseline', linewidth=2)  # 最深
-    plt.plot(rl_cum_time, avg_results["rl"]["rel_gap"], marker='o', color='#666666', label='RL', linewidth=2)  # 中等
-    plt.plot(rl_warmstart_cum_time, avg_results["rl_warmstart"]["rel_gap"], marker='^', color='#b3b3b3', label='RL Warmstart', linewidth=2)  # 最浅
+    # 使用不同颜色区分三种方法
+    plt.plot(baseline_cum_time, avg_results["baseline"]["rel_gap"], marker='s', color='#2196F3', label='Baseline', linewidth=2)     # 蓝色
+    plt.plot(rl_cum_time, avg_results["rl"]["rel_gap"], marker='o', color='#FF5722', label='RL', linewidth=2)                          # 橙红色
+    plt.plot(rl_warmstart_cum_time, avg_results["rl_warmstart"]["rel_gap"], marker='^', color='#4CAF50', label='RL Warmstart', linewidth=2)  # 绿色
     plt.xlabel('Cumulative Time (s)')
     plt.ylabel('Relative Gap')
     plt.title('Convergence vs Time')
@@ -176,15 +176,15 @@ def plot_results(avg_results, save_dir, experiment_name=None, tb_writer=None):
 
     print(f"Convergence plots saved to {save_dir}")
     
-    # 同时保存数值数据（用于对比分析）
+    # 同时保存数值数据到 TensorBoard（使用不同 tag 名称区分方法）
     if tb_writer is not None:
-        # 收敛曲线数据（用于 TensorBoard 的 scalar 对比）
+        # 使用清晰的方法名称作为 tag
         for step, gap in enumerate(avg_results["baseline"]["rel_gap"]):
-            tb_writer.add_scalar('metrics/baseline_gap', gap, step)
+            tb_writer.add_scalar('convergence/Baseline', gap, step)
         for step, gap in enumerate(avg_results["rl"]["rel_gap"]):
-            tb_writer.add_scalar('metrics/rl_gap', gap, step)
+            tb_writer.add_scalar('convergence/RL', gap, step)
         for step, gap in enumerate(avg_results["rl_warmstart"]["rel_gap"]):
-            tb_writer.add_scalar('metrics/rl_warmstart_gap', gap, step)
+            tb_writer.add_scalar('convergence/RL_Warmstart', gap, step)
         
         print(f"TensorBoard data saved")
 
@@ -401,7 +401,7 @@ def collect_configs(i=2):
     config_info = []
 
     for t in range(1, 24):
-        for n in range(1):
+        for n in range(6):
             config_path = Path(f"./configs/config_{i}_{t}_{n}.pkl")
             if config_path.exists():
                 config = BundleConfig.from_pkl(config_path)
@@ -430,34 +430,34 @@ if __name__ == "__main__":
         # ("exp01_test", "exp01", 20),  # default, K=20
         # ("exp02_test", "exp02", 20),  # default, K=20
         # ("exp03_test", "exp03", 20),  # default, K=20
-        ("exp04_test", "exp04", 20),  # default_feature, K=20
-        ("exp05_test", "exp05", 10),  # default_feature, K=10
+        ("exp04", "exp04", 20),  # default_feature, K=20
+        ("exp05", "exp05", 10),  # default_feature, K=10
         # ("exp06_test", "exp06", 20),  # default, K=20
         # ==============================================
         # 第二轮实验（exp07-exp15）- 优化探索
         # ==============================================
-        ("exp07_test", "exp07", 20),  # default_feature, K=20
-        ("exp08_test", "exp08", 20),  # default_feature, K=20
-        ("exp09_test", "exp09", 20),  # default_feature, K=20
-        ("exp10_test", "exp10", 20),  # default_feature, K=20
-        ("exp11_test", "exp11", 20),  # default_feature, K=20
-        ("exp12_test", "exp12", 20),  # default_feature, K=20
-        ("exp13_test", "exp13", 20),  # default_feature, K=20
-        ("exp14_test", "exp14", 20),  # default_feature, K=20
-        ("exp15_test", "exp15", 20),  # default_feature, K=20
+        ("exp07", "exp07", 20),  # default_feature, K=20
+        ("exp08", "exp08", 20),  # default_feature, K=20
+        ("exp09", "exp09", 20),  # default_feature, K=20
+        ("exp10", "exp10", 20),  # default_feature, K=20
+        ("exp11", "exp11", 20),  # default_feature, K=20
+        ("exp12", "exp12", 20),  # default_feature, K=20
+        ("exp13", "exp13", 20),  # default_feature, K=20
+        ("exp14", "exp14", 20),  # default_feature, K=20
+        ("exp15", "exp15", 20),  # default_feature, K=20
         # ==============================================
         # 第三轮实验（exp16-exp25）- 充分训练 + ent_coef探索
         # ==============================================
-        ("exp16_test", "exp16", 10),  # default_feature, K=10
-        ("exp17_test", "exp17", 10),  # default_feature, K=10
-        ("exp18_test", "exp18", 10),  # default_feature, K=10
-        ("exp19_test", "exp19", 10),  # default_feature, K=10
-        ("exp20_test", "exp20", 10),  # default_feature, K=10
-        ("exp21_test", "exp21", 10),  # default_feature, K=10
-        ("exp22_test", "exp22", 10),  # default_feature, K=10
-        ("exp23_test", "exp23", 10),  # default_feature, K=10
-        ("exp24_test", "exp24", 10),  # default_feature, K=10
-        ("exp25_test", "exp25", 10),  # default_feature, K=10
+        ("exp16", "exp16", 10),  # default_feature, K=10
+        ("exp17", "exp17", 10),  # default_feature, K=10
+        ("exp18", "exp18", 10),  # default_feature, K=10
+        ("exp19", "exp19", 10),  # default_feature, K=10
+        ("exp20", "exp20", 10),  # default_feature, K=10
+        ("exp21", "exp21", 10),  # default_feature, K=10
+        ("exp22", "exp22", 10),  # default_feature, K=10
+        ("exp23", "exp23", 10),  # default_feature, K=10
+        ("exp24", "exp24", 10),  # default_feature, K=10
+        ("exp25", "exp25", 10),  # default_feature, K=10
     ]
 
     # ==============================================
