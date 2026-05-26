@@ -7,48 +7,6 @@ from sddip.sddip import dualsolver
 from sddip.sddip.sddipclassical_without_binary_with_bundle_RL import Algorithm
 
 
-# @dataclass
-# class TestSetup:
-#     name: str
-#     path: Path
-#     algorithm: Literal["sddip", "dsddip"]
-#
-#     sddip_n_binaries: int = field(default=5)
-#
-#     sddip_max_iterations: int = field(default=100)
-#     sddip_time_limit: int = field(default=5 * 60)
-#
-#     sddip_refinment_stabilization_count: int = field(default=5)
-#     sddip_stop_stabilization_count: int = field(default=1000)
-#
-#     sddip_no_improvement_tolerance: float = field(default=10**-6)
-#
-#     sddip_primary_cut_type: str = field(default="sb")
-#     sddip_n_samples_primary: int = field(default=3)
-#     sddip_secondary_cut_type: str = field(default="l")
-#     sddip_n_samples_secondary: int = field(default=1)
-#
-#     sddip_projection_big_m: float = field(default=10**4)
-#
-#     sddip_n_samples_final_ub: int = field(default=300)
-#
-#     dual_solver_stop_tolerance: float = field(default=10**-6)
-#     dual_solver_time_limit: int = field(default=5 * 60)
-#     dual_solver_max_iterations: int = field(default=5000)
-#
-#     seed: Seed = field(default_factory=lambda: int(time.time()))
-#
-#     @classmethod
-#     def from_dict(cls, d: dict[str, Any], /) -> "TestSetup":
-#         """Create a `TestSetup` object from a dictionary."""
-#         d["path"] = Path(d["path"])
-#         return cls(**d)
-#
-#
-# Setup = list[TestSetup]
-
-
-
 def main():
 
     path = Path(r".\data\01_test_cases\case6ww\t24_n06")
@@ -64,7 +22,7 @@ def main():
         predicted_ascent="abs",
         time_limit=5 * 60,
     )
-    mylog_dir = "lag_without_binary.log"
+    mylog_dir = "lag_without_binary_bundle_RL.log"
 
     algorithm = Algorithm(path, log_path, dual_solver, mylog_dir)
     algorithm.run(10)

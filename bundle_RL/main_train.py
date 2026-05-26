@@ -232,12 +232,12 @@ if __name__ == "__main__":
     # ========================================================
     # 训练参数配置（在这里调整实验名称和训练数据选择）
     # ========================================================
-    experiment_name = "exp29"          # 实验名称
+    experiment_name = "exp30"          # 实验名称
     
     # ========================================================
     # 启动训练
     # ========================================================
     main(
         experiment_name=experiment_name,
-        config_path="train_config.yml"
+        config_path=r"D:\tools\workspace_pycharm\SDDiP-RL\bundle_RL\train_config.yml"
     )

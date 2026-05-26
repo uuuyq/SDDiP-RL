@@ -209,7 +209,8 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
             policy_class = SeparateEncoderPolicy
             print("使用分离编码器策略")
         
-        model = PPO(
+        # 构建 PPO 参数（只在 target_kl 为有效数值时添加）
+        ppo_kwargs = dict(
             policy=policy_class,
             env=env,
             policy_kwargs=policy_kwargs,
@@ -224,9 +225,15 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
             clip_range=clip_range_fn,
             vf_coef=vf_coef,
             max_grad_norm=max_grad_norm,
-            target_kl=target_kl,
             tensorboard_log=tensorboard_dir
         )
+        
+        # 只在 target_kl 为有效数值时添加
+        if target_kl is not None and isinstance(target_kl, (int, float)):
+            ppo_kwargs['target_kl'] = target_kl
+            print(f"设置 target_kl={target_kl}")
+        
+        model = PPO(**ppo_kwargs)
     else:
         print(f"继续训练已有模型，已训练步数: {existing_steps}")
         model.set_env(env)
@@ -238,7 +245,9 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
         model.n_epochs = n_epochs
         model.vf_coef = vf_coef
         model.max_grad_norm = max_grad_norm
-        model.target_kl = target_kl              # 更新 KL 目标
+        # 只在 target_kl 为有效数值时更新
+        if target_kl is not None and isinstance(target_kl, (int, float)):
+            model.target_kl = target_kl
         current_clip_range[0] = clip_range       # 更新clip范围（通过可变对象）
         model.clip_range = clip_range_fn         # 确保是可调用对象
 

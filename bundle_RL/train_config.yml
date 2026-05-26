@@ -30,7 +30,7 @@ ppo:
   gamma: 0.99            # 折扣因子
   gae_lambda: 0.95       # GAE 参数
   n_epochs: 10           # 训练轮数
-  target_kl: None        # KL 散度目标（稍微放宽，避免过于频繁的提前停止）
+  # target_kl: 0.02      # KL 散度目标（设置为有效数值以稳定训练）
 
 # ------------------------------
 # 网络结构设置
@@ -38,7 +38,7 @@ ppo:
 network:
   features_dim: 128      # 特征提取器输出维度
   hidden_dim: 64         # 编码器隐藏层维度
-  num_heads: 4           # Attention 头数
+  num_heads: 2           # Attention 头数
   num_layers: 1          # Attention 层数
   ffn_dim: 128           # FFN 维度
   dropout: 0.1           # Dropout 概率

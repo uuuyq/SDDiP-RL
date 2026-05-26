@@ -430,17 +430,17 @@ def collect_configs(i=2):
     """收集指定 i 的所有 config"""
     configs = []
     config_info = []
-    t = 5
-    # for t in range(1, 24):
-    for n in range(6):
-        config_path = Path(f"./configs/config_{i}_{t}_{n}.pkl")
-        if config_path.exists():
-            config = BundleConfig.from_pkl(config_path)
-            configs.append(config)
-            config_info.append({"i": i, "t": t, "n": n})
-            print(f"Loaded config_{i}_{t}_{n}.pkl")
-        else:
-            print(f"Config file not found: {config_path}")
+    # t = 5
+    for t in range(1, 24):
+        for n in range(6):
+            config_path = Path(f"./configs/config_{i}_{t}_{n}.pkl")
+            if config_path.exists():
+                config = BundleConfig.from_pkl(config_path)
+                configs.append(config)
+                config_info.append({"i": i, "t": t, "n": n})
+                print(f"Loaded config_{i}_{t}_{n}.pkl")
+            else:
+                print(f"Config file not found: {config_path}")
 
     return configs, config_info
 
@@ -458,7 +458,9 @@ if __name__ == "__main__":
     # 第一轮实验（exp01-exp06）
     # ==============================================
     test_configs = [
-        ("exp26", "exp26", 10),  # attention, K=10
+        ("exp27", "exp27", 10),  # attention, K=10
+        ("exp28", "exp28", 10),  # attention, K=10
+        ("exp29", "exp29", 10),  # attention, K=10
     ]
 
     # ==============================================
