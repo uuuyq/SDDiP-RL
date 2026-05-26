@@ -4,7 +4,7 @@ from pathlib import Path
 # from sddip.sddip.sddipclassical_without_binary_normalized import Algorithm
 # from sddip.sddip.sddipclassical_normalized import Algorithm
 from sddip.sddip import dualsolver
-from sddip.sddip.sddipclassical_without_binary_with_bundle_RL import Algorithm
+from sddip.sddip.sddipclassical_without_binary_with_bundle_ML import Algorithm
 
 
 def main():
@@ -24,7 +24,7 @@ def main():
     )
     mylog_dir = "lag_without_binary_bundle_RL.log"
 
-    algorithm = Algorithm(path, log_path, dual_solver, mylog_dir)
+    algorithm = Algorithm(path, log_path, dual_solver, mylog_dir, instance_name="instance_01")
     algorithm.run(10)
 
 

@@ -96,9 +96,10 @@ class BundleDualEnv(gym.Env):
 
         # ========== 动作空间 ==========
         # 前K维是lambda，最后1维是步长
+        # 使用标准范围 [-1, 1]，在 step 方法中进行缩放
         self.action_space = gym.spaces.Box(
-            low=-10,
-            high=10,
+            low=-1,
+            high=1,
             shape=(self.action_dim,),
             dtype=np.float32
         )

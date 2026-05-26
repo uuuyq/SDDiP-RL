@@ -8,11 +8,14 @@ import numpy as np
 from scipy import linalg, stats
 
 from sddip.sddip import common
-from bundle_RL.config import BundleConfig
+from bundle_ml.config import BundleConfig
+from bundle_ml.lag_problem import SubProblem, MasterProblem, DataCollector
 
 CONFIG_STORAGE = {}
-CONFIG_JSON_PATH = r"D:\tools\workspace_pycharm\SDDiP-RL\bundle_RL\configs\configs.json"
-CONFIG_PKL_PATH = r"D:\tools\workspace_pycharm\SDDiP-RL\bundle_RL\configs\configs.pkl"
+
+# 基础路径配置
+BASE_CONFIG_DIR = r"D:\tools\workspace_pycharm\SDDiP-RL\bundle_ml\config_data"
+BASE_DATA_DIR = r"D:\tools\workspace_pycharm\SDDiP-RL\bundle_ml\training_data"
 
 
 # def set_config_file_paths(json_path: str, pkl_path: str) -> None:
@@ -33,10 +36,14 @@ def collect_and_save_config(
     X_BS_TRIAL: list,
     SOC_TRIAL: list,
     PATH: Path,
+    config_json_path: str,
+    config_pkl_dir: str,
     bc_storage=None,
     dual_solver_storage=None,
+    p_d=None,
+    re=None,
 ) -> None:
-    """收集并保存完整的BundleConfig对象"""
+    """收集并保存完整的MLBundleConfig对象"""
     key = (i, t, n)
     config = BundleConfig(
         T=T,
@@ -50,20 +57,134 @@ def collect_and_save_config(
         bc_storage=bc_storage,
         dual_solver_storage=dual_solver_storage,
         n=n,
+        p_d=p_d,
+        re=re,
     )
     CONFIG_STORAGE[key] = config
     
-    if CONFIG_JSON_PATH:
-        with open(CONFIG_JSON_PATH, "a", encoding="utf-8") as f:
+    # 保存 JSON（追加到主文件）
+    if config_json_path:
+        with open(config_json_path, "a", encoding="utf-8") as f:
             f.write(config.toString() + "\n")
     
-    if CONFIG_PKL_PATH:
-        pkl_dir = os.path.dirname(CONFIG_PKL_PATH)
-        if pkl_dir:
-            os.makedirs(pkl_dir, exist_ok=True)
-        pkl_filename = f"config_{i}_{t}_{n}.pkl"
-        pkl_full_path = os.path.join(os.path.dirname(CONFIG_PKL_PATH), pkl_filename)
-        config.to_pkl(pkl_full_path)
+    # 每个 (i, t, n) 单独保存一份 pkl 文件
+    pkl_filename = f"config_{i}_{t}_{n}.pkl"
+    pkl_full_path = os.path.join(config_pkl_dir, pkl_filename)
+    config.to_pkl(pkl_full_path)
+    
+    # 每个 (i, t, n) 单独保存一份 JSON 文件
+    json_filename = f"config_{i}_{t}_{n}.json"
+    json_full_path = os.path.join(config_pkl_dir, json_filename)
+    config.to_json(json_full_path)
+
+
+def solve_bundle_with_collector(
+    logger,
+    trial_point: list,
+    x_trial_point: list,
+    y_trial_point: list,
+    x_bs_trial_point: list,
+    soc_trial_point: list,
+    p_d: np.ndarray,
+    re: np.ndarray,
+    T: int,
+    N_VARS: int,
+    PATH: Path,
+    sddip_iteration: int,
+    stage: int,
+    realization: int,
+    sample_index: int,
+    data_save_dir: str,
+    bc_storage=None,
+    dual_solver_storage=None,
+) -> tuple:
+    """
+    使用 Bundle 方法求解并收集训练数据
+
+    Args:
+        logger: 日志器
+        trial_point: trial point 列表（完整）
+        x_trial_point: x trial point（作为 x_prev）
+        y_trial_point: y trial point
+        x_bs_trial_point: x_bs trial point
+        soc_trial_point: soc trial point
+        p_d: demand realization
+        re: renewable generation realization
+        T: 当前阶段
+        N_VARS: 变量数量
+        PATH: 问题路径
+        sddip_iteration: SDDiP 外层迭代次数
+        stage: 当前 stage
+        realization: 当前 realization
+        sample_index: 样本索引
+        data_save_dir: 数据保存目录路径
+        bc_storage: Benders cuts 存储
+        dual_solver_storage: Lagrangian cuts 存储
+
+    Returns:
+        tuple: (dual_multipliers, dual_value)
+    """
+    # 创建 MLBundleConfig
+    config = BundleConfig(
+        T=T,
+        N_VARS=N_VARS,
+        X_TRIAL=x_trial_point,
+        Y_TRIAL=y_trial_point,
+        X_BS_TRIAL=x_bs_trial_point,
+        SOC_TRIAL=soc_trial_point,
+        PATH=PATH,
+        iteration=sddip_iteration,
+        bc_storage=bc_storage,
+        dual_solver_storage=dual_solver_storage,
+        n=realization,
+        p_d=p_d.tolist(),
+        re=re.tolist(),
+    )
+
+    # 创建数据收集器
+    data_collector = DataCollector(config=config)
+
+    # 创建 SubProblem
+    sub = SubProblem(logger, config, n=realization)
+
+    # 创建 MasterProblem（带数据收集器）
+    master = MasterProblem(
+        logger, N_VARS, tolerance=1e-5, data_collector=data_collector
+    )
+
+    # 设置元数据
+    master.set_metadata(
+        stage=stage,
+        realization=realization,
+        sddip_iteration=sddip_iteration,
+        sample_index=sample_index,
+    )
+
+    # 执行 Bundle 方法求解
+    x_new = np.zeros(N_VARS)
+    g_new, f_new = sub.solve(x_new)
+    master.update_strategy(x_new, f_new, g_new, ub=None)
+
+    max_iterations = 200
+    for _ in range(max_iterations):
+        master.add_cut(x_new, f_new, g_new)
+        ub, x_new = master.solve_master()
+        g_new, f_new = sub.solve(x_new)
+        serious_step, delta, stop_flag = master.update_strategy(x_new, f_new, g_new, ub)
+
+        if stop_flag:
+            break
+
+    # 获取最终结果
+    dual_multipliers = np.array(master.x_best)
+    dual_value = master.f_best - dual_multipliers.dot(trial_point)
+
+    # 保存收集的数据
+    data_filename = f"bundle_data_i{sddip_iteration}_t{stage}_k{sample_index}_n{realization}.json"
+    data_filepath = os.path.join(data_save_dir, data_filename)
+    data_collector.save(data_filepath)
+
+    return dual_multipliers, dual_value
 
 from . import (
     dualsolver,
@@ -84,6 +205,7 @@ class Algorithm:
         log_dir: str,
         dual_solver: dualsolver.DualSolver,
         mylog_dir: str,
+        instance_name: str,
     ) -> None:
         # Logger
         self.runtime_logger = sddip_logging.RuntimeLogger(log_dir)
@@ -155,6 +277,8 @@ class Algorithm:
         file_handler = logging.FileHandler(mylog_dir, mode='a', encoding='utf-8')
         file_handler.setLevel(logging.DEBUG)
         self.logger.addHandler(file_handler)
+
+        self.instance_name = instance_name
 
 
     def fixed_binary_approximation(self) -> None:
@@ -645,6 +769,15 @@ class Algorithm:
         i = iteration
         n_samples = len(samples)
 
+        # 创建基于 instance_name 的目录
+        config_dir = os.path.join(BASE_CONFIG_DIR, self.instance_name)
+        config_json_path = os.path.join(config_dir, "configs.json")
+        config_pkl_dir = os.path.join(config_dir, "pkl_files")
+        data_save_dir = os.path.join(BASE_DATA_DIR, self.instance_name)
+        os.makedirs(config_dir, exist_ok=True)
+        os.makedirs(config_pkl_dir, exist_ok=True)
+        os.makedirs(data_save_dir, exist_ok=True)
+
         for t in reversed(range(1, self.problem_params.n_stages)):
             for k in range(n_samples):
                 n_realizations = self.problem_params.n_realizations_per_stage[
@@ -671,38 +804,6 @@ class Algorithm:
                         i - 1, k, t - 1
                     )[ResultKeys.soc_key]
 
-                    # Build backward model
-                    uc_bw = ucmodelclassical.ClassicalModel(
-                        self.problem_params.n_buses,
-                        self.problem_params.n_lines,
-                        self.problem_params.n_gens,
-                        self.problem_params.n_storages,
-                        self.problem_params.gens_at_bus,
-                        self.problem_params.storages_at_bus,
-                        self.problem_params.backsight_periods,
-                    )
-
-                    # uc_bw.binary_approximation(
-                    #     self.bin_multipliers["y"], self.bin_multipliers["soc"]
-                    # )
-
-                    uc_bw: ucmodelclassical.ClassicalModel = (
-                        self.add_problem_constraints(uc_bw, t, n, i)
-                    )
-
-                    uc_bw.relaxed_terms_calculate_without_binary(
-                        x_trial_point,
-                        y_trial_point,
-                        x_bs_trial_point,
-                        soc_trial_point,
-                    )
-
-                    objective_terms = uc_bw.objective_terms
-                    relaxed_terms = uc_bw.relaxed_terms
-
-
-                    uc_bw.disable_output()
-
                     trial_point = (
                         x_trial_point
                         + y_trial_point
@@ -713,7 +814,12 @@ class Algorithm:
                         ]
                         + soc_trial_point
                     )
+                    
+                    # 获取当前 realization 的需求和可再生能源数据
+                    p_d = np.array(self.problem_params.p_d[t][n], dtype=np.float32)
+                    re = np.array(self.problem_params.re[t][n], dtype=np.float32)
 
+                    # 收集并保存配置（每个 i, t, n 单独保存一份）
                     collect_and_save_config(
                         i=i,
                         t=t,
@@ -725,30 +831,39 @@ class Algorithm:
                         X_BS_TRIAL=x_bs_trial_point,
                         SOC_TRIAL=soc_trial_point,
                         PATH=self.problem_params.path,
+                        config_json_path=config_json_path,
+                        config_pkl_dir=config_pkl_dir,
+                        bc_storage=self.bc_storage,
+                        dual_solver_storage=self.dual_solver_storage,
+                        p_d=p_d.tolist(),
+                        re=re.tolist(),
+                    )
+
+                    # 使用封装的函数求解 Bundle 并收集数据
+                    dual_multipliers, dual_value = solve_bundle_with_collector(
+                        logger=self.logger,
+                        trial_point=trial_point,
+                        x_trial_point=x_trial_point,
+                        y_trial_point=y_trial_point,
+                        x_bs_trial_point=x_bs_trial_point,
+                        soc_trial_point=soc_trial_point,
+                        p_d=p_d,
+                        re=re,
+                        T=t,
+                        N_VARS=len(trial_point),
+                        PATH=self.problem_params.path,
+                        sddip_iteration=i,
+                        stage=t,
+                        realization=n,
+                        sample_index=k,
+                        data_save_dir=data_save_dir,
                         bc_storage=self.bc_storage,
                         dual_solver_storage=self.dual_solver_storage,
                     )
 
-                    _, sg_results = self.dual_solver.solve(
-                        uc_bw.model,
-                        objective_terms,
-                        relaxed_terms,
-                    )
-                    dual_multipliers = sg_results.multipliers.tolist()
-                    dual_value = sg_results.obj_value - np.array(
-                        dual_multipliers
-                    ).dot(trial_point)
-
                     # Dual value and multiplier for each realization
                     ds_dict[ResultKeys.dv_key].append(dual_value)
-                    ds_dict[ResultKeys.dm_key].append(dual_multipliers)
-
-                    dual_solver_dict[ResultKeys.ds_iterations].append(
-                        sg_results.n_iterations
-                    )
-                    dual_solver_dict[ResultKeys.ds_solver_time].append(
-                        sg_results.solver_time
-                    )
+                    ds_dict[ResultKeys.dm_key].append(dual_multipliers.tolist())
 
                 self.ds_storage.add_result(i, k, t, ds_dict)
                 self.dual_solver_storage.add_result(i, k, t, dual_solver_dict)

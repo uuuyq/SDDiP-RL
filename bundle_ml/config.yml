@@ -1,0 +1,85 @@
+
+# ================================================================
+# Bundle ML 模型配置文件
+# ================================================================
+
+# ------------------------------
+# 输入输出维度配置
+# ------------------------------
+# 注意：具体维度值需要根据实际问题确定，这里先用占位值
+dimensions:
+  # λ (dual variable) 的维度
+  lambda_dim: 13
+
+  # x_prev (上一阶段状态，对应 trial_point: x, y, x_bs, soc)
+  # 需要展开成单个向量的维度
+  x_prev_dim: 13
+
+  # realization 特征维度
+  realization_dim: 2  # demand + renewable generation
+  # demand_dim: 1
+  # renewable_dim: 1
+  # scenario_prob_dim: 1
+
+  # Cut 特征维度
+  # 每个 cut 包含: g_i (subgradient) + phi_i (intercept)
+  # 后面可以添加: age_i, violation_i, activity_i
+  cut_dim: 14  # g_i (13) + phi_i (1)
+
+  # 输出维度
+  # x_init 对应: x, y, x_bs, soc（展开成单个向量）
+  # z_init 对应: z_x, z_y, z_x_bs, z_soc（展开成单个向量）
+  # 注意：模型最终目标是替代 sub_problem，输出应该是 subgradient 和 opt_value
+  # 或者先输出 x_init 和 z_init，再从中计算 subgradient
+  x_init_dim: 13  # 暂时和 lambda_dim 一致，后面调整
+  z_init_dim: 13  # 暂时和 lambda_dim 一致，后面调整
+  output_dim: 13  # 对应 subgradient 维度
+
+# ------------------------------
+# 网络结构设置
+# ------------------------------
+network:
+  # Cut Encoder
+  cut_encoder_hidden_dim: 64
+
+  # Attention
+  attention_hidden_dim: 64
+  num_heads: 4
+  num_layers: 1
+  ffn_dim: 128
+  dropout: 0.1
+
+  # Global Encoder
+  global_encoder_hidden_dim: 64
+
+  # Prediction Heads
+  prediction_head_hidden_dim: 128
+
+  # Bundle Embedding 维度
+  bundle_embedding_dim: 64
+
+  # Shared Feature 维度 (bundle_embedding_dim + global_embedding_dim)
+  shared_feature_dim: 128
+
+# ------------------------------
+# 数据相关设置
+# ------------------------------
+data:
+  max_cuts: 50  # 最大 cuts 数量
+
+# ------------------------------
+# 训练设置
+# ------------------------------
+training:
+  learning_rate: 1.0e-4
+  batch_size: 64
+  num_epochs: 100
+  loss_weights:
+    regression: 1.0
+    feasibility: 0.1
+
+# ------------------------------
+# 模型集成设置
+# ------------------------------
+integration:
+  mode: "replace"  # "replace" (完全替代) or "warm_start" (提供初始值)

@@ -1,13 +1,19 @@
 import copy
 import logging
+import json
+import os
 
 import numpy as np
 import gurobipy as gp
 
 from bundle_RL.script.logger import get_logger
 from sddip.sddip import ucmodelclassical
+from .config import BundleConfig
 
 logger = logging.getLogger(__name__)
+
+# 数据保存路径配置
+DATA_SAVE_DIR = r"D:\tools\workspace_pycharm\SDDiP-RL\bundle_ml\training_data"
 
 
 class SolverResults:
@@ -21,11 +27,125 @@ class SolverResults:
     def set_values(self, obj_value, multipliers, n_iterations, solver_time):
         self.obj_value = obj_value
         self.multipliers = multipliers
-        self.n_iterations = n_iterations
         self.solver_time = solver_time
+        self.n_iterations = n_iterations
 
     def toString(self):
         return f"{self.obj_value:.4f}, {self.multipliers}, {self.solver_time:.4f}, {self.n_iterations}"
+
+
+class DataCollector:
+    """数据收集器，用于收集训练数据"""
+    
+    def __init__(self, config=None):
+        """
+        Args:
+            config: MLBundleConfig 对象，包含训练所需的配置信息
+        """
+        self.data = []
+        self.config = config
+    
+    def set_config(self, config):
+        """设置配置对象"""
+        self.config = config
+    
+    def _serialize_value(self, value):
+        """将值序列化为列表或原始类型"""
+        if hasattr(value, 'tolist'):
+            return value.tolist()
+        elif isinstance(value, np.ndarray):
+            return value.tolist()
+        elif isinstance(value, (list, tuple)):
+            return [self._serialize_value(v) for v in value]
+        elif isinstance(value, dict):
+            return {k: self._serialize_value(v) for k, v in value.items()}
+        return value
+    
+    def _build_sample(self, iteration, lambda_, subgradient, opt_value, **kwargs):
+        """
+        构建训练样本，将 config 信息拆开平铺保存
+        
+        Args:
+            iteration: 当前迭代次数（Master迭代）
+            lambda_: 当前对偶变量 pi
+            subgradient: 子梯度
+            opt_value: 最优目标值
+            **kwargs: 其他元数据（如 stage, realization 等）
+        """
+        sample = {
+            # Master 迭代信息
+            'master_iteration': iteration,
+            # 模型输入
+            'lambda': self._serialize_value(lambda_),
+            # 模型输出（训练目标）
+            'subgradient': self._serialize_value(subgradient),
+            'opt_value': float(opt_value) if not isinstance(opt_value, (int, float)) else opt_value,
+        }
+        
+        # 从 config 中提取信息并平铺
+        if self.config is not None:
+            sample.update({
+                'T': self.config.T,
+                'N_VARS': self.config.N_VARS,
+                'X_TRIAL': self._serialize_value(self.config.X_TRIAL),
+                'Y_TRIAL': self._serialize_value(self.config.Y_TRIAL),
+                'X_BS_TRIAL': self._serialize_value(self.config.X_BS_TRIAL),
+                'SOC_TRIAL': self._serialize_value(self.config.SOC_TRIAL),
+                'sddip_iteration': self.config.iteration,
+                'realization': self.config.n,
+                # Realization features
+                'p_d': self._serialize_value(self.config.p_d),
+                're': self._serialize_value(self.config.re),
+            })
+            
+            # trial_point 作为完整输入特征
+            trial_point = self.config.trial_point
+            sample['trial_point'] = self._serialize_value(trial_point)
+        
+        # 添加额外的元数据
+        sample.update(kwargs)
+        
+        return sample
+    
+    def collect(self, iteration, lambda_, subgradient, opt_value, **kwargs):
+        """
+        收集一次迭代的数据
+        
+        Args:
+            iteration: 当前迭代次数（Master迭代）
+            lambda_: 当前对偶变量 pi
+            subgradient: 子梯度
+            opt_value: 最优目标值
+            **kwargs: 其他元数据（如 stage, realization 等）
+        """
+        sample = self._build_sample(iteration, lambda_, subgradient, opt_value, **kwargs)
+        self.data.append(sample)
+    
+    def save(self, filepath=None):
+        """
+        保存收集的数据到文件
+        
+        Args:
+            filepath: 文件路径，如果为 None，则使用默认路径
+        """
+        if filepath is None:
+            os.makedirs(DATA_SAVE_DIR, exist_ok=True)
+            filepath = os.path.join(DATA_SAVE_DIR, f"bundle_data_{len(self.data)}.json")
+        
+        os.makedirs(os.path.dirname(filepath) if os.path.dirname(filepath) else '.', exist_ok=True)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(self.data, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"数据已保存到: {filepath}")
+        return filepath
+    
+    def get_data(self):
+        """获取所有收集的数据"""
+        return self.data
+    
+    def clear(self):
+        """清空收集的数据"""
+        self.data = []
 
 
 class SubProblem:
@@ -244,7 +364,7 @@ serious step 说明此次pi值的更新带来了足够好的f_new，可以更新
 
 """
 class MasterProblem:
-    def __init__(self, logger, n_vars, tolerance):
+    def __init__(self, logger, n_vars, tolerance, data_collector=None):
         self.logger = logger
         self.n_vars = n_vars
         self.u = 1
@@ -266,6 +386,15 @@ class MasterProblem:
         self.model.setParam("OutputFlag", 0)
         self.v = self.model.addVar(lb=-gp.GRB.INFINITY, name="v")
         self.x_vars = self.model.addVars(n_vars, lb=-gp.GRB.INFINITY, name="x")  # pi
+        
+        # 数据收集器
+        self.data_collector = data_collector
+        # 用于存储额外的元数据
+        self.metadata = {}
+    
+    def set_metadata(self, **kwargs):
+        """设置额外的元数据，用于数据收集"""
+        self.metadata.update(kwargs)
 
     def solve_master(self):
         """
@@ -304,6 +433,17 @@ class MasterProblem:
             self.f_best = f_new
             self.x_best = copy.copy(x_new)
             # 此时初始化，还没有进行master求解，没有ub
+            
+            # 收集初始化阶段的数据
+            if self.data_collector is not None:
+                self.data_collector.collect(
+                    iteration=self.iter_idx,
+                    lambda_=np.array(x_new),
+                    subgradient=g_new,
+                    opt_value=f_new,
+                    **self.metadata
+                )
+            
             return None, None, None
 
         # 计算相对误差作为终止条件: rel_gap = (ub - f_best) / max(|f_best|, 1)
@@ -330,6 +470,16 @@ class MasterProblem:
         if serious_step:
             self.x_best = copy.copy(x_new)
             self.f_best = f_new
+        
+        # 收集每次迭代的数据（包括 lambda、subgradient、opt_value）
+        if self.data_collector is not None:
+            self.data_collector.collect(
+                iteration=self.iter_idx,
+                lambda_=np.array(x_new),
+                subgradient=g_new,
+                opt_value=f_new,
+                **self.metadata
+            )
 
         return serious_step, delta, stop_flag
 
