@@ -9,6 +9,7 @@ from stable_baselines3.common.policies import MultiInputActorCriticPolicy
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
 from bundle_RL.script.attention.features_extractor import AttentionFeaturesExtractor as AttentionBundleExtractor
+from bundle_RL.script.attention.policy_network import SeparateEncoderPolicy
 
 
 def get_experiment_dirs(experiment_name):
@@ -83,9 +84,10 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
           checkpoint_freq=5000, experiment_name="attention_default", ent_coef=0,
           resume=True, overwrite=False, learning_rate=3e-4, clip_range=0.2, clip_range_decay=True,
           n_steps=512, batch_size=128, gamma=0.99, gae_lambda=0.95, n_epochs=10,
-          vf_coef=0.5, max_grad_norm=0.5,
+          vf_coef=0.5, max_grad_norm=0.5, target_kl=None,
           features_dim=128, hidden_dim=64, num_heads=4, num_layers=1, ffn_dim=128, dropout=0.1,
-          actor_net_arch=None, critic_net_arch=None):
+          actor_net_arch=None, critic_net_arch=None,
+          share_encoder=True):
     """
     Attention-based PPO 训练函数，支持断点续训
 
@@ -110,6 +112,7 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
         n_epochs: 训练轮数
         vf_coef: 价值函数系数
         max_grad_norm: 最大梯度范数
+        target_kl: KL 散度目标（用于提前终止训练轮次，稳定策略更新）
         features_dim: 特征提取器维度
         hidden_dim: 编码器隐藏层维度
         num_heads: Attention 头数
@@ -118,6 +121,7 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
         dropout: Dropout 概率
         actor_net_arch: Actor 网络结构
         critic_net_arch: Critic 网络结构
+        share_encoder: 是否共享 Actor/Critic 的 encoder（默认 True）
 
     Returns:
         model: 训练后的模型
@@ -194,9 +198,19 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
         print(f"         n_steps={n_steps}, batch_size={batch_size}, gamma={gamma}")
         print(f"         features_dim={features_dim}, hidden_dim={hidden_dim}")
         print(f"         actor_net={actor_net_arch}, critic_net={critic_net_arch}")
+        print(f"         share_encoder={share_encoder}")
+        print(f"         target_kl={target_kl}")
+        
+        # 根据 share_encoder 参数选择策略
+        if share_encoder:
+            policy_class = MultiInputActorCriticPolicy
+            print("使用共享编码器策略")
+        else:
+            policy_class = SeparateEncoderPolicy
+            print("使用分离编码器策略")
         
         model = PPO(
-            policy=MultiInputActorCriticPolicy,
+            policy=policy_class,
             env=env,
             policy_kwargs=policy_kwargs,
             verbose=1,
@@ -210,6 +224,7 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
             clip_range=clip_range_fn,
             vf_coef=vf_coef,
             max_grad_norm=max_grad_norm,
+            target_kl=target_kl,
             tensorboard_log=tensorboard_dir
         )
     else:
@@ -223,6 +238,7 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
         model.n_epochs = n_epochs
         model.vf_coef = vf_coef
         model.max_grad_norm = max_grad_norm
+        model.target_kl = target_kl              # 更新 KL 目标
         current_clip_range[0] = clip_range       # 更新clip范围（通过可变对象）
         model.clip_range = clip_range_fn         # 确保是可调用对象
 

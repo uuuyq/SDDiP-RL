@@ -28,9 +28,10 @@ def load_train_config(config_path: str) -> dict:
 def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_000, experiment_name="multi_config_exp", 
                       K=20, learning_rate=3e-4, clip_range=0.2, clip_range_decay=True,
                       n_steps=512, batch_size=128, gamma=0.99, gae_lambda=0.95, n_epochs=10,
-                      ent_coef=0.005, vf_coef=0.5, max_grad_norm=0.5,
+                      ent_coef=0.005, vf_coef=0.5, max_grad_norm=0.5, target_kl=None,
                       features_dim=128, hidden_dim=64, num_heads=4, num_layers=1, ffn_dim=128, dropout=0.1,
                       actor_net_arch=None, critic_net_arch=None,
+                      share_encoder=True,
                       overwrite=False):
     """
     交错训练函数：在多个 config 之间交替训练
@@ -53,6 +54,7 @@ def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_0
         ent_coef: 熵系数，控制探索程度
         vf_coef: 价值函数系数
         max_grad_norm: 最大梯度范数
+        target_kl: KL 散度目标（用于提前终止训练轮次）
         features_dim: 特征提取器维度
         hidden_dim: 编码器隐藏层维度
         num_heads: Attention 头数
@@ -61,6 +63,7 @@ def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_0
         dropout: Dropout 概率
         actor_net_arch: Actor 网络结构
         critic_net_arch: Critic 网络结构
+        share_encoder: 是否共享 Actor/Critic 的 encoder（默认 True）
         overwrite: 是否覆盖已有模型重新训练
 
     Returns:
@@ -101,6 +104,7 @@ def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_0
                 n_epochs=n_epochs,
                 vf_coef=vf_coef,
                 max_grad_norm=max_grad_norm,
+                target_kl=target_kl,
                 features_dim=features_dim,
                 hidden_dim=hidden_dim,
                 num_heads=num_heads,
@@ -109,6 +113,7 @@ def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_0
                 dropout=dropout,
                 actor_net_arch=actor_net_arch,
                 critic_net_arch=critic_net_arch,
+                share_encoder=share_encoder,
                 overwrite=overwrite
             )
 
@@ -184,6 +189,7 @@ def main(experiment_name, config_path=None):
         ent_coef=ppo_config['ent_coef'],
         vf_coef=ppo_config['vf_coef'],
         max_grad_norm=ppo_config['max_grad_norm'],
+        target_kl=ppo_config.get('target_kl', None),
         features_dim=net_config['features_dim'],
         hidden_dim=net_config['hidden_dim'],
         num_heads=net_config['num_heads'],
@@ -192,6 +198,7 @@ def main(experiment_name, config_path=None):
         dropout=net_config['dropout'],
         actor_net_arch=net_config['actor_net_arch'],
         critic_net_arch=net_config['critic_net_arch'],
+        share_encoder=net_config.get('share_encoder', True),
         overwrite=exp_config['overwrite']
     )
     
@@ -225,12 +232,12 @@ if __name__ == "__main__":
     # ========================================================
     # 训练参数配置（在这里调整实验名称和训练数据选择）
     # ========================================================
-    experiment_name = "exp26"          # 实验名称
+    experiment_name = "exp29"          # 实验名称
     
     # ========================================================
     # 启动训练
     # ========================================================
     main(
         experiment_name=experiment_name,
-        config_path="d:/tools/workspace_pycharm/SDDiP-RL/bundle_RL/configs/train_config.yml"
+        config_path="train_config.yml"
     )
