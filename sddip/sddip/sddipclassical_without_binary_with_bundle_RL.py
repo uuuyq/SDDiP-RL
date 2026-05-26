@@ -937,21 +937,10 @@ class Algorithm:
                 v = np.average(opt_values)
                 pi = np.average(dual_multipliers, axis=0)
 
-                intercept = v - pi @ np.array(trial_point)
-
-                benders_cut = np.concatenate((pi, intercept.reshape(-1)), axis=0).tolist()
-
-
                 bc_dict[ResultKeys.bc_intercept_key] = v
                 bc_dict[ResultKeys.bc_gradient_key] = pi.tolist()
                 bc_dict[ResultKeys.bc_trial_point_key] = list(trial_point)
 
-
-
-                if t == 1:
-                    print(f"v: {v}")
-                    print(f"pi: {pi}")
-                    print(f"cut: {benders_cut}")
 
                 self.bc_storage.add_result(i, k, t - 1, bc_dict)
 

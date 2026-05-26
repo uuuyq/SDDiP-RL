@@ -117,6 +117,9 @@ def train_interleaved(logger, configs, rounds=3, steps_per_config_per_round=20_0
                 overwrite=overwrite
             )
 
+            # 清理环境资源，避免内存泄漏和求解器资源浪费
+            env.close()
+
     return model
 
 
@@ -232,7 +235,7 @@ if __name__ == "__main__":
     # ========================================================
     # 训练参数配置（在这里调整实验名称和训练数据选择）
     # ========================================================
-    experiment_name = "exp30"          # 实验名称
+    experiment_name = "exp35"          # 实验名称
     
     # ========================================================
     # 启动训练

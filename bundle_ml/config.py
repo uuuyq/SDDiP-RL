@@ -47,6 +47,51 @@ class BundleConfig:
     def trial_point(self):
         return (self.X_TRIAL, self.Y_TRIAL, self.X_BS_TRIAL, self.SOC_TRIAL)
 
+    def _get_lag_cuts(self):
+        """
+        解析 Benders cuts 和 Lagrangian cuts，转换为统一的格式
+        返回: list of [intercept, g1, g2, ..., gN]
+        """
+        lag_cuts = []
+        
+        if self.dual_solver_storage is not None:
+            try:
+                for s in range(self.PROBLEM_PARAMS.n_stages):
+                    lag_result = self.dual_solver_storage.get_stage_result(s)
+                    if lag_result:
+                        # 获取 Lagrangian cuts
+                        cut_intercepts = lag_result.get('dv', [])
+                        cut_gradients = lag_result.get('dm', [])
+                        
+                        for intercept, gradient in zip(cut_intercepts, cut_gradients):
+                            # Lagrangian cut 格式: [intercept, g1, g2, ..., gN]
+                            cut = [intercept] + (gradient.tolist() if hasattr(gradient, 'tolist') else gradient)
+                            lag_cuts.append(cut)
+            except Exception as e:
+                pass
+        
+        if self.bc_storage is not None:
+            try:
+                for s in range(self.PROBLEM_PARAMS.n_stages):
+                    benders_result = self.bc_storage.get_stage_result(s)
+                    if benders_result:
+                        # 获取 Benders cuts
+                        bc_intercepts = benders_result.get('bc_intercept', [])
+                        bc_gradients = benders_result.get('bc_gradient', [])
+                        bc_trial_points = benders_result.get('bc_trial_point', [])
+                        
+                        for intercept, gradient, trial_point in zip(bc_intercepts, bc_gradients, bc_trial_points):
+                            # 转换 Benders cut: intercept = bc_intercept - bc_gradient @ bc_trial_point
+                            g = gradient.tolist() if hasattr(gradient, 'tolist') else gradient
+                            tp = trial_point.tolist() if hasattr(trial_point, 'tolist') else trial_point
+                            converted_intercept = float(intercept) - np.dot(g, tp)
+                            cut = [converted_intercept] + g
+                            lag_cuts.append(cut)
+            except Exception as e:
+                pass
+        
+        return lag_cuts
+
     def to_dict(self):
         """将对象转换为字典，用于JSON序列化"""
         return {
@@ -61,8 +106,7 @@ class BundleConfig:
             "n": self.n,
             "p_d": self.p_d,
             "re": self.re,
-            "bc_storage_type": type(self.bc_storage).__name__ if self.bc_storage else None,
-            "dual_solver_storage_type": type(self.dual_solver_storage).__name__ if self.dual_solver_storage else None,
+            "lag_cuts": self._get_lag_cuts(),
         }
 
     def toString(self):

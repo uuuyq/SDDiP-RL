@@ -162,15 +162,15 @@ def solve_bundle_with_collector(
 
     # 执行 Bundle 方法求解
     x_new = np.zeros(N_VARS)
-    g_new, f_new = sub.solve(x_new)
-    master.update_strategy(x_new, f_new, g_new, ub=None)
+    g_new, f_new, x, z_x = sub.solve(x_new)
+    master.update_strategy(x_new, f_new, g_new, x, z_x, ub=None)
 
     max_iterations = 200
     for _ in range(max_iterations):
         master.add_cut(x_new, f_new, g_new)
         ub, x_new = master.solve_master()
-        g_new, f_new = sub.solve(x_new)
-        serious_step, delta, stop_flag = master.update_strategy(x_new, f_new, g_new, ub)
+        g_new, f_new, x, z_x = sub.solve(x_new)
+        serious_step, delta, stop_flag = master.update_strategy(x_new, f_new, g_new, x, z_x, ub)
 
         if stop_flag:
             break
@@ -840,6 +840,7 @@ class Algorithm:
                     )
 
                     # 使用封装的函数求解 Bundle 并收集数据
+                    self.logger.info(f"Solving bundle: i={i}, t={t}, k={k}, n={n}")
                     dual_multipliers, dual_value = solve_bundle_with_collector(
                         logger=self.logger,
                         trial_point=trial_point,
@@ -1052,21 +1053,9 @@ class Algorithm:
                 v = np.average(opt_values)
                 pi = np.average(dual_multipliers, axis=0)
 
-                intercept = v - pi @ np.array(trial_point)
-
-                benders_cut = np.concatenate((pi, intercept.reshape(-1)), axis=0).tolist()
-
-
                 bc_dict[ResultKeys.bc_intercept_key] = v
                 bc_dict[ResultKeys.bc_gradient_key] = pi.tolist()
                 bc_dict[ResultKeys.bc_trial_point_key] = list(trial_point)
-
-
-
-                if t == 1:
-                    print(f"v: {v}")
-                    print(f"pi: {pi}")
-                    print(f"cut: {benders_cut}")
 
                 self.bc_storage.add_result(i, k, t - 1, bc_dict)
 

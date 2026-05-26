@@ -61,7 +61,7 @@ class DataCollector:
             return {k: self._serialize_value(v) for k, v in value.items()}
         return value
     
-    def _build_sample(self, iteration, lambda_, subgradient, opt_value, **kwargs):
+    def _build_sample(self, iteration, lambda_, subgradient, opt_value, x=None, z_x=None, **kwargs):
         """
         构建训练样本，将 config 信息拆开平铺保存
         
@@ -70,6 +70,8 @@ class DataCollector:
             lambda_: 当前对偶变量 pi
             subgradient: 子梯度
             opt_value: 最优目标值
+            x: 子问题求解得到的 x (原始变量解)
+            z_x: 子问题求解得到的 z_x
             **kwargs: 其他元数据（如 stage, realization 等）
         """
         sample = {
@@ -84,6 +86,9 @@ class DataCollector:
         
         # 从 config 中提取信息并平铺
         if self.config is not None:
+            # 获取 lag_cuts
+            lag_cuts = self.config._get_lag_cuts()
+            
             sample.update({
                 'T': self.config.T,
                 'N_VARS': self.config.N_VARS,
@@ -96,18 +101,22 @@ class DataCollector:
                 # Realization features
                 'p_d': self._serialize_value(self.config.p_d),
                 're': self._serialize_value(self.config.re),
+                # Cuts
+                'lag_cuts': lag_cuts,
             })
-            
-            # trial_point 作为完整输入特征
-            trial_point = self.config.trial_point
-            sample['trial_point'] = self._serialize_value(trial_point)
+        
+        # 添加 x 和 z_x
+        if x is not None:
+            sample['x'] = self._serialize_value(x)
+        if z_x is not None:
+            sample['z_x'] = self._serialize_value(z_x)
         
         # 添加额外的元数据
         sample.update(kwargs)
         
         return sample
     
-    def collect(self, iteration, lambda_, subgradient, opt_value, **kwargs):
+    def collect(self, iteration, lambda_, subgradient, opt_value, x=None, z_x=None, **kwargs):
         """
         收集一次迭代的数据
         
@@ -116,9 +125,11 @@ class DataCollector:
             lambda_: 当前对偶变量 pi
             subgradient: 子梯度
             opt_value: 最优目标值
+            x: 子问题求解得到的 x (原始变量解)
+            z_x: 子问题求解得到的 z_x
             **kwargs: 其他元数据（如 stage, realization 等）
         """
-        sample = self._build_sample(iteration, lambda_, subgradient, opt_value, **kwargs)
+        sample = self._build_sample(iteration, lambda_, subgradient, opt_value, x=x, z_x=z_x, **kwargs)
         self.data.append(sample)
     
     def save(self, filepath=None):
@@ -304,10 +315,10 @@ class SubProblem:
 
         return model_builder
 
-    def solve(self, pi: np.ndarray, time_limit: float | None = None)-> tuple[np.ndarray, float]:
+    def solve(self, pi: np.ndarray, time_limit: float | None = None)-> tuple[np.ndarray, float, list, list]:
         """
         输入: pi (当前对偶变量/乘子)
-        返回: phi (函数值), g (子梯度)
+        返回: (subgradient, opt_value, x, z_x)
         """
 
         gradient_len = len(self.relaxed_terms)
@@ -334,12 +345,26 @@ class SubProblem:
 
         self.model.optimize()
 
-        # print(f"obj_terms: {self.objective_terms.getValue()}")  # 1946.9484484730497
-        # print(f"temp_terms: {temp_terms.getValue()}")  # -9061.207913979584
         subgradient = np.array([t.getValue() for t in self.relaxed_terms])
         opt_value = self.model.getObjective().getValue()
-
-        return (subgradient, opt_value)
+        
+        # 获取 x: self.uc_bw.x, y, x_bs, soc 拼接
+        x = (
+            [v.x for v in self.uc_bw.x] +
+            [v.x for v in self.uc_bw.y] +
+            [v.x for bs in self.uc_bw.x_bs for v in bs] +
+            [v.x for v in self.uc_bw.soc]
+        )
+        
+        # 获取 z_x: self.uc_bw.z_x, z_y, z_x_bs, z_soc 拼接
+        z_x = (
+            [v.x for v in self.uc_bw.z_x] +
+            [v.x for v in self.uc_bw.z_y] +
+            [v.x for bs in self.uc_bw.z_x_bs for v in bs] +
+            [v.x for v in self.uc_bw.z_soc]
+        )
+        
+        return (subgradient, opt_value, x, z_x)
 
 """
 这里说明符号的含义：
@@ -423,7 +448,7 @@ class MasterProblem:
         self.cuts_storage.append((g_new, x_new, f_new))
         self.model.addConstr(self.v <= cut_expr, name=f"cut_{self.iter_idx}")
 
-    def update_strategy(self, x_new, f_new, g_new, ub=None):
+    def update_strategy(self, x_new, f_new, g_new, x, z_x, ub=None):
         """
         更新权重和状态 (Weight Update)
         根据子问题的真实反馈 f_new 和 Master 的预测值 f_hat 进行判定。
@@ -441,6 +466,8 @@ class MasterProblem:
                     lambda_=np.array(x_new),
                     subgradient=g_new,
                     opt_value=f_new,
+                    x=x,
+                    z_x=z_x,
                     **self.metadata
                 )
             
@@ -454,7 +481,7 @@ class MasterProblem:
         # self.logger.info(f"rel_gap: {rel_gap} tolerance: {self.tolerance}")
         if rel_gap <= self.tolerance:
             stop_flag = True
-            self.logger.info(f"算法已满足终止条件, rel_gap: {rel_gap:.6e} tolerance: {self.tolerance:.6e}")
+            self.logger.debug(f"算法已满足终止条件, rel_gap: {rel_gap:.6e} tolerance: {self.tolerance:.6e}")
 
         # 判定 Serious Step
         serious_step = (f_new - self.f_best) >= self.m_l * delta
@@ -478,6 +505,8 @@ class MasterProblem:
                 lambda_=np.array(x_new),
                 subgradient=g_new,
                 opt_value=f_new,
+                x=x,
+                z_x=z_x,
                 **self.metadata
             )
 
