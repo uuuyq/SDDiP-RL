@@ -204,14 +204,32 @@ class DirichletActorCriticPolicy(ActorCriticPolicy):
         eta_scale: float = 1.0,
         **kwargs
     ):
-        super().__init__(*args, **kwargs)
+        # 保存 Dirichlet 参数
         self.K = K
         self.dirichlet_hidden_dim = dirichlet_hidden_dim
         self.min_alpha = min_alpha
         self.eta_scale = eta_scale
 
+        # 调用父类 __init__（这会初始化 mlp_extractor）
+        super().__init__(*args, **kwargs)
+
         # Dirichlet 策略头（使用 cls_embedding）
-        input_dim = self.mlp_extractor.latent_dim_pi
+        # 从 net_arch 获取 latent 维度
+        input_dim = None
+        if hasattr(self, 'net_arch') and 'pi' in self.net_arch:
+            # 使用 actor 网络架构的最后一层维度
+            actor_arch = self.net_arch['pi']
+            if actor_arch and len(actor_arch) > 0:
+                input_dim = actor_arch[-1]
+        
+        if input_dim is None:
+            # 备选方案：使用 features_dim
+            input_dim = self.features_extractor.features_dim
+
+        # 确保 input_dim 是有效的整数
+        if not isinstance(input_dim, int) or input_dim <= 0:
+            raise ValueError(f"Invalid input_dim: {input_dim} (type: {type(input_dim)}). net_arch: {getattr(self, 'net_arch', None)}")
+
         self.dirichlet_head = DirichletPolicyHead(
             input_dim=input_dim,
             K=K,

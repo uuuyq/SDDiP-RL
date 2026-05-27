@@ -138,26 +138,16 @@ class DirichletDistribution:
 
     def entropy(self) -> torch.Tensor:
         """
-        计算熵
+        计算熵（简化版本，提高数值稳定性）
 
-        Dirichlet 熵：H = log B(alpha) + (alpha_0 - K) * psi(alpha_0)
-                      - sum((alpha_i - 1) * psi(alpha_i))
-        其中 alpha_0 = sum(alpha), psi 是 digamma 函数
+        使用归一化后的分布计算熵：H = -sum(p_i * log(p_i))
+        
+        这种近似在 PPO 训练中足够使用，且避免了 lgamma 和 digamma 的数值问题。
         """
-        K = self.concentration.shape[-1]
-        alpha_0 = self.concentration.sum(dim=-1, keepdim=True)
-
-        # Digamma 函数近似
-        def digamma(x):
-            return torch.log(x + 1e-8) - 1 / (2 * x + 1e-8)
-
-        log_B_alpha = torch.lgamma(self.concentration).sum(dim=-1) - torch.lgamma(alpha_0.squeeze(-1))
-        term1 = log_B_alpha
-        term2 = (alpha_0 - K) * digamma(alpha_0.squeeze(-1))
-        term3 = ((self.concentration - 1) * digamma(self.concentration)).sum(dim=-1)
-
-        entropy = term1 + term2 - term3
-
+        p = self._mean  # 使用 Dirichlet 期望值作为概率分布
+        eps = 1e-8
+        p = p.clamp(min=eps)
+        entropy = -(p * torch.log(p)).sum(dim=-1)
         return entropy
 
 
@@ -225,6 +215,9 @@ class DirichletPolicyHead(nn.Module):
         # Concentration 参数（使用 softplus 确保 > 0）
         raw_alpha = self.alpha_head(h)
         concentration = F.softplus(raw_alpha) + self.min_alpha
+        
+        # 限制 concentration 的范围，避免数值问题
+        concentration = concentration.clamp(max=100.0)
 
         # 应用 valid_mask
         if valid_mask is not None:

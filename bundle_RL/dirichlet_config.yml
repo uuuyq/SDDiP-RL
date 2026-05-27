@@ -14,7 +14,7 @@ environment:
 
 # PPO 配置
 ppo:
-  learning_rate: 3e-4     # 学习率
+  learning_rate: 0.0001     # 学习率
   n_steps: 512            # 每次更新采集的步数
   batch_size: 128         # 批大小
   gamma: 0.99             # 折扣因子

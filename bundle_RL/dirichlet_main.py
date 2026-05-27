@@ -261,9 +261,9 @@ def main(experiment_name, config_path=None, **kwargs):
         actor_net_arch=net_config['actor_net_arch'],
         critic_net_arch=net_config['critic_net_arch'],
         # Dirichlet 参数（优先使用 kwargs 中的值）
-        dirichlet_hidden_dim=kwargs.get('dirichlet_hidden_dim', dirichlet_config.get('dirichlet_hidden_dim', 64)),
-        min_alpha=kwargs.get('min_alpha', dirichlet_config.get('min_alpha', 1.0)),
-        eta_scale=kwargs.get('eta_scale', dirichlet_config.get('eta_scale', 1.0)),
+        dirichlet_hidden_dim=kwargs.get('dirichlet_hidden_dim') if kwargs.get('dirichlet_hidden_dim') is not None else dirichlet_config.get('dirichlet_hidden_dim', 64),
+        min_alpha=kwargs.get('min_alpha') if kwargs.get('min_alpha') is not None else dirichlet_config.get('min_alpha', 1.0),
+        eta_scale=kwargs.get('eta_scale') if kwargs.get('eta_scale') is not None else dirichlet_config.get('eta_scale', 1.0),
         overwrite=exp_config['overwrite']
     )
 
@@ -275,7 +275,7 @@ if __name__ == "__main__":
     # ========================================================
     # 训练参数配置（在这里调整实验名称和训练参数）
     # ========================================================
-    experiment_name = "exp_dirichlet_01"          # 实验名称
+    experiment_name = "exp_dirichlet_02"          # 实验名称
     config_path = None                            # 配置文件路径（None 表示使用默认配置 dirichlet_config.yml）
     
     # Dirichlet 特有参数（可覆盖配置文件中的值）
