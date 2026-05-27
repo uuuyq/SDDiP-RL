@@ -8,7 +8,7 @@ from sddip.sddip.sddipclassical_without_binary_with_bundle_ML import Algorithm
 
 def run_scenario(args):
     """运行单个 scenario 的求解（独立进程）"""
-    scenario_path, scenario_id, base_path, log_path = args
+    scenario_path, scenario_id, base_path, log_path, max_iterations = args
 
     # 每个 scenario 使用独立的 log 目录
     scenario_log_dir = Path(log_path) / f"scenario_{scenario_id}"
@@ -37,28 +37,25 @@ def run_scenario(args):
     )
 
     print(f"[PID {os.getpid()}] Starting scenario_{scenario_id}")
-    algorithm.run(10)
+    algorithm.run(max_iterations)
     print(f"[PID {os.getpid()}] Finished scenario_{scenario_id}")
 
     return scenario_id
 
 
-def main():
+def main(max_workers, max_iterations):
     # 基础路径配置
     base_path = Path(r".\data\01_test_cases\case6ww\t24_n06")
     scenario_data_dir = Path(r".\bundle_ml\scenario_data")
-    log_path = r".\log"
+    log_path = r".\ML_train_data_gen_log"
 
-    # 自动检测 CPU 核心数，但限制最大为 4
-    max_workers = min(cpu_count(), 4)
-    print(f"Available CPU cores: {cpu_count()}, using {max_workers} workers")
 
     # 收集所有 scenario 文件
     scenario_files = []
     for i in range(1, 51):  # scenario_1.txt 到 scenario_50.txt
         scenario_file = scenario_data_dir / f"scenario_{i}.txt"
         if scenario_file.exists():
-            scenario_files.append((str(scenario_file), i, base_path, log_path))
+            scenario_files.append((str(scenario_file), i, base_path, log_path, max_iterations))
         else:
             print(f"Warning: {scenario_file} does not exist, skipping")
 
@@ -73,4 +70,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(max_workers=4, max_iterations=10)
