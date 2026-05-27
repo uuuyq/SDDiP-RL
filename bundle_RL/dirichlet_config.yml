@@ -1,0 +1,49 @@
+# ===========================================
+# Dirichlet PPO 训练配置文件
+# ===========================================
+
+# 实验配置
+experiment:
+  name: "dirichlet_exp"
+  rounds: 3               # 训练轮数
+  overwrite: false        # 是否覆盖已有模型
+
+# 环境配置
+environment:
+  K: 20                   # cut 数量
+
+# PPO 配置
+ppo:
+  learning_rate: 3e-4     # 学习率
+  n_steps: 512            # 每次更新采集的步数
+  batch_size: 128         # 批大小
+  gamma: 0.99             # 折扣因子
+  gae_lambda: 0.95        # GAE 参数
+  n_epochs: 10            # 训练轮数
+  ent_coef: 0.005         # 熵系数
+  clip_range: 0.2         # PPO clip 范围
+  clip_range_decay: true  # 是否启用 clip_range 线性衰减
+  vf_coef: 0.5            # 价值函数系数
+  max_grad_norm: 0.5      # 最大梯度范数
+  target_kl: null         # KL 散度目标
+
+# 网络配置
+network:
+  features_dim: 128       # 特征提取器维度
+  hidden_dim: 64          # 编码器隐藏层维度
+  num_heads: 4            # Attention 头数
+  num_layers: 1           # Attention 层数
+  ffn_dim: 128            # FFN 维度
+  dropout: 0.1            # Dropout 概率
+  actor_net_arch: [128, 128]
+  critic_net_arch: [128, 128]
+
+# 训练配置
+training:
+  steps_per_config_per_round: 20000  # 每轮每个 config 训练的步数
+
+# Dirichlet 特有配置
+dirichlet:
+  dirichlet_hidden_dim: 64  # Dirichlet 策略头隐藏层维度
+  min_alpha: 1.0            # Dirichlet concentration 最小值
+  eta_scale: 1.0            # 步长缩放因子
