@@ -206,7 +206,9 @@ class BundleDataset(Dataset):
         if params is None or params['mean'] is None:
             return values
         
-        return (values - params['mean']) / params['std']
+        # 添加保护，防止除以接近 0 的值
+        std = params['std'] if params['std'] > 1e-8 else 1e-8
+        return (values - params['mean']) / std
     
     def _get_x_prev(self, sample: Dict) -> List[float]:
         """从样本中提取 x_prev (trial_point)"""

@@ -14,6 +14,9 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 from torch.utils.tensorboard import SummaryWriter
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 from bundle_ml.dataset import BundleDataset, DataCollator
 from bundle_ml.models import NeuralWarmStartModel
@@ -143,7 +146,8 @@ def train_epoch(
         # 反向传播
         optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        # 更强的梯度裁剪，防止梯度爆炸
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.1)
         optimizer.step()
         
         total_loss += loss.item()
@@ -173,7 +177,7 @@ def validate(
     num_batches = 0
     
     with torch.no_grad():
-        for batch in dataloader:
+        for batch_idx, batch in enumerate(dataloader):
             cuts = batch['cuts'].to(device)
             valid_mask = batch['valid_mask'].to(device)
             lambda_ = batch['lambda_'].to(device)
@@ -183,6 +187,20 @@ def validate(
             
             target_subgradient = batch['subgradient'].to(device)
             target_opt_value = batch['opt_value'].to(device)
+            
+            # 检查输入数据是否有 NaN
+            if torch.any(torch.isnan(cuts)):
+                print(f"WARNING: cuts has NaN at batch {batch_idx}")
+            if torch.any(torch.isnan(lambda_)):
+                print(f"WARNING: lambda_ has NaN at batch {batch_idx}")
+            if torch.any(torch.isnan(x_prev)):
+                print(f"WARNING: x_prev has NaN at batch {batch_idx}")
+            if torch.any(torch.isnan(realization)):
+                print(f"WARNING: realization has NaN at batch {batch_idx}")
+            if torch.any(torch.isnan(target_subgradient)):
+                print(f"WARNING: target_subgradient has NaN at batch {batch_idx}")
+            if torch.any(torch.isnan(target_opt_value)):
+                print(f"WARNING: target_opt_value has NaN at batch {batch_idx}")
             
             predictions = model(
                 cuts=cuts,
@@ -196,10 +214,24 @@ def validate(
             pred_subgradient = predictions['subgradient']
             pred_opt_value = predictions['opt_value']
             
+            # 检查输出是否有 NaN
+            if torch.any(torch.isnan(pred_subgradient)):
+                print(f"WARNING: pred_subgradient has NaN at batch {batch_idx}")
+            if torch.any(torch.isnan(pred_opt_value)):
+                print(f"WARNING: pred_opt_value has NaN at batch {batch_idx}")
+            
             loss, loss_dict = criterion(
                 pred_subgradient, pred_opt_value,
                 target_subgradient, target_opt_value
             )
+            
+            # 检查损失是否有 NaN
+            if np.isnan(loss.item()):
+                print(f"WARNING: loss is NaN at batch {batch_idx}")
+                print(f"  pred_subgradient stats: min={pred_subgradient.min().item()}, max={pred_subgradient.max().item()}, mean={pred_subgradient.mean().item()}")
+                print(f"  pred_opt_value stats: min={pred_opt_value.min().item()}, max={pred_opt_value.max().item()}, mean={pred_opt_value.mean().item()}")
+                print(f"  target_subgradient stats: min={target_subgradient.min().item()}, max={target_subgradient.max().item()}, mean={target_subgradient.mean().item()}")
+                print(f"  target_opt_value stats: min={target_opt_value.min().item()}, max={target_opt_value.max().item()}, mean={target_opt_value.mean().item()}")
             
             total_loss += loss.item()
             total_sg_loss += loss_dict['loss_subgradient']
@@ -219,8 +251,8 @@ def train(args):
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     
-    # 设置设备
-    device = torch.device('cuda' if torch.cuda.is_available() and args.use_cuda else 'cpu')
+    # 设置设备（优先使用 GPU）
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
     
     # 加载数据
@@ -274,14 +306,15 @@ def train(args):
     print(f"  Parameters: {sum(p.numel() for p in model.parameters()):,}")
     
     # 损失函数和优化器
+    # 降低 opt_value 的权重，因为其值范围很大
     criterion = BundleLoss(
         subgradient_weight=args.subgradient_weight,
-        opt_value_weight=args.opt_value_weight,
+        opt_value_weight=args.opt_value_weight * 0.01,  # 缩小 100 倍
     )
     
     optimizer = optim.Adam(
         model.parameters(),
-        lr=args.learning_rate,
+        lr=args.learning_rate * 0.1,  # 降低学习率
         weight_decay=args.weight_decay,
     )
     
@@ -316,7 +349,18 @@ def train(args):
     # 训练循环
     best_val_loss = float('inf')
     patience_counter = 0
-    
+
+    # 记录训练历史
+    history = {
+        'train_loss': [],
+        'train_subgradient_loss': [],
+        'train_opt_value_loss': [],
+        'val_loss': [],
+        'val_subgradient_loss': [],
+        'val_opt_value_loss': [],
+        'epochs': [],
+    }
+
     print(f"\nStarting training for {args.epochs} epochs...")
     print(f"Output directory: {output_dir}")
     
@@ -348,7 +392,16 @@ def train(args):
               f"Subgradient: {val_metrics['loss_subgradient']:.6f}, "
               f"Opt_value: {val_metrics['loss_opt_value']:.6f}")
         print(f"  LR: {optimizer.param_groups[0]['lr']:.2e}")
-        
+
+        # 记录历史
+        history['epochs'].append(epoch)
+        history['train_loss'].append(train_metrics['loss'])
+        history['train_subgradient_loss'].append(train_metrics['loss_subgradient'])
+        history['train_opt_value_loss'].append(train_metrics['loss_opt_value'])
+        history['val_loss'].append(val_metrics['loss'])
+        history['val_subgradient_loss'].append(val_metrics['loss_subgradient'])
+        history['val_opt_value_loss'].append(val_metrics['loss_opt_value'])
+
         # 保存最佳模型
         if val_metrics['loss'] < best_val_loss:
             best_val_loss = val_metrics['loss']
@@ -370,9 +423,47 @@ def train(args):
         if patience_counter >= args.patience:
             print(f"\nEarly stopping triggered after {epoch} epochs")
             break
-    
+
     writer.close()
-    
+
+    # 绘制并保存 loss 曲线
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+
+    epochs = history['epochs']
+
+    # Total Loss
+    axes[0].plot(epochs, history['train_loss'], 'b-', label='Train', linewidth=2)
+    axes[0].plot(epochs, history['val_loss'], 'r-', label='Val', linewidth=2)
+    axes[0].set_xlabel('Epoch')
+    axes[0].set_ylabel('Loss')
+    axes[0].set_title('Total Loss')
+    axes[0].legend()
+    axes[0].grid(True, alpha=0.3)
+
+    # Subgradient Loss
+    axes[1].plot(epochs, history['train_subgradient_loss'], 'b-', label='Train', linewidth=2)
+    axes[1].plot(epochs, history['val_subgradient_loss'], 'r-', label='Val', linewidth=2)
+    axes[1].set_xlabel('Epoch')
+    axes[1].set_ylabel('Loss')
+    axes[1].set_title('Subgradient Loss')
+    axes[1].legend()
+    axes[1].grid(True, alpha=0.3)
+
+    # Opt Value Loss
+    axes[2].plot(epochs, history['train_opt_value_loss'], 'b-', label='Train', linewidth=2)
+    axes[2].plot(epochs, history['val_opt_value_loss'], 'r-', label='Val', linewidth=2)
+    axes[2].set_xlabel('Epoch')
+    axes[2].set_ylabel('Loss')
+    axes[2].set_title('Opt Value Loss')
+    axes[2].legend()
+    axes[2].grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    loss_plot_path = output_dir / 'loss_curve.png'
+    plt.savefig(loss_plot_path, dpi=150)
+    plt.close()
+    print(f"Loss curve saved to: {loss_plot_path}")
+
     print(f"\nTraining completed!")
     print(f"Best validation loss: {best_val_loss:.6f}")
     print(f"Output directory: {output_dir}")

@@ -22,7 +22,7 @@ class GlobalEncoder(nn.Module):
         realization_dim: int,
         hidden_dim: int = 64,
         use_stage_embedding: bool = True,
-        max_stages: int = 20,
+        max_stages: int = 100,
     ):
         """
         Args:

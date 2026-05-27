@@ -12,3 +12,7 @@
 /lag_without_binary.log
 /trial_point.log
 
+/bundle_ml/checkpoints/
+/bundle_ml/config_data/
+/bundle_ml/training_data/
+/bundle_ml/scenario_data/

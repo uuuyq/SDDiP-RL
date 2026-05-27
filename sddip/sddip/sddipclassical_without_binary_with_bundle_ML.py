@@ -206,12 +206,14 @@ class Algorithm:
         dual_solver: dualsolver.DualSolver,
         mylog_dir: str,
         instance_name: str,
+        scenario_path: Path = None,  # 独立的scenario文件路径
     ) -> None:
         # Logger
         self.runtime_logger = sddip_logging.RuntimeLogger(log_dir)
 
         # Problem specific parameters
-        self.problem_params = parameters.Parameters(path)
+        # 如果 scenario_path 不为 None，则从指定路径加载 scenario 文件
+        self.problem_params = parameters.Parameters(path, scenario_path=scenario_path)
 
         # Algorithm paramters
         self.n_binaries = 10

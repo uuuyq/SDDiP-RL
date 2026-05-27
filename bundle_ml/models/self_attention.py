@@ -67,6 +67,11 @@ class SelfAttention(nn.Module):
 
         x = self.norm1(x + self.dropout(attn_output))
         ffn_output = self.ffn(x)
+        
+        # 在 block 最后重新 mask，防止 padding token 污染 FFN 输出
+        if key_padding_mask is not None:
+            ffn_output = ffn_output.masked_fill(key_padding_mask.unsqueeze(-1), 0.0)
+        
         x = self.norm2(x + self.dropout(ffn_output))
 
         return x
@@ -105,6 +110,8 @@ class AttentionPooling(nn.Module):
         Returns:
             bundle_embedding: shape (batch_size, hidden_dim)
         """
+        batch_size = cut_embeddings.shape[0]
+        
         # 计算 attention 权重
         attention_scores = self.attention(cut_embeddings).squeeze(-1)  # (batch_size, num_cuts)
 
@@ -115,6 +122,20 @@ class AttentionPooling(nn.Module):
                 ~valid_mask, torch.finfo(attention_scores.dtype).min
             )
 
+        # 检查是否有样本没有有效的 cuts
+        if valid_mask is not None:
+            has_valid_cuts = valid_mask.any(dim=-1)  # (batch_size,)
+        else:
+            has_valid_cuts = torch.ones(batch_size, dtype=torch.bool, device=cut_embeddings.device)
+        
+        # 对于没有有效 cuts 的样本，将 scores 设置为 0（避免 softmax(-inf) 产生 NaN）
+        # 这样 softmax(0, 0, ...) = 均匀分布，乘以零向量 cuts 后结果还是零向量
+        attention_scores = torch.where(
+            has_valid_cuts.unsqueeze(-1),
+            attention_scores,
+            torch.zeros_like(attention_scores)
+        )
+        
         # Softmax 得到权重
         attention_weights = torch.softmax(attention_scores, dim=-1)  # (batch_size, num_cuts)
 

@@ -21,6 +21,7 @@ class Parameters:
         renewables_file: str = "ren_data.txt",
         storage_file: str = "storage_data.txt",
         scenario_file: str = "scenario_data.txt",  # 24 stages
+        scenario_path: Path = None,  # 独立的scenario文件路径
     ) -> None:
         """Initialize `Paramters` object from files."""
         importer = DataImporter(path)
@@ -34,7 +35,11 @@ class Parameters:
         self.ren_df = importer.dataframe_from_csv(renewables_file)
         self.storage_df = importer.dataframe_from_csv(storage_file)
         self.gen_sup_df = importer.dataframe_from_csv(gen_sup_file)
-        self.scenario_df = importer.dataframe_from_csv(scenario_file)
+        # 如果 scenario_path 不为 None，则从指定路径加载 scenario 文件
+        if scenario_path is not None:
+            self.scenario_df = pd.read_csv(scenario_path, sep="\t")
+        else:
+            self.scenario_df = importer.dataframe_from_csv(scenario_file)
 
         # Structural data
         self.ptdf = None

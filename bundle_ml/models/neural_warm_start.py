@@ -120,22 +120,41 @@ class NeuralWarmStartModel(nn.Module):
         """
         batch_size = cuts.shape[0]
         num_cuts = cuts.shape[1]
+        cut_dim = cuts.shape[2]
+
+        # ========== 添加 Dummy Token ==========
+        # 创建 dummy token（可学习的参数）
+        if not hasattr(self, 'dummy_token'):
+            self.dummy_token = nn.Parameter(torch.randn(1, 1, cut_dim))
+        
+        # 确保 dummy token 在正确的设备上
+        self.dummy_token = nn.Parameter(self.dummy_token.data.to(cuts.device))
+        
+        # 在 cuts 前面拼接 dummy token
+        # cuts: (batch_size, num_cuts, cut_dim) -> (batch_size, num_cuts + 1, cut_dim)
+        dummy_tokens = self.dummy_token.expand(batch_size, 1, cut_dim)
+        cuts_with_dummy = torch.cat([dummy_tokens, cuts], dim=1)
+        
+        # 更新 valid_mask：dummy token 总是有效的
+        # valid_mask: (batch_size, num_cuts) -> (batch_size, num_cuts + 1)
+        if valid_mask is not None:
+            dummy_valid = torch.ones(batch_size, 1, dtype=torch.bool, device=valid_mask.device)
+            valid_mask_with_dummy = torch.cat([dummy_valid, valid_mask], dim=1)
+        else:
+            valid_mask_with_dummy = torch.ones(batch_size, num_cuts + 1, dtype=torch.bool, device=cuts.device)
 
         # 1. Cut Encoding
-        cut_embeddings = self.cut_encoder(cuts)  # (batch_size, num_cuts, hidden_dim)
+        cut_embeddings = self.cut_encoder(cuts_with_dummy)  # (batch_size, num_cuts + 1, hidden_dim)
 
         # 2. Self Attention
         # 创建 key_padding_mask (True 表示需要 mask)
-        if valid_mask is not None:
-            key_padding_mask = ~valid_mask
-        else:
-            key_padding_mask = None
+        key_padding_mask = ~valid_mask_with_dummy
 
         for attention_layer in self.attention_layers:
             cut_embeddings = attention_layer(cut_embeddings, key_padding_mask=key_padding_mask)
 
         # 3. Attention Pooling -> Bundle Embedding
-        bundle_embedding = self.attention_pooling(cut_embeddings, valid_mask=valid_mask)
+        bundle_embedding = self.attention_pooling(cut_embeddings, valid_mask=valid_mask_with_dummy)
 
         # 4. Global Encoding
         global_embedding = self.global_encoder(lambda_, x_prev, realization, stage)
