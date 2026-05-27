@@ -24,7 +24,7 @@ ppo:
   batch_size: 128        # 批大小
   clip_range: 0.1        # PPO clip 范围（减小以限制策略更新幅度）
   clip_range_decay: false # 是否启用 clip_range 线性衰减
-  ent_coef: 0.005        # 熵系数（探索程度）
+  ent_coef: 0.05        # 熵系数（探索程度）
   vf_coef: 0.5           # 价值函数系数
   max_grad_norm: 0.5     # 最大梯度范数
   gamma: 0.99            # 折扣因子
