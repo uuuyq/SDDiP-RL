@@ -48,7 +48,7 @@ class PredictionHead(nn.Module):
         if mode == "subproblem":
             # 预测 subgradient 和 opt_value
             self.subgradient_head = nn.Linear(hidden_dim, output_dim)
-            self.value_head = nn.Linear(hidden_dim, 1)
+            self.opt_value_head = nn.Linear(hidden_dim, 1)
         elif mode == "warm_start":
             # 预测 x_init 和 z_init
             self.x_init_head = nn.Linear(hidden_dim, output_dim)
@@ -68,7 +68,7 @@ class PredictionHead(nn.Module):
 
         if self.mode == "subproblem":
             subgradient = self.subgradient_head(shared_features)
-            opt_value = self.value_head(shared_features).squeeze(-1)
+            opt_value = self.opt_value_head(shared_features)
             return {
                 "subgradient": subgradient,
                 "opt_value": opt_value,

@@ -6,33 +6,29 @@
 # ------------------------------
 # 输入输出维度配置
 # ------------------------------
-# 注意：具体维度值需要根据实际问题确定，这里先用占位值
+# 注意：具体维度值根据实际训练数据自动确定，这里保留默认值
 dimensions:
   # λ (dual variable) 的维度
+  # 实际数据中 lambda_dim = 13
   lambda_dim: 13
 
   # x_prev (上一阶段状态，对应 trial_point: x, y, x_bs, soc)
-  # 需要展开成单个向量的维度
-  x_prev_dim: 13
+  # trial_point = X_TRIAL + Y_TRIAL + X_BS_TRIAL(展开) + SOC_TRIAL
+  # 实际数据中 x_prev_dim = 10 (3 + 3 + 6 + 1)
+  x_prev_dim: 10
 
   # realization 特征维度
-  realization_dim: 2  # demand + renewable generation
-  # demand_dim: 1
-  # renewable_dim: 1
-  # scenario_prob_dim: 1
+  # p_d (demand) + re (renewable generation)
+  # 实际数据中 realization_dim = 12 (6 + 6)
+  realization_dim: 12
 
   # Cut 特征维度
   # 每个 cut 包含: g_i (subgradient) + phi_i (intercept)
-  # 后面可以添加: age_i, violation_i, activity_i
+  # 注意：当前收集的数据中 lag_cuts 为空，需要后续迭代数据
   cut_dim: 14  # g_i (13) + phi_i (1)
 
   # 输出维度
-  # x_init 对应: x, y, x_bs, soc（展开成单个向量）
-  # z_init 对应: z_x, z_y, z_x_bs, z_soc（展开成单个向量）
-  # 注意：模型最终目标是替代 sub_problem，输出应该是 subgradient 和 opt_value
-  # 或者先输出 x_init 和 z_init，再从中计算 subgradient
-  x_init_dim: 13  # 暂时和 lambda_dim 一致，后面调整
-  z_init_dim: 13  # 暂时和 lambda_dim 一致，后面调整
+  # 预测 subgradient 和 opt_value
   output_dim: 13  # 对应 subgradient 维度
 
 # ------------------------------
@@ -82,4 +78,4 @@ training:
 # 模型集成设置
 # ------------------------------
 integration:
-  mode: "replace"  # "replace" (完全替代) or "warm_start" (提供初始值)
+  mode: "subproblem"  # "subproblem" (完全替代) or "warm_start" (提供初始值)
