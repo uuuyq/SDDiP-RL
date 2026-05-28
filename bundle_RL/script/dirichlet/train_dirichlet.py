@@ -28,8 +28,8 @@ from stable_baselines3.common.policies import ActorCriticPolicy
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from gymnasium import spaces
 
-from bundle_RL.script.attention.encoder_v2 import AttentionBundleEncoder
-from bundle_RL.script.attention.dirichlet_policy import (
+from bundle_RL.script.dirichlet.encoder_v2 import AttentionBundleEncoder
+from bundle_RL.script.dirichlet.dirichlet_policy import (
     DirichletPolicyHead,
     DirichletCombinedDistribution
 )
@@ -233,9 +233,7 @@ class DirichletActorCriticPolicy(ActorCriticPolicy):
         self.dirichlet_head = DirichletPolicyHead(
             input_dim=input_dim,
             K=K,
-            hidden_dim=dirichlet_hidden_dim,
-            min_alpha=min_alpha,
-            eta_scale=eta_scale
+            hidden_dim=dirichlet_hidden_dim
         )
 
     def _get_action_dist_from_latent(self, latent_pi: torch.Tensor) -> DirichletCombinedDistribution:
@@ -261,14 +259,9 @@ class DirichletActorCriticPolicy(ActorCriticPolicy):
         # 将 valid_mask 转换为 float 类型（与 latent_pi 类型一致）
         valid_mask = valid_mask.to(latent_pi.dtype)
 
-        concentration, eta, _ = self.dirichlet_head(latent_pi, valid_mask)
+        distribution = self.dirichlet_head(latent_pi, valid_mask)
 
-        return DirichletCombinedDistribution(
-            concentration=concentration,
-            eta=eta,
-            valid_mask=valid_mask,
-            lambda_temp=1.0
-        )
+        return distribution
 
     def forward(self, obs, deterministic=False):
         """

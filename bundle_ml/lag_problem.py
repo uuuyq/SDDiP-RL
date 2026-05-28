@@ -481,7 +481,7 @@ class MasterProblem:
         # self.logger.info(f"rel_gap: {rel_gap} tolerance: {self.tolerance}")
         if rel_gap <= self.tolerance:
             stop_flag = True
-            self.logger.debug(f"算法已满足终止条件, rel_gap: {rel_gap:.6e} tolerance: {self.tolerance:.6e}")
+            # self.logger.debug(f"算法已满足终止条件, rel_gap: {rel_gap:.6e} tolerance: {self.tolerance:.6e}")
 
         # 判定 Serious Step
         serious_step = (f_new - self.f_best) >= self.m_l * delta

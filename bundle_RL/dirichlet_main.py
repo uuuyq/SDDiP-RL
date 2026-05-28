@@ -24,8 +24,8 @@ import yaml
 
 from bundle_RL.config import BundleConfig
 from bundle_RL.script.logger import get_logger
-from bundle_RL.script.attention.env import BundleDualEnv
-from bundle_RL.script.attention.train_dirichlet import train
+from bundle_RL.script.dirichlet.env import BundleDualEnv
+from bundle_RL.script.dirichlet.train_dirichlet import train
 
 
 def load_train_config(config_path: str) -> dict:
@@ -275,7 +275,7 @@ if __name__ == "__main__":
     # ========================================================
     # 训练参数配置（在这里调整实验名称和训练参数）
     # ========================================================
-    experiment_name = "exp_dirichlet_02"          # 实验名称
+    experiment_name = "exp_dirichlet_04"          # 实验名称
     config_path = None                            # 配置文件路径（None 表示使用默认配置 dirichlet_config.yml）
     
     # Dirichlet 特有参数（可覆盖配置文件中的值）
