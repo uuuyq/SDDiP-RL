@@ -95,9 +95,9 @@ class BundleDualEnv(gym.Env):
 
         # ========== 动作空间 ==========
         # 前K维是weights，最后1维是步长
-        # 使用标准范围 [-1, 1]，在 step 方法中进行缩放
+        # 策略网络输出已应用 sigmoid，动作范围在 [0, 1]
         self.action_space = gym.spaces.Box(
-            low=-1,
+            low=0,
             high=1,
             shape=(self.action_dim,),
             dtype=np.float32
@@ -151,16 +151,9 @@ class BundleDualEnv(gym.Env):
         """
         action = [weight_1 ... weight_K , eta]
         """
-        # 拆分动作
-        raw_weights = action[:self.K]
-        raw_eta = action[-1]
-
-        # ---------- weights 使用 sigmoid 映射到 [0, 1] ----------
-        weights = 1.0 / (1 + np.exp(-raw_weights))
-
-        # ---------- 步长映射 ----------
-        # 用sigmoid保证正值，并限制最大步长
-        eta = 1.0 * (1 / (1 + np.exp(-raw_eta)))
+        # 拆分动作（策略网络已应用 sigmoid，动作在 [0, 1] 范围内）
+        weights = action[:self.K]
+        eta = action[-1]
 
         # ---------- 用 state 聚合 ----------
         state = self._get_state()
@@ -183,15 +176,18 @@ class BundleDualEnv(gym.Env):
         # ========== Log-Gap Reward ==========
         # gap = max(0, -phi)，对于最小化问题，gap 越小越好
         # log-gap reward: gap 减小时为正，gap 增大时为负
-        phi_old = self.bundle[-1]["phi"]
-        eps = 1e-8
-        gap_old = max(0, -phi_old) + eps
-        gap_new = max(0, -phi_new) + eps
-        
-        raw_reward = np.log(gap_old) - np.log(gap_new)
-        
-        # 归一化: 使用 tanh 压缩到合理范围
-        reward = np.tanh(raw_reward * 0.1)  # 缩放系数可调
+        # phi_old = self.bundle[-1]["phi"]
+        # eps = 1e-8
+        # gap_old = max(0, -phi_old) + eps
+        # gap_new = max(0, -phi_new) + eps
+        #
+        # raw_reward = np.log(gap_old) - np.log(gap_new)
+        #
+        # # 归一化: 使用 tanh 压缩到合理范围
+        # reward = np.tanh(raw_reward * 0.1)  # 缩放系数可调
+
+        # reward 使用子问题的目标函数的提升值
+        reward = (phi_new - self.bundle[-1]["phi"]) / self.scale
 
         # 更新 cut age
         for cut in self.bundle:

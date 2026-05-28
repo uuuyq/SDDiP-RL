@@ -218,13 +218,14 @@ def create_config_list(config_dir: Path):
     """
     configs = []
     i = 1
-    for t in range(1, 24):
-        for n in range(6):
-            config_path = config_dir / f"config_{i}_{t}_{n}.pkl"
-            if config_path.exists():
-                configs.append(BundleConfig.from_pkl(config_path))
-            else:
-                print(f"警告：配置文件不存在: {config_path}")
+    t=5
+    # for t in range(1, 24):
+    for n in range(6):
+        config_path = config_dir / f"config_{i}_{t}_{n}.pkl"
+        if config_path.exists():
+            configs.append(BundleConfig.from_pkl(config_path))
+        else:
+            print(f"警告：配置文件不存在: {config_path}")
     return configs
 
 
@@ -235,7 +236,7 @@ if __name__ == "__main__":
     # ========================================================
     # 训练参数配置（在这里调整实验名称和训练数据选择）
     # ========================================================
-    experiment_name = "exp37"          # 实验名称
+    experiment_name = "exp38"          # 实验名称
     
     # ========================================================
     # 启动训练

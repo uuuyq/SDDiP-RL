@@ -275,7 +275,7 @@ if __name__ == "__main__":
     # ========================================================
     # 训练参数配置（在这里调整实验名称和训练参数）
     # ========================================================
-    experiment_name = "exp_dirichlet_04"          # 实验名称
+    experiment_name = "exp_dirichlet_01"          # 实验名称
     config_path = None                            # 配置文件路径（None 表示使用默认配置 dirichlet_config.yml）
     
     # Dirichlet 特有参数（可覆盖配置文件中的值）

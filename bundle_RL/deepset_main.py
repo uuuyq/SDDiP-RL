@@ -234,7 +234,7 @@ def main(experiment_name, config_path=None, **kwargs):
         dropout=net_config['dropout'],
         actor_net_arch=net_config['actor_net_arch'],
         critic_net_arch=net_config['critic_net_arch'],
-        policy_type="deepset",  # 使用新的 DeepSetActorCriticPolicy
+        policy_type=exp_config['policy_type'],  # 从配置文件读取策略类型
         overwrite=exp_config['overwrite']
     )
 
@@ -246,7 +246,7 @@ if __name__ == "__main__":
     # ========================================================
     # 训练参数配置（在这里调整实验名称和训练参数）
     # ========================================================
-    experiment_name = "exp_deepset_01"          # 实验名称
+    experiment_name = "exp_deepset_02"          # 实验名称
     config_path = None                            # 配置文件路径（None 表示使用默认配置 deepset_config.yml）
 
     # ========================================================

@@ -185,15 +185,18 @@ class BundleDualEnv(gym.Env):
         # ========== Log-Gap Reward ==========
         # gap = max(0, -phi)，对于最小化问题，gap 越小越好
         # log-gap reward: gap 减小时为正，gap 增大时为负
-        phi_old = self.bundle[-1]["phi"]
-        eps = 1e-8
-        gap_old = max(0, -phi_old) + eps
-        gap_new = max(0, -phi_new) + eps
-        
-        raw_reward = np.log(gap_old) - np.log(gap_new)
-        
-        # 归一化: 使用 tanh 压缩到合理范围
-        reward = np.tanh(raw_reward * 0.1)  # 缩放系数可调
+        # phi_old = self.bundle[-1]["phi"]
+        # eps = 1e-8
+        # gap_old = max(0, -phi_old) + eps
+        # gap_new = max(0, -phi_new) + eps
+        #
+        # raw_reward = np.log(gap_old) - np.log(gap_new)
+        #
+        # # 归一化: 使用 tanh 压缩到合理范围
+        # reward = np.tanh(raw_reward * 0.1)  # 缩放系数可调
+
+        # reward 使用子问题的目标函数的提升值
+        reward = (phi_new - self.bundle[-1]["phi"]) / self.scale
 
         # 更新 cut age
         for cut in self.bundle:

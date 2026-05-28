@@ -124,18 +124,16 @@ class KeyNetwork(nn.Module):
 
 class EtaHead(nn.Module):
     """
-    Eta Head: 输出步长 eta
+    Eta Head: 输出步长 eta 的原始值
 
     输入: z_g (全局特征), shape (batch_size, z_g_dim)
-    输出: eta, shape (batch_size, 1), 范围 (0, 1)
-
-    使用 sigmoid + scale 超参数
+    输出: raw_eta, shape (batch_size, 1)
+    
+    注意：不应用 sigmoid，由环境的 step 方法处理 sigmoid 映射
     """
     
-    def __init__(self, input_dim: int, scale: float = 1.0):
+    def __init__(self, input_dim: int):
         super().__init__()
-        
-        self.scale = scale
         
         self.eta_net = nn.Sequential(
             nn.Linear(input_dim, input_dim // 2),
@@ -145,8 +143,7 @@ class EtaHead(nn.Module):
     
     def forward(self, z_g: torch.Tensor) -> torch.Tensor:
         raw_eta = self.eta_net(z_g)
-        eta = self.scale * torch.sigmoid(raw_eta)
-        return eta
+        return raw_eta
 
 
 class DeepSetActorCriticPolicy(ActorCriticPolicy):
@@ -177,6 +174,19 @@ class DeepSetActorCriticPolicy(ActorCriticPolicy):
         K = observation_space["cuts"].shape[0]
         self._K = K
         
+        # 保存参数供后续使用
+        self._query_dim = query_dim
+        self._key_dim = key_dim
+        
+        # 获取 hidden_dim 和计算 z_g_dim
+        hidden_dim = features_extractor_kwargs.get("hidden_dim", 64)
+        z_g_dim = 4 * hidden_dim
+        
+        # 修改 features_extractor_kwargs，将 features_dim 设置为 z_g_dim
+        # 这样 mlp_extractor 会使用正确的输入维度
+        features_extractor_kwargs = features_extractor_kwargs.copy()
+        features_extractor_kwargs['features_dim'] = z_g_dim
+        
         super().__init__(
             observation_space=observation_space,
             action_space=action_space,
@@ -185,27 +195,38 @@ class DeepSetActorCriticPolicy(ActorCriticPolicy):
             features_extractor_kwargs=features_extractor_kwargs,** kwargs
         )
         
-        # 获取 z_g_dim（4 * hidden_dim）
-        hidden_dim = features_extractor_kwargs.get("hidden_dim", 64)
-        z_g_dim = 4 * hidden_dim
-        
         # Actor 组件
         self.query_net = QueryNetwork(input_dim=z_g_dim, query_dim=query_dim)
         self.key_net = KeyNetwork(hidden_dim=hidden_dim, key_dim=key_dim)
-        self.eta_head = EtaHead(input_dim=z_g_dim, scale=1.0)
-        
+        self.eta_head = EtaHead(input_dim=z_g_dim)  # 不应用 sigmoid，由环境处理
+
+        # 可学习的 log_std 参数（用于动作分布）
+        action_dim = K + 1  # cut_weights (K) + eta (1)
+        # 初始化为 -2.0，使初始 std = exp(-2.0) ≈ 0.14，降低动作方差
+        self.actor_logstd = nn.Parameter(torch.full((1, action_dim), -2.0))
+
         # 注册为模块
         self.add_module("query_net", self.query_net)
         self.add_module("key_net", self.key_net)
         self.add_module("eta_head", self.eta_head)
-    
+
     def _get_action_dist_from_latent(self, latent_pi, latent_sde=None):
         """
-        重写父类方法，直接使用 action mean 作为输出
+        重写父类方法，直接使用 action mean 创建动作分布
+
+        Args:
+            latent_pi: 已经计算好的 action mean (batch_size, action_dim)
+            latent_sde: 用于 SDE 策略（这里不需要）
+
+        Returns:
+            动作分布对象
         """
-        # 直接返回 latent_pi 作为 action mean
-        # 由于我们使用连续动作空间，父类会自动处理标准差
-        return super()._get_action_dist_from_latent(latent_pi, latent_sde)
+        action_mean = latent_pi
+        log_std = self.actor_logstd.expand_as(action_mean)
+
+        distribution = self.action_dist.proba_distribution(action_mean, log_std)
+
+        return distribution
     
     def forward(self, obs, deterministic=False):
         """
@@ -221,12 +242,13 @@ class DeepSetActorCriticPolicy(ActorCriticPolicy):
         
         # 计算权重 score_i = q^T k_i
         scores = torch.bmm(q.unsqueeze(1), k.transpose(1, 2)).squeeze(1)  # (batch_size, K)
+        # 应用 sigmoid 将 cut_weights 限制在 [0, 1]
         cut_weights = torch.sigmoid(scores)  # (batch_size, K)
         
-        # 计算步长 eta
-        eta = self.eta_head(z_g)  # (batch_size, 1)
+        # 计算步长 eta（应用 sigmoid 限制在 [0, 1]）
+        eta = torch.sigmoid(self.eta_head(z_g))  # (batch_size, 1)
         
-        # 拼接 action
+        # 拼接 action（输出已归一化到 [0, 1]）
         action_mean = torch.cat([cut_weights, eta], dim=-1)  # (batch_size, K+1)
         
         # 获取动作分布
@@ -258,9 +280,11 @@ class DeepSetActorCriticPolicy(ActorCriticPolicy):
         k = self.key_net(h)
         
         scores = torch.bmm(q.unsqueeze(1), k.transpose(1, 2)).squeeze(1)
+        # 应用 sigmoid 将 cut_weights 限制在 [0, 1]
         cut_weights = torch.sigmoid(scores)
         
-        eta = self.eta_head(z_g)
+        # 计算步长 eta（应用 sigmoid 限制在 [0, 1]）
+        eta = torch.sigmoid(self.eta_head(z_g))
         action_mean = torch.cat([cut_weights, eta], dim=-1)
         
         # 获取分布

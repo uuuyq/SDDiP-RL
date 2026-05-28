@@ -9,7 +9,7 @@ from stable_baselines3.common.policies import MultiInputActorCriticPolicy
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
 from bundle_RL.script.deepset.features_extractor import DeepSetFeaturesExtractor as DeepSetBundleExtractor
-from bundle_RL.script.deepset.policy_network import DeepSetActorCriticPolicy, SeparateEncoderPolicy
+from bundle_RL.script.deepset.policy_network import DeepSetActorCriticPolicy
 
 
 def get_experiment_dirs(experiment_name):
@@ -199,9 +199,6 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
         if policy_type == "deepset":
             policy_class = DeepSetActorCriticPolicy
             print("使用 DeepSetActorCriticPolicy")
-        elif policy_type == "separate":
-            policy_class = SeparateEncoderPolicy
-            print("使用分离编码器策略")
         else:
             policy_class = MultiInputActorCriticPolicy
             print("使用共享编码器策略 (MultiInputActorCriticPolicy)")

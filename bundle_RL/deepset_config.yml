@@ -7,6 +7,7 @@ experiment:
   name: "deepset_exp"
   rounds: 3               # 训练轮数
   overwrite: false        # 是否覆盖已有模型
+  policy_type: "deepset"  # 策略类型 ("deepset", "shared", "separate")
 
 # 环境配置
 environment:
@@ -14,18 +15,18 @@ environment:
 
 # PPO 配置
 ppo:
-  learning_rate: 0.0001     # 学习率
+  learning_rate: 0.00003      # 降低学习率以减少 KL 散度
   n_steps: 512            # 每次更新采集的步数
   batch_size: 128         # 批大小
   gamma: 0.99             # 折扣因子
   gae_lambda: 0.95        # GAE 参数
   n_epochs: 10            # 训练轮数
   ent_coef: 0.005         # 熵系数
-  clip_range: 0.2         # PPO clip 范围
+  clip_range: 0.1         # 降低 clip_range 限制策略更新
   clip_range_decay: true  # 是否启用 clip_range 线性衰减
   vf_coef: 0.5           # 价值函数系数
   max_grad_norm: 0.5     # 最大梯度范数
-  target_kl: null         # KL 散度目标
+#  target_kl: 0.02         # 设置 KL 散度目标，超过时提前终止更新
 
 # 网络配置
 network:
