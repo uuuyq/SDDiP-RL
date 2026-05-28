@@ -164,7 +164,7 @@ def create_config_list(config_dir: Path, i=1, t=5):
     return configs
 
 
-def main(experiment_name, config_path=None, **kwargs):
+def main(experiment_name, config_path=None, configs_dir=None, **kwargs):
     """
     主函数
 
@@ -201,8 +201,7 @@ def main(experiment_name, config_path=None, **kwargs):
     train_config = config['training']
 
     # 创建 config 列表
-    config_dir = project_root / "configs"
-    train_configs = create_config_list(config_dir)
+    train_configs = create_config_list(configs_dir)
     logger.info(f"加载了 {len(train_configs)} 个配置")
 
     if not train_configs:
@@ -248,11 +247,13 @@ if __name__ == "__main__":
     # ========================================================
     experiment_name = "exp_deepset_02"          # 实验名称
     config_path = None                            # 配置文件路径（None 表示使用默认配置 deepset_config.yml）
+    configs_dir = Path(r"D:\tools\workspace_pycharm\SDDiP-RL\bundle_RL\configs")
 
     # ========================================================
     # 启动训练
     # ========================================================
     main(
         experiment_name=experiment_name,
-        config_path=config_path
+        config_path=config_path,
+        configs_dir=configs_dir,
     )

@@ -243,5 +243,5 @@ if __name__ == "__main__":
     # ========================================================
     main(
         experiment_name=experiment_name,
-        config_path=r"D:\tools\workspace_pycharm\SDDiP-RL\bundle_RL\train_config.yml"
+        config_path=r"/bundle_RL/script/attention/train_config.yml"
     )
