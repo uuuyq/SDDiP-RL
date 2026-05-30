@@ -2,26 +2,23 @@ import csv
 import os
 import re
 from datetime import datetime
-import torch
-import torch.nn as nn
-from stable_baselines3 import PPO
-from stable_baselines3.common.policies import MultiInputActorCriticPolicy
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
-from bundle_RL.script.attention.features_extractor import AttentionFeaturesExtractor as AttentionBundleExtractor
-from bundle_RL.script.attention.policy_network import SeparateEncoderPolicy
+from stable_baselines3 import PPO
+
+from bundle_RL.script.attention1.features_extractor import AttentionFeaturesExtractor
+from bundle_RL.script.attention1.policy_network import AttentionActorCriticPolicy
 
 
 def get_experiment_dirs(experiment_name):
     """获取实验相关的目录路径"""
     # 获取当前文件所在目录的绝对路径，定位到 bundle_RL/
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    # 上移两级目录：bundle_RL/script/attention/ -> bundle_RL/script/ -> bundle_RL/
+    # 上移两级目录：bundle_RL/script/attention1/ -> bundle_RL/script/ -> bundle_RL/
     base_dir = os.path.dirname(os.path.dirname(current_dir))
-    
+
     # 确保 base_dir 是 str 类型，避免类型检查警告
     base_dir = str(base_dir)
-    
+
     experiment_dir = os.path.join(base_dir, "train_result", "model", experiment_name)
     checkpoints_dir = os.path.join(experiment_dir, "checkpoints")
     tensorboard_dir = os.path.join(base_dir, "train_result", "ppo_tensorboard", experiment_name)
@@ -41,15 +38,6 @@ def extract_steps_from_checkpoint(filename):
 def load_latest_checkpoint(experiment_name, env, policy_kwargs):
     """
     加载最新的 checkpoint（如果存在）
-
-    Args:
-        experiment_name: 实验名称
-        env: 环境（用于加载模型）
-        policy_kwargs: 策略参数字典
-
-    Returns:
-        model: 加载的模型，如果不存在则返回 None
-        steps: 已训练的步数，如果不存在则返回 0
     """
     _, checkpoints_dir, tensorboard_dir, _ = get_experiment_dirs(experiment_name)
 
@@ -72,7 +60,8 @@ def load_latest_checkpoint(experiment_name, env, policy_kwargs):
         checkpoint_path,
         env=env,
         custom_objects={
-            "AttentionBundleExtractor": AttentionBundleExtractor,
+            "AttentionFeaturesExtractor": AttentionFeaturesExtractor,
+            "AttentionActorCriticPolicy": AttentionActorCriticPolicy,
             "policy_kwargs": policy_kwargs
         }
     )
@@ -81,15 +70,18 @@ def load_latest_checkpoint(experiment_name, env, policy_kwargs):
 
 
 def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
-          checkpoint_freq=5000, experiment_name="attention_default", ent_coef=0,
+          checkpoint_freq=5000, experiment_name="attention1_default", ent_coef=0,
           resume=True, overwrite=False, learning_rate=3e-4, clip_range=0.2, clip_range_decay=True,
           n_steps=512, batch_size=128, gamma=0.99, gae_lambda=0.95, n_epochs=10,
           vf_coef=0.5, max_grad_norm=0.5, target_kl=None,
-          features_dim=128, hidden_dim=64, num_heads=4, num_layers=1, ffn_dim=128, dropout=0.1,
-          actor_net_arch=None, critic_net_arch=None,
-          share_encoder=True):
+          hidden_dim=64, num_heads=4, num_layers=1, ffn_dim=128, dropout=0.1):
     """
-    Attention-based PPO 训练函数，支持断点续训
+    Attention1 简化版 PPO 训练函数，支持断点续训
+
+    与 attention/ 模块的差异：
+    - 使用自定义 AttentionActorCriticPolicy（含 LambdaHead Q-K 注意力打分）
+    - 没有 share_encoder / actor_net_arch / critic_net_arch / features_dim 参数
+      （Actor / Critic 始终共享 encoder；head 内部结构由 hidden_dim 决定）
 
     Args:
         env: 环境
@@ -98,13 +90,13 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
         model: 已有模型（用于继续训练）
         total_timesteps: 训练总步数
         checkpoint_freq: 检查点保存频率
-        experiment_name: 实验名称，用于区分不同实验
-        ent_coef: 熵系数，控制探索程度
-        resume: 是否自动从最新 checkpoint 继续训练（默认 True）
-        overwrite: 是否覆盖已有模型重新训练（默认 False，即支持断点续训）
-        learning_rate: 学习率（默认 3e-4）
-        clip_range: PPO clip 范围（默认 0.2）
-        clip_range_decay: 是否启用 clip_range 线性衰减（从 clip_range 衰减到 0.05）
+        experiment_name: 实验名称
+        ent_coef: 熵系数
+        resume: 是否自动从最新 checkpoint 继续训练
+        overwrite: 是否覆盖已有模型重新训练
+        learning_rate: 学习率
+        clip_range: PPO clip 范围
+        clip_range_decay: 是否启用 clip_range 线性衰减
         n_steps: 每次更新采集的步数
         batch_size: 批大小
         gamma: 折扣因子
@@ -112,28 +104,18 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
         n_epochs: 训练轮数
         vf_coef: 价值函数系数
         max_grad_norm: 最大梯度范数
-        target_kl: KL 散度目标（用于提前终止训练轮次，稳定策略更新）
-        features_dim: 特征提取器维度
-        hidden_dim: 编码器隐藏层维度
+        target_kl: KL 散度目标
+        hidden_dim: 编码器隐藏层维度（同时决定 head 内部维度）
         num_heads: Attention 头数
         num_layers: Attention 层数
         ffn_dim: FFN 维度
         dropout: Dropout 概率
-        actor_net_arch: Actor 网络结构
-        critic_net_arch: Critic 网络结构
-        share_encoder: 是否共享 Actor/Critic 的 encoder（默认 True）
 
     Returns:
         model: 训练后的模型
         trained_steps: 本次训练的步数
         total_trained_steps: 累计训练的步数
     """
-    # 默认网络结构
-    if actor_net_arch is None:
-        actor_net_arch = [128, 128]
-    if critic_net_arch is None:
-        critic_net_arch = [128, 128]
-    
     experiment_dir, checkpoints_dir, tensorboard_dir, save_dir = get_experiment_dirs(experiment_name)
 
     os.makedirs(experiment_dir, exist_ok=True)
@@ -141,6 +123,11 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
     os.makedirs(tensorboard_dir, exist_ok=True)
     os.makedirs(save_dir, exist_ok=True)
 
+    # CSV 表头与 attention/ 保持完全一致（包含 features_dim / net_arch 两列），
+    # 便于 parallel_train.py 与下游分析脚本对两个模块的训练日志统一处理。
+    # - features_dim：本简化版 features_extractor 输出维度恒为 2 * hidden_dim（[global; CLS]）
+    # - net_arch：本简化版不使用 mlp_extractor 中间层，head 内部结构由 hidden_dim 决定，
+    #            此处填 dict(pi=[], vf=[]) 表示无中间层
     hparams = {
         "learning_rate": learning_rate,
         "n_steps": n_steps,
@@ -154,18 +141,17 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
         "n_epochs": n_epochs,
         "vf_coef": vf_coef,
         "max_grad_norm": max_grad_norm,
-        "features_dim": features_dim,
+        "features_dim": 2 * hidden_dim,
         "hidden_dim": hidden_dim,
         "num_heads": num_heads,
         "num_layers": num_layers,
         "ffn_dim": ffn_dim,
         "dropout": dropout,
-        "net_arch": dict(pi=actor_net_arch, vf=critic_net_arch)
+        "net_arch": dict(pi=[], vf=[])
     }
 
     # 特征提取器参数
     features_extractor_kwargs = dict(
-        features_dim=features_dim,
         hidden_dim=hidden_dim,
         num_heads=num_heads,
         num_layers=num_layers,
@@ -174,12 +160,11 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
     )
 
     policy_kwargs = dict(
-        features_extractor_class=AttentionBundleExtractor,
+        features_extractor_class=AttentionFeaturesExtractor,
         features_extractor_kwargs=features_extractor_kwargs,
-        net_arch=dict(pi=actor_net_arch, vf=critic_net_arch)
+        net_arch=[]   # 不使用 mlp_extractor 中间层
     )
 
-    loaded_from_checkpoint = False
     existing_steps = 0
 
     if model is None and resume and not overwrite:
@@ -187,31 +172,21 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
 
     # 使用可变对象存储 clip_range 值，以便在训练过程中可以修改
     current_clip_range = [clip_range]
-    
+
     # clip_range 需要是可调用对象（函数）
     def clip_range_fn(_):
         return current_clip_range[0]
-    
+
     if model is None:
         print(f"创建新模型，实验: {experiment_name}")
         print(f"超参数: learning_rate={learning_rate}, ent_coef={ent_coef}, clip_range={clip_range}")
         print(f"         n_steps={n_steps}, batch_size={batch_size}, gamma={gamma}")
-        print(f"         features_dim={features_dim}, hidden_dim={hidden_dim}")
-        print(f"         actor_net={actor_net_arch}, critic_net={critic_net_arch}")
-        print(f"         share_encoder={share_encoder}")
+        print(f"         hidden_dim={hidden_dim}, num_heads={num_heads}, num_layers={num_layers}")
         print(f"         target_kl={target_kl}")
-        
-        # 根据 share_encoder 参数选择策略
-        if share_encoder:
-            policy_class = MultiInputActorCriticPolicy
-            print("使用共享编码器策略")
-        else:
-            policy_class = SeparateEncoderPolicy
-            print("使用分离编码器策略")
-        
-        # 构建 PPO 参数（只在 target_kl 为有效数值时添加）
+
+        # 构建 PPO 参数
         ppo_kwargs = dict(
-            policy=policy_class,
+            policy=AttentionActorCriticPolicy,
             env=env,
             policy_kwargs=policy_kwargs,
             verbose=1,
@@ -227,29 +202,27 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
             max_grad_norm=max_grad_norm,
             tensorboard_log=tensorboard_dir
         )
-        
-        # 只在 target_kl 为有效数值时添加
+
         if target_kl is not None and isinstance(target_kl, (int, float)):
             ppo_kwargs['target_kl'] = target_kl
             print(f"设置 target_kl={target_kl}")
-        
+
         model = PPO(**ppo_kwargs)
     else:
         print(f"继续训练已有模型，已训练步数: {existing_steps}")
         model.set_env(env)
-        model.tensorboard_log = tensorboard_dir  # 恢复tensorboard日志配置
-        model.learning_rate = learning_rate      # 更新学习率
-        model.ent_coef = ent_coef                # 更新熵系数
+        model.tensorboard_log = tensorboard_dir
+        model.learning_rate = learning_rate
+        model.ent_coef = ent_coef
         model.gamma = gamma
         model.gae_lambda = gae_lambda
         model.n_epochs = n_epochs
         model.vf_coef = vf_coef
         model.max_grad_norm = max_grad_norm
-        # 只在 target_kl 为有效数值时更新
         if target_kl is not None and isinstance(target_kl, (int, float)):
             model.target_kl = target_kl
-        current_clip_range[0] = clip_range       # 更新clip范围（通过可变对象）
-        model.clip_range = clip_range_fn         # 确保是可调用对象
+        current_clip_range[0] = clip_range
+        model.clip_range = clip_range_fn
 
     if existing_steps >= total_timesteps:
         msg = f"模型已训练 {existing_steps} 步（目标 {total_timesteps} 步），无需继续训练"
@@ -272,26 +245,24 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
     callbacks = [checkpoint_callback]
     if clip_range_decay:
         from stable_baselines3.common.callbacks import BaseCallback
-        
+
         class ClipRangeDecayCallback(BaseCallback):
-            def __init__(self, current_clip_range, initial_clip_range, remaining_timesteps, total_timesteps, final_clip_range=0.05, verbose=0):
+            def __init__(self, current_clip_range, initial_clip_range, remaining_timesteps, total_timesteps,
+                         final_clip_range=0.05, verbose=0):
                 super().__init__(verbose)
-                self.current_clip_range = current_clip_range  # 可变列表引用
+                self.current_clip_range = current_clip_range
                 self.initial_clip_range = initial_clip_range
                 self.final_clip_range = final_clip_range
-                self.remaining_timesteps = remaining_timesteps  # 剩余需要训练的步数
-                self.total_timesteps = total_timesteps  # 总步数
-                self.start_timesteps = total_timesteps - remaining_timesteps  # 续训前的累计步数
-            
+                self.remaining_timesteps = remaining_timesteps
+                self.total_timesteps = total_timesteps
+                self.start_timesteps = total_timesteps - remaining_timesteps
+
             def _on_step(self):
-                # progress 应该基于本次续训的进度，而不是全局累计
-                # self.num_timesteps 从 start_timesteps 开始累加
                 current_progress = self.num_timesteps - self.start_timesteps
                 progress = min(current_progress / self.remaining_timesteps, 1.0) if self.remaining_timesteps > 0 else 1.0
-                # 通过可变对象修改 clip_range 值
                 self.current_clip_range[0] = self.initial_clip_range - (self.initial_clip_range - self.final_clip_range) * progress
                 return True
-        
+
         clip_decay_callback = ClipRangeDecayCallback(current_clip_range, clip_range, remaining_timesteps, total_timesteps)
         callbacks.append(clip_decay_callback)
         print(f"启用 clip_range 衰减: 从 {clip_range} 线性衰减到 0.05")
@@ -301,14 +272,12 @@ def train(env, save_path=None, logger=None, model=None, total_timesteps=200_000,
         logger.info(f"开始训练，剩余步数: {remaining_timesteps}/{total_timesteps}")
 
     print(f"model.policy: {model.policy}")
-    print(f"model.policy.action_net: {model.policy.action_net}")
-    print(f"model.policy.value_net: {model.policy.value_net}")
 
     model.learn(
         total_timesteps=remaining_timesteps,
         reset_num_timesteps=False,
         callback=callbacks,
-        tb_log_name="log"  # 使用固定名称，避免在tensorboard_dir下创建额外子目录
+        tb_log_name="log"
     )
 
     total_trained_steps = existing_steps + remaining_timesteps

@@ -247,6 +247,17 @@ def validate(
 
 def train(args):
     """主训练函数"""
+    # 清除缓存
+    if args.clear_cache:
+        from bundle_ml.dataset import CACHE_DIR, get_cache_path
+        cache_path = get_cache_path(args.data_dir, args.max_cuts, normalize=True)
+        if cache_path.exists():
+            cache_path.unlink()
+            print(f"Cache cleared: {cache_path}")
+        else:
+            print("No cache found to clear")
+        return
+
     # 设置随机种子
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -257,12 +268,19 @@ def train(args):
     
     # 加载数据
     print(f"\nLoading data from: {args.data_dir}")
+    use_cache = not args.no_cache
+    if use_cache:
+        print("Using cache (default behavior)")
+    else:
+        print("Cache disabled - will reprocess data")
+
     dataset = BundleDataset(
         data_dir=args.data_dir,
         instance_names=args.instance_names,
         max_samples_per_file=args.max_samples_per_file,
         max_cuts=args.max_cuts,
         normalize=True,
+        use_cache=use_cache,
     )
     
     print(f"Total samples: {len(dataset)}")
@@ -482,6 +500,10 @@ def parse_args():
                         help='每个文件最多采样数量（用于快速测试）')
     parser.add_argument('--max_cuts', type=int, default=50,
                         help='最大 cuts 数量')
+    parser.add_argument('--no_cache', action='store_true',
+                        help='禁用缓存，强制重新处理数据')
+    parser.add_argument('--clear_cache', action='store_true',
+                        help='清除缓存后退出（不进行训练）')
     
     # 训练配置
     parser.add_argument('--batch_size', type=int, default=64,

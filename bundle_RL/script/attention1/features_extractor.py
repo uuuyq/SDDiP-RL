@@ -1,47 +1,38 @@
 """
-Features Extractor 模块
+Features Extractor 模块（简化版）
 
-该模块定义了与 stable-baselines3 兼容的特征提取器，是当前训练流程的核心组件。
+该模块定义了与 stable-baselines3 兼容的特征提取器，包装 AttentionBundleEncoder。
 
 ===========================================
               整体网络架构
 ===========================================
 
-当前训练流程使用 stable-baselines3 的 `MultiInputActorCriticPolicy`：
+attention1 简化版使用自定义的 `AttentionActorCriticPolicy`：
+
 ┌─────────────────────────────────────────────────────────────────┐
-│                    MultiInputActorCriticPolicy                  │
+│                AttentionActorCriticPolicy                       │
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │           AttentionFeaturesExtractor (共享)             │   │
 │  │  ┌─────────────────────────────────────────────────┐   │   │
 │  │  │        AttentionBundleEncoder                   │   │   │
-│  │  │  ┌─────────┐  ┌───────────────┐  ┌──────────┐   │   │   │
-│  │  │  │CutEncoder│→│Self-Attention │→│GlobalEnc │   │   │   │
-│  │  │  └─────────┘  │   (with CLS)  │  └──────────┘   │   │   │
-│  │  │               └───────────────┘                  │   │   │
+│  │  │  CutEncoder → SelfAttention(+CLS) → GlobalEnc   │   │   │
 │  │  └─────────────────────────────────────────────────┘   │   │
 │  │                           ↓                             │   │
-│  │              ┌─────────────────────────┐               │   │
-│  │              │ 特征聚合 (拼接)         │               │   │
-│  │              │ pool + global + cls     │               │   │
-│  │              └───────────┬─────────────┘               │   │
-│  │                          ↓                             │   │
-│  │              ┌─────────────────────────┐               │   │
-│  │              │   MLP 特征变换          │               │   │
-│  │              └───────────┬─────────────┘               │   │
-│  └───────────────────────────┼───────────────────────────┘   │
-│                              ↓                               │
-│         ┌────────────────────┴────────────────────┐          │
-│         ↓                                         ↓          │
-│  ┌──────────────┐                        ┌──────────────┐     │
-│  │   Actor MLP  │                        │  Critic MLP  │     │
-│  │  [128, 128]  │                        │  [128, 128]  │     │
-│  └──────┬───────┘                        └──────┬───────┘     │
-│         ↓                                       ↓             │
-│  ┌──────────────┐                        ┌──────────────┐     │
-│  │  action_net  │                        │  value_net   │     │
-│  │ (输出均值)   │                        │  (输出V(s))  │     │
-│  └──────────────┘                        └──────────────┘     │
+│  │              输出 (B, 2H) = [global ; CLS]              │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                              ↓                                   │
+│         ┌────────────────────┴────────────────────┐              │
+│         ↓                                         ↓              │
+│  ┌──────────────┐                        ┌──────────────┐        │
+│  │ LambdaHead   │                        │  ValueHead   │        │
+│  │ Q-K Attention│                        │   MLP        │        │
+│  │ (with H)     │                        └──────────────┘        │
+│  └──────────────┘                                                │
+│  ┌──────────────┐                                                │
+│  │  EtaHead     │                                                │
+│  │  MLP         │                                                │
+│  └──────────────┘                                                │
 └─────────────────────────────────────────────────────────────────┘
 
 ===========================================
@@ -50,99 +41,88 @@ Features Extractor 模块
 
 1. AttentionFeaturesExtractor:
    - 实现 stable_baselines3 的 BaseFeaturesExtractor 接口
-   - 从 Dict 类型的 observation 中提取特征
-   - **Actor 和 Critic 共享同一个实例**（由 stable-baselines3 自动处理）
+   - 持有 AttentionBundleEncoder 实例
+   - forward(obs) 返回 [global ; CLS] (B, 2H)，满足 SB3 标准约定
+   - encode(obs) 返回完整三元组 (cut_embeddings, global_embedding, cls_embedding)
+     供自定义 Policy 调用
 
 2. AttentionBundleEncoder:
-   - 核心编码器，包含 CutEncoder、Self-Attention、GlobalEncoder
-   - 输出三种特征: pool_embedding、global_embedding、cls_embedding
+   - 核心编码器，输出 (H, global, h_bundle)
 
-3. MultiInputActorCriticPolicy (stable-baselines3):
-   - 自动将 features_extractor 的输出分别传入 Actor 和 Critic 的 MLP
-   - 确保特征提取器的参数在 Actor 和 Critic 之间共享
+3. AttentionActorCriticPolicy (在 policy_network.py 中):
+   - 自定义 forward / evaluate_actions / predict_values
+   - 直接调用 self.features_extractor.encoder(...) 获取三元组
+   - LambdaHead 利用 H 做 Q-K 打分，EtaHead/ValueHead 仅用 [global;CLS]
 
 ===========================================
               输入输出规格
 ===========================================
 
 输入 (observation_space.Dict):
-├── cuts: (batch_size, K, state_dim)      - K个cut的次梯度
-├── valid_mask: (batch_size, K)           - 有效cut的掩码
-├── pi: (batch_size, state_dim)           - 当前对偶点
-├── trial_point: (batch_size, trial_point_dim) - 试验点
-└── realization: (batch_size, realization_dim) - 场景数据
+├── cuts: (batch_size, K, state_dim)
+├── valid_mask: (batch_size, K)
+├── pi: (batch_size, state_dim)
+├── trial_point: (batch_size, trial_point_dim)
+└── realization: (batch_size, realization_dim)
 
-输出 (供 Actor/Critic 使用):
-└── features: (batch_size, features_dim)  - 提取的特征向量
+forward 输出:
+└── features: (batch_size, 2 * hidden_dim)  - [global ; CLS]
 
-===========================================
-              使用方式
-===========================================
-
-在 train.py 中:
-    policy_kwargs = dict(
-        features_extractor_class=AttentionFeaturesExtractor,
-        features_extractor_kwargs=dict(features_dim=128),
-        net_arch=dict(pi=[128, 128], vf=[128, 128])
-    )
-    model = PPO(
-        policy=MultiInputActorCriticPolicy,
-        env=env,
-        policy_kwargs=policy_kwargs
-    )
-
-这样配置后，stable-baselines3 会自动：
-1. 创建一个共享的 AttentionFeaturesExtractor 实例
-2. Actor 和 Critic 的 MLP 层独立，但共享特征提取器的参数
-3. 反向传播时同时更新 Actor 和 Critic 的参数
+encode 输出:
+├── cut_embeddings: (batch_size, K, hidden_dim)
+├── global_embedding: (batch_size, hidden_dim)
+└── cls_embedding: (batch_size, hidden_dim)
 """
 import torch
 import torch.nn as nn
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from gymnasium import spaces
-from typing import Dict
+from typing import Dict, Tuple
 
-from bundle_RL.script.attention.encoder import AttentionBundleEncoder
+from bundle_RL.script.attention1.encoder import AttentionBundleEncoder
 
 
 class AttentionFeaturesExtractor(BaseFeaturesExtractor):
     """
-    Attention-based Features Extractor for stable_baselines3
-    
-    从 observation 中提取特征，供 Actor 和 Critic 使用。
+    Attention-based Features Extractor for stable_baselines3（简化版）
+
+    从 observation 中提取特征，供自定义 Policy 使用。
     该特征提取器会被 Actor 和 Critic 共享。
-    
+
     observation_space 结构:
         - cuts: (K, state_dim)
         - valid_mask: (K,)
         - pi: (state_dim,)
         - trial_point: (trial_point_dim,)
         - realization: (realization_dim,)
+
+    输出 features_dim = 2 * hidden_dim（[global; CLS]）
     """
-    
+
     def __init__(
         self,
         observation_space: spaces.Dict,
-        features_dim: int = 128,
         hidden_dim: int = 64,
         num_heads: int = 4,
         num_layers: int = 1,
         ffn_dim: int = 128,
         dropout: float = 0.1
     ):
-        super().__init__(observation_space, features_dim)
-        
+        # features_dim = 2 * hidden_dim（concat of global and cls）
+        super().__init__(observation_space, features_dim=2 * hidden_dim)
+
         self.cuts_shape = observation_space["cuts"].shape
         self.valid_mask_shape = observation_space["valid_mask"].shape
         self.pi_shape = observation_space["pi"].shape
         self.trial_point_shape = observation_space["trial_point"].shape
         self.realization_shape = observation_space["realization"].shape
-        
+
         self.K = self.cuts_shape[0]
         self.state_dim = self.cuts_shape[1]
         self.trial_point_dim = self.trial_point_shape[0]
         self.realization_dim = self.realization_shape[0]
-        
+        self.hidden_dim = hidden_dim
+
         self.encoder = AttentionBundleEncoder(
             state_dim=self.state_dim,
             trial_point_dim=self.trial_point_dim,
@@ -154,33 +134,36 @@ class AttentionFeaturesExtractor(BaseFeaturesExtractor):
             ffn_dim=ffn_dim,
             dropout=dropout
         )
-        
-        combined_dim = hidden_dim * 3  # pool_embedding + global_embedding + cls_embedding
-        
-        self.net = nn.Sequential(
-            nn.Linear(combined_dim, features_dim),
-            nn.ReLU(),
-            nn.Linear(features_dim, features_dim),
-            nn.ReLU()
-        )
-    
-    def forward(self, observations: Dict[str, torch.Tensor]) -> torch.Tensor:
+
+    def encode(
+        self,
+        observations: Dict[str, torch.Tensor]
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        返回完整编码三元组，供自定义 Policy 使用
+
+        Returns:
+            cut_embeddings: (B, K, H)         - 即 H
+            global_embedding: (B, H)
+            cls_embedding: (B, H)             - 即 h_bundle
+        """
         cuts = observations["cuts"]
         valid_mask = observations["valid_mask"]
         pi = observations["pi"]
         trial_point = observations["trial_point"]
         realization = observations["realization"]
-        
+
         cut_embeddings, global_embedding, cls_embedding = self.encoder(
             cuts, valid_mask, pi, trial_point, realization
         )
-        
-        valid_mask_expanded = valid_mask.unsqueeze(-1).float()
-        masked_embeddings = cut_embeddings * valid_mask_expanded
-        pool_embedding = masked_embeddings.sum(dim=1) / (valid_mask.sum(dim=1, keepdim=True) + 1e-8)
-        
-        combined = torch.cat([pool_embedding, global_embedding, cls_embedding], dim=-1)
-        
-        features = self.net(combined)
-        
-        return features
+        return cut_embeddings, global_embedding, cls_embedding
+
+    def forward(self, observations: Dict[str, torch.Tensor]) -> torch.Tensor:
+        """
+        SB3 标准接口：返回 [global ; CLS] 拼接 (B, 2H)
+
+        在自定义 Policy 中我们通常直接调用 encode()，避免重复计算。
+        但保留此接口以满足 SB3 内部约定。
+        """
+        _, global_embedding, cls_embedding = self.encode(observations)
+        return torch.cat([global_embedding, cls_embedding], dim=-1)

@@ -1,131 +1,213 @@
 """
-Policy Network 模块
+Policy Network 模块（简化版）
 
-该模块定义了自定义的 Attention-based Actor-Critic 网络组件。
+该模块定义了 attention1 简化版的自定义 Actor-Critic 策略组件。
 
 ===========================================
               模块职责
 ===========================================
 
-1. LambdaHead: 输出每个 cut 的 lambda 权重（组件）
-2. EtaHead: 输出步长 eta（组件）
-3. SharedEncoderPolicy: 基于 stable-baselines3 的自定义策略（共享 encoder）
-4. SeparateEncoderPolicy: 基于 stable-baselines3 的自定义策略（分离 encoder）
-5. AttentionActorCriticPolicyNetwork: 完整的 Actor-Critic 网络（备用）
+1. LambdaHead: 利用 Q-K 注意力对 cut_embeddings 打分（scores 即 lambda_mean）
+2. EtaHead:    用 [global; CLS] 输出 eta_mean
+3. ValueHead:  用 [global; CLS] 输出 V(s)
+4. AttentionActorCriticPolicy:
+   - 继承 stable_baselines3.common.policies.ActorCriticPolicy
+   - 复用父类的 action_dist (DiagGaussianDistribution) 与 log_std (nn.Parameter)
+   - 重写 forward / evaluate_actions / predict_values / _predict
+   - 在 forward 中绕过 mlp_extractor / action_net / value_net，
+     直接调用 features_extractor.encode(obs) 得到 (H, global, CLS)，
+     再走 LambdaHead / EtaHead / ValueHead 自定义路径
 
 ===========================================
-              当前训练流程
+              动作分布
 ===========================================
 
-当前使用 stable-baselines3 的 `MultiInputActorCriticPolicy` + `AttentionFeaturesExtractor`：
-- Actor 和 Critic 自动共享 `AttentionFeaturesExtractor`
-- 如需不共享 encoder，可使用 `SeparateEncoderPolicy`
+    action_mean = [LambdaHead(h, H), EtaHead(h)]   shape (B, K+1)
+    log_std     = self.log_std                     shape (K+1,) (父类创建)
+    dist        = DiagGaussianDistribution.proba_distribution(action_mean, log_std)
+    action      = dist.sample() / dist.mode()
+    log_prob    = dist.log_prob(action)            shape (B,)
+    entropy     = dist.entropy()                   shape (B,)
 
 ===========================================
-              策略选择指南
+              环境侧约定
 ===========================================
 
-| 策略类型 | 适用场景 | 优势 |
-|----------|----------|------|
-| SharedEncoderPolicy | 默认推荐 | 参数共享，训练稳定，数据效率高 |
-| SeparateEncoderPolicy | 需要独立优化 | Actor/Critic 可独立学习不同特征 |
+    Policy 输出的 action 是 raw_lambda 与 raw_eta 的拼接（未做 mask/softmax/sigmoid）。
+    BundleDualEnv.step 内部完成：
+        raw_lambda → mask_fill(-inf) → softmax → lambdas
+        raw_eta    → sigmoid → eta
 """
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from stable_baselines3.common.policies import ActorCriticPolicy
 from gymnasium import spaces
 from typing import Dict, Tuple
 
-from bundle_RL.script.attention.features_extractor import AttentionFeaturesExtractor
+from bundle_RL.script.attention1.features_extractor import AttentionFeaturesExtractor
 
+
+# ============================
+# LambdaHead
+# ============================
 
 class LambdaHead(nn.Module):
     """
-    Lambda Head: 输出每个 cut 的 lambda 权重
-    
-    输入: cut embeddings after attention, shape (batch_size, K, hidden_dim)
-    输出: lambda 分布, shape (batch_size, K)
+    Lambda Head: 利用 Q-K 注意力对 cut_embeddings 打分
+
+    输入:
+        h_combined: (B, 2H) - [global ; CLS]
+        cut_embeddings: (B, K, H) - 即 H
+
+    输出:
+        lambda_mean: (B, K) - raw scores（未 mask、未 softmax）
+
+    流程:
+        q = QueryNet(h_combined)               (B, H)
+        scores = q @ Hᵀ / sqrt(H)              (B, K)
     """
-    
+
     def __init__(self, hidden_dim: int = 64):
         super().__init__()
-        
-        self.score_net = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim // 2),
-            nn.ReLU(),
-            nn.Linear(hidden_dim // 2, 1)
-        )
-    
-    def forward(self, cut_embeddings: torch.Tensor, valid_mask: torch.Tensor = None) -> torch.Tensor:
-        scores = self.score_net(cut_embeddings).squeeze(-1)
-        
-        if valid_mask is not None:
-            scores = scores.masked_fill(valid_mask == 0, float('-inf'))
-        
-        lambda_weights = F.softmax(scores, dim=-1)
-        
-        return lambda_weights
 
+        self.hidden_dim = hidden_dim
+        self.scale = hidden_dim ** 0.5
+
+        self.query_net = nn.Sequential(
+            nn.Linear(2 * hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim)
+        )
+
+    def forward(
+        self,
+        h_combined: torch.Tensor,
+        cut_embeddings: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Args:
+            h_combined: (B, 2H)
+            cut_embeddings: (B, K, H)
+
+        Returns:
+            scores: (B, K)
+        """
+        q = self.query_net(h_combined)              # (B, H)
+        q = q.unsqueeze(1)                          # (B, 1, H)
+        scores = torch.bmm(q, cut_embeddings.transpose(1, 2))  # (B, 1, K)
+        scores = scores.squeeze(1) / self.scale     # (B, K)
+        return scores
+
+
+# ============================
+# EtaHead
+# ============================
 
 class EtaHead(nn.Module):
     """
-    Eta Head: 输出步长 eta
-    
-    输入: global_embedding, shape (batch_size, hidden_dim)
-    输出: eta, shape (batch_size, 1), 范围 (0, 1)
+    Eta Head: 输出步长 eta 的均值
+
+    输入:
+        h_combined: (B, 2H) - [global ; CLS]
+
+    输出:
+        eta_mean: (B, 1) - raw 均值（sigmoid 在 env 中完成）
     """
-    
-    def __init__(self, hidden_dim: int = 64, scale: float = 1.0):
+
+    def __init__(self, hidden_dim: int = 64):
         super().__init__()
-        
-        self.scale = scale
-        
-        self.eta_net = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim // 2),
+
+        self.net = nn.Sequential(
+            nn.Linear(2 * hidden_dim, hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim // 2, 1)
+            nn.Linear(hidden_dim, 1)
         )
-    
-    def forward(self, global_embedding: torch.Tensor) -> torch.Tensor:
-        raw_eta = self.eta_net(global_embedding)
-        eta = self.scale * torch.sigmoid(raw_eta)
-        return eta
+
+    def forward(self, h_combined: torch.Tensor) -> torch.Tensor:
+        return self.net(h_combined)
 
 
-class SharedEncoderPolicy(ActorCriticPolicy):
+# ============================
+# ValueHead
+# ============================
+
+class ValueHead(nn.Module):
     """
-    基于 stable-baselines3 的自定义策略（共享 encoder）
-    
-    Actor 和 Critic 共享同一个 AttentionFeaturesExtractor。
-    
+    Value Head: 输出状态值 V(s)
+
+    输入:
+        h_combined: (B, 2H) - [global ; CLS]
+
+    输出:
+        value: (B, 1)
+    """
+
+    def __init__(self, hidden_dim: int = 64):
+        super().__init__()
+
+        self.net = nn.Sequential(
+            nn.Linear(2 * hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1)
+        )
+
+    def forward(self, h_combined: torch.Tensor) -> torch.Tensor:
+        return self.net(h_combined)
+
+
+# ============================
+# AttentionActorCriticPolicy
+# ============================
+
+class AttentionActorCriticPolicy(ActorCriticPolicy):
+    """
+    自定义 Actor-Critic 策略（简化版）
+
+    继承自 stable_baselines3.common.policies.ActorCriticPolicy：
+    - 复用父类的 action_dist (DiagGaussianDistribution) 与 log_std (nn.Parameter)
+    - 重写 forward / evaluate_actions / predict_values / _predict，
+      直接调用 features_extractor.encode(obs) 得到 (H, global, CLS)，
+      再走 LambdaHead / EtaHead / ValueHead 自定义路径
+
     使用方式（在 train.py 中）:
         policy_kwargs = dict(
             features_extractor_class=AttentionFeaturesExtractor,
-            features_extractor_kwargs=dict(features_dim=128),
-            net_arch=dict(pi=[128, 128], vf=[128, 128])
+            features_extractor_kwargs=dict(
+                hidden_dim=64, num_heads=4, num_layers=1, ffn_dim=128, dropout=0.1
+            ),
+            net_arch=[],   # 不需要 mlp_extractor 中间层
         )
         model = PPO(
-            policy=SharedEncoderPolicy,
+            policy=AttentionActorCriticPolicy,
             env=env,
             policy_kwargs=policy_kwargs
         )
-    
-    **注意**: stable-baselines3 的 MultiInputActorCriticPolicy 已经自动实现了
-    Actor 和 Critic 共享同一个 features_extractor，此类主要作为参考。
+
+    备注:
+        父类会创建 mlp_extractor / action_net / value_net 等模块，
+        本 Policy 在 forward 中不调用它们；这些模块对应的参数会被注册到 optimizer，
+        但梯度始终为零（因为没有路径连到 loss），不影响训练正确性，
+        仅产生少量额外内存占用。
     """
-    
+
     def __init__(
         self,
         observation_space: spaces.Dict,
         action_space,
         lr_schedule,
         features_extractor_class=AttentionFeaturesExtractor,
-        features_extractor_kwargs=None,** kwargs
+        features_extractor_kwargs=None,
+        **kwargs
     ):
         if features_extractor_kwargs is None:
-            features_extractor_kwargs = dict(features_dim=128)
-        
+            features_extractor_kwargs = dict(hidden_dim=64)
+
+        # 强制 net_arch=[]，避免 mlp_extractor 中间层（不会被使用）
+        if "net_arch" not in kwargs:
+            kwargs["net_arch"] = []
+
         super().__init__(
             observation_space=observation_space,
             action_space=action_space,
@@ -135,259 +217,133 @@ class SharedEncoderPolicy(ActorCriticPolicy):
             **kwargs
         )
 
+        # 从 features_extractor 中读取 hidden_dim 用于构造 head
+        hidden_dim = self.features_extractor.hidden_dim
 
-class SeparateEncoderPolicy(ActorCriticPolicy):
-    """
-    基于 stable-baselines3 的自定义策略（分离 encoder）
-    
-    Actor 和 Critic 使用独立的 AttentionFeaturesExtractor，不共享参数。
-    
-    使用方式（在 train.py 中）:
-        policy_kwargs = dict(
-            features_extractor_class=AttentionFeaturesExtractor,
-            features_extractor_kwargs=dict(features_dim=128),
-            net_arch=dict(pi=[128, 128], vf=[128, 128])
+        # 自定义 head
+        self.lambda_head = LambdaHead(hidden_dim)
+        self.eta_head = EtaHead(hidden_dim)
+        self.value_head = ValueHead(hidden_dim)
+
+        # 将自定义 head 注册到优化器（父类已用 self.parameters() 创建 optimizer，
+        # 这里手动重建以包含新加入的 head）
+        self.optimizer = self.optimizer_class(
+            self.parameters(),
+            lr=lr_schedule(1),
+            **self.optimizer_kwargs
         )
-        model = PPO(
-            policy=SeparateEncoderPolicy,  # 使用此类替代 MultiInputActorCriticPolicy
-            env=env,
-            policy_kwargs=policy_kwargs
-        )
-    
-    **适用场景**: 当需要 Actor 和 Critic 学习不同的特征表示时使用。
-    注意：参数数量翻倍，训练数据需求更大。
-    """
-    
-    def __init__(
+
+    # --------------------------------------------------------------
+    # 编码 + head 计算
+    # --------------------------------------------------------------
+
+    def _encode(
         self,
-        observation_space: spaces.Dict,
-        action_space,
-        lr_schedule,
-        features_extractor_class=AttentionFeaturesExtractor,
-        features_extractor_kwargs=None,** kwargs
-    ):
-        if features_extractor_kwargs is None:
-            features_extractor_kwargs = dict(features_dim=128)
-        
-        # 先调用父类初始化（会创建一个共享的 features_extractor，用于 Actor）
-        super().__init__(
-            observation_space=observation_space,
-            action_space=action_space,
-            lr_schedule=lr_schedule,
-            features_extractor_class=features_extractor_class,
-            features_extractor_kwargs=features_extractor_kwargs,** kwargs
-        )
-        
-        # 创建独立的 Critic features_extractor
-        self.critic_features_extractor = features_extractor_class(
-            observation_space=observation_space,
-            **features_extractor_kwargs
-        )
-        
-        # 将 critic_features_extractor 注册为模块
-        self.add_module("critic_features_extractor", self.critic_features_extractor)
-    
-    def extract_features(self, obs, features_extractor=None):
+        obs: Dict[str, torch.Tensor]
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
-        提取特征（兼容父类接口）
-        
-        Args:
-            obs: 观察（dict 或 tensor）
-            features_extractor: 可选，指定使用哪个 features_extractor
-                               默认为 None，使用 Actor 的 features_extractor
-        """
-        if features_extractor is None:
-            features_extractor = self.features_extractor
-        
-        if isinstance(obs, dict):
-            return features_extractor(obs)
-        return features_extractor(obs.unsqueeze(0)).squeeze(0)
-    
-    def forward(self, obs, deterministic=False):
-        """
-        重写 forward 方法，使用分离的 encoder
-        
+        调用 features_extractor.encode 获取三元组，并构造 h = [global ; CLS]
+
         Returns:
-            actions: 动作
-            values: 价值估计
-            log_probs: 动作的对数概率
+            cut_embeddings: (B, K, H)
+            h_combined:    (B, 2H)
+            global_embedding: (B, H)
+            cls_embedding:    (B, H)
         """
-        # Actor 使用共享的 features_extractor（由父类创建）
-        actor_features = self.extract_features(obs, self.features_extractor)
-        
-        # Critic 使用独立的 features_extractor
-        critic_features = self.extract_features(obs, self.critic_features_extractor)
-        
-        # Actor 分支：使用父类的 get_distribution 保证一致性
-        latent_pi = self.mlp_extractor.forward_actor(actor_features)
-        distribution = self._get_action_dist_from_latent(latent_pi)
-        
-        if deterministic:
-            actions = distribution.mode()
-        else:
-            actions = distribution.sample()
-        
-        # 计算 log_probs
-        log_probs = distribution.log_prob(actions)
-        
-        # Critic 分支
-        latent_vf = self.mlp_extractor.forward_critic(critic_features)
-        values = self.value_net(latent_vf)
-        
-        return actions, values, log_probs
-    
-    def evaluate_actions(self, obs, actions):
+        cut_embeddings, global_embedding, cls_embedding = self.features_extractor.encode(obs)
+        h_combined = torch.cat([global_embedding, cls_embedding], dim=-1)
+        return cut_embeddings, h_combined, global_embedding, cls_embedding
+
+    def _compute_action_mean(
+        self,
+        h_combined: torch.Tensor,
+        cut_embeddings: torch.Tensor
+    ) -> torch.Tensor:
         """
-        重写 evaluate_actions 方法，使用分离的 encoder
-        
+        action_mean = [lambda_mean ; eta_mean]，shape (B, K+1)
+        """
+        lambda_mean = self.lambda_head(h_combined, cut_embeddings)   # (B, K)
+        eta_mean = self.eta_head(h_combined)                         # (B, 1)
+        return torch.cat([lambda_mean, eta_mean], dim=-1)
+
+    # --------------------------------------------------------------
+    # 重写 SB3 策略接口
+    # --------------------------------------------------------------
+
+    def forward(
+        self,
+        obs: Dict[str, torch.Tensor],
+        deterministic: bool = False
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        重写 forward：构造动作分布、采样动作、计算 V(s)
+
         Returns:
-            values: 价值估计
-            log_prob: 动作的对数概率
-            entropy: 熵
+            actions: (B, K+1)
+            values:  (B, 1)
+            log_prob: (B,)
         """
-        # Actor 使用共享的 features_extractor
-        actor_features = self.extract_features(obs, self.features_extractor)
-        
-        # Critic 使用独立的 features_extractor
-        critic_features = self.extract_features(obs, self.critic_features_extractor)
-        
-        # Actor 分支：使用父类的方法保证与 forward 一致
-        latent_pi = self.mlp_extractor.forward_actor(actor_features)
-        distribution = self._get_action_dist_from_latent(latent_pi)
-        
-        # 计算 log_prob 和 entropy
+        cut_embeddings, h_combined, _, _ = self._encode(obs)
+
+        action_mean = self._compute_action_mean(h_combined, cut_embeddings)
+        distribution = self.action_dist.proba_distribution(action_mean, self.log_std)
+
+        actions = distribution.get_actions(deterministic=deterministic)
         log_prob = distribution.log_prob(actions)
-        entropy = distribution.entropy()
-        
-        # Critic 分支
-        latent_vf = self.mlp_extractor.forward_critic(critic_features)
-        values = self.value_net(latent_vf)
-        
-        return values, log_prob, entropy
-    
-    def predict_values(self, obs):
-        """
-        重写 predict_values 方法，使用独立的 Critic features_extractor
-        
-        Args:
-            obs: 观察（dict）
-        
-        Returns:
-            values: 价值估计
-        """
-        critic_features = self.extract_features(obs, self.critic_features_extractor)
-        latent_vf = self.mlp_extractor.forward_critic(critic_features)
-        return self.value_net(latent_vf)
 
+        values = self.value_head(h_combined)
 
-class AttentionActorCriticPolicyNetwork(nn.Module):
-    """
-    完整的 Actor-Critic 网络（备用方案）
-    
-    基于 Attention Features Extractor，输出 action 的 mean 和 log_std。
-    该类作为备用方案，当前训练流程使用的是 stable-baselines3 的原生策略。
-    
-    如果需要完全自定义训练流程（不使用 stable-baselines3），可以使用此类。
-    """
-    
-    def __init__(
-        self,
-        observation_space: spaces.Dict,
-        action_dim: int,
-        features_dim: int = 128,
-        hidden_dim: int = 64,
-        num_heads: int = 4,
-        num_layers: int = 1,
-        ffn_dim: int = 128,
-        dropout: float = 0.1,
-        eta_scale: float = 1.0
-    ):
-        super().__init__()
-        
-        self.features_extractor = AttentionFeaturesExtractor(
-            observation_space=observation_space,
-            features_dim=features_dim,
-            hidden_dim=hidden_dim,
-            num_heads=num_heads,
-            num_layers=num_layers,
-            ffn_dim=ffn_dim,
-            dropout=dropout
-        )
-        
-        self.actor = nn.Sequential(
-            nn.Linear(features_dim, 64),
-            nn.ReLU(),
-            nn.Linear(64, 64),
-            nn.ReLU()
-        )
-        
-        self.critic = nn.Sequential(
-            nn.Linear(features_dim, 64),
-            nn.ReLU(),
-            nn.Linear(64, 64),
-            nn.ReLU()
-        )
-        
-        self.actor_mean = nn.Linear(64, action_dim)
-        self.actor_logstd = nn.Parameter(torch.zeros(1, action_dim))
-        
-        self.critic_value = nn.Linear(64, 1)
-        
-        self.eta_scale = eta_scale
-    
-    def forward(self, observations: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Args:
-            observations: dict of tensors
-        
-        Returns:
-            mean: action mean
-            log_std: action log std
-            value: V(s)
-        """
-        features = self.features_extractor(observations)
-        
-        actor_features = self.actor(features)
-        critic_features = self.critic(features)
-        
-        mean = self.actor_mean(actor_features)
-        log_std = self.actor_logstd.expand_as(mean)
-        value = self.critic_value(critic_features)
-        
-        return mean, log_std, value
-    
-    def get_action(self, observations: Dict[str, torch.Tensor]) -> torch.Tensor:
-        """
-        用于获取 action（训练时使用）
-        
-        Returns:
-            action: shape (batch_size, action_dim)
-        """
-        mean, log_std, _ = self.forward(observations)
-        std = log_std.exp()
-        action = mean + std * torch.randn_like(mean)
-        return action
-    
+        return actions, values, log_prob
+
     def evaluate_actions(
         self,
-        observations: Dict[str, torch.Tensor],
+        obs: Dict[str, torch.Tensor],
         actions: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
-        用于评估 actions（训练时使用）
-        
+        重写 evaluate_actions：用于 PPO 的 ratio 计算
+
         Returns:
-            log_prob: log probability of actions
-            entropy: entropy of the distribution
-            value: V(s)
+            values: (B, 1)
+            log_prob: (B,)
+            entropy: (B,)
         """
-        mean, log_std, value = self.forward(observations)
-        std = log_std.exp()
-        
-        var = std.pow(2)
-        log_prob = -0.5 * ((actions - mean).pow(2) / var + 2 * log_std + 0.5 * 3.14159265359 * 2)
-        log_prob = log_prob.sum(dim=-1, keepdim=True)
-        
-        entropy = 0.5 * (1 + log_std + 0.5 * 3.14159265359 * 2).sum(dim=-1)
-        
-        return log_prob, entropy, value
+        cut_embeddings, h_combined, _, _ = self._encode(obs)
+
+        action_mean = self._compute_action_mean(h_combined, cut_embeddings)
+        distribution = self.action_dist.proba_distribution(action_mean, self.log_std)
+
+        log_prob = distribution.log_prob(actions)
+        entropy = distribution.entropy()
+
+        values = self.value_head(h_combined)
+
+        return values, log_prob, entropy
+
+    def predict_values(self, obs: Dict[str, torch.Tensor]) -> torch.Tensor:
+        """
+        重写 predict_values：用于 GAE / value bootstrap
+        """
+        _, h_combined, _, _ = self._encode(obs)
+        return self.value_head(h_combined)
+
+    def _predict(
+        self,
+        observation: Dict[str, torch.Tensor],
+        deterministic: bool = False
+    ) -> torch.Tensor:
+        """
+        重写 _predict：用于 model.predict（不需要返回 value/log_prob）
+        """
+        cut_embeddings, h_combined, _, _ = self._encode(observation)
+        action_mean = self._compute_action_mean(h_combined, cut_embeddings)
+        distribution = self.action_dist.proba_distribution(action_mean, self.log_std)
+        return distribution.get_actions(deterministic=deterministic)
+
+    def get_distribution(self, obs: Dict[str, torch.Tensor]):
+        """
+        重写 get_distribution：返回当前观察下的动作分布
+        """
+        cut_embeddings, h_combined, _, _ = self._encode(obs)
+        action_mean = self._compute_action_mean(h_combined, cut_embeddings)
+        return self.action_dist.proba_distribution(action_mean, self.log_std)

@@ -1,8 +1,11 @@
 """
 数据处理模块：加载、清洗和整理训练数据
 适配 bundle_ml.models.NeuralWarmStartModel
+
+支持缓存功能：可将处理后的数据保存为 .pt 文件，后续直接加载缓存进行训练
 """
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -13,10 +16,105 @@ import torch
 from torch.utils.data import Dataset
 
 
+# 缓存目录
+CACHE_DIR = Path(__file__).parent / "cache"
+
+
+def get_cache_path(data_dir: str, max_cuts: int = 50, normalize: bool = True) -> Path:
+    """生成缓存文件路径"""
+    # 使用数据目录的绝对路径生成哈希
+    abs_data_dir = str(Path(data_dir).resolve())
+    cache_key = hashlib.md5(f"{abs_data_dir}_{max_cuts}_{normalize}".encode()).hexdigest()[:8]
+
+    # 获取数据目录名作为标识
+    dir_name = Path(data_dir).name
+
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return CACHE_DIR / f"{dir_name}_{cache_key}.pt"
+
+
+def save_cache(
+    cache_path: Path,
+    samples: List[Dict],
+    dims: Dict[str, int],
+    norm_params: Optional[Dict],
+    instance_names: Optional[List[str]],
+    max_cuts: int,
+    normalize: bool,
+):
+    """保存数据缓存"""
+    print(f"Saving cache to {cache_path}...")
+    print(f"  Samples: {len(samples)}")
+    print(f"  Dims: {dims}")
+
+    # 转换为可序列化的格式，处理 None 值
+    cache_data = {
+        'samples': samples,
+        'dims': dims,
+        'norm_params': norm_params,
+        'instance_names': instance_names,
+        'max_cuts': max_cuts,
+        'normalize': normalize,
+    }
+
+    try:
+        torch.save(cache_data, cache_path)
+        file_size = cache_path.stat().st_size
+        print(f"Cache saved! {len(samples)} samples, size: {file_size / 1024 / 1024:.2f} MB")
+    except Exception as e:
+        print(f"Failed to save cache: {e}")
+        raise
+
+
+def load_cache(
+    cache_path: Path,
+    instance_names: Optional[List[str]] = None,
+    max_cuts: int = 50,
+    normalize: bool = True,
+) -> Optional[Tuple[List[Dict], Dict, Optional[Dict]]]:
+    """加载数据缓存
+
+    Returns:
+        如果缓存有效且匹配，返回 (samples, dims, norm_params)
+        否则返回 None
+    """
+    if not cache_path.exists():
+        return None
+
+    try:
+        cache_data = torch.load(cache_path, map_location='cpu', weights_only=False)
+
+        # 检查参数是否匹配
+        if cache_data.get('max_cuts') != max_cuts:
+            print(f"Cache max_cuts mismatch: {cache_data.get('max_cuts')} != {max_cuts}")
+            return None
+        if cache_data.get('normalize') != normalize:
+            print(f"Cache normalize mismatch: {cache_data.get('normalize')} != {normalize}")
+            return None
+
+        # 检查实例名是否匹配（如果指定了的话）
+        cached_instances = cache_data.get('instance_names')
+        if instance_names is not None and cached_instances is not None:
+            # 如果都指定了，检查是否一致
+            if set(instance_names) != set(cached_instances):
+                print(f"Cache instance_names mismatch")
+                return None
+
+        print(f"Loaded cache from {cache_path}: {len(cache_data['samples'])} samples")
+        return (
+            cache_data['samples'],
+            cache_data['dims'],
+            cache_data['norm_params'],
+        )
+    except Exception as e:
+        print(f"Failed to load cache: {e}")
+        return None
+
+
 class BundleDataset(Dataset):
     """
     Bundle Method 数据集
-    
+
     适配 NeuralWarmStartModel 的输入格式:
     - cuts: (num_cuts, cut_dim) - 变长，需要 padding
     - valid_mask: (num_cuts,) - 有效 cut 的 mask
@@ -24,8 +122,10 @@ class BundleDataset(Dataset):
     - x_prev: (x_prev_dim,) - 来自 trial_point
     - realization: (realization_dim,) - p_d + re
     - stage: int
+
+    支持缓存功能：如果缓存存在则直接加载，否则从原始数据加载并生成缓存
     """
-    
+
     def __init__(
         self,
         data_dir: str,
@@ -33,6 +133,7 @@ class BundleDataset(Dataset):
         max_samples_per_file: Optional[int] = None,
         max_cuts: int = 50,
         normalize: bool = True,
+        use_cache: bool = True,
     ):
         """
         Args:
@@ -41,24 +142,62 @@ class BundleDataset(Dataset):
             max_samples_per_file: 每个文件最多采样数量（用于快速测试）
             max_cuts: 最大 cuts 数量（用于 padding）
             normalize: 是否进行归一化
+            use_cache: 是否使用缓存（默认开启）
         """
         self.data_dir = Path(data_dir)
         self.max_samples_per_file = max_samples_per_file
         self.max_cuts = max_cuts
         self.normalize = normalize
-        
-        # 收集所有数据
-        self.samples = []
-        self._load_data(instance_names)
-        
-        # 解析维度
-        self._parse_dimensions()
-        
-        # 计算归一化参数
-        if self.normalize and self.samples:
-            self._compute_normalization_params()
-        else:
-            self.norm_params = None
+        self.instance_names = instance_names
+
+        # 尝试从缓存加载
+        cache_loaded = False
+        if use_cache:
+            cache_path = get_cache_path(data_dir, max_cuts, normalize)
+            cache_result = load_cache(
+                cache_path,
+                instance_names=instance_names,
+                max_cuts=max_cuts,
+                normalize=normalize,
+            )
+            if cache_result is not None:
+                self.samples, dims, self.norm_params = cache_result
+                self.lambda_dim = dims['lambda_dim']
+                self.x_prev_dim = dims['x_prev_dim']
+                self.realization_dim = dims['realization_dim']
+                self.cut_dim = dims['cut_dim']
+                self.output_dim = dims['output_dim']
+                self.max_cuts = dims.get('max_cuts', max_cuts)
+                cache_loaded = True
+                print(f"Using cached data: {len(self.samples)} samples")
+
+        if not cache_loaded:
+            # 收集所有数据
+            self.samples = []
+            self._load_data(instance_names)
+
+            # 解析维度
+            self._parse_dimensions()
+
+            # 计算归一化参数
+            if self.normalize and self.samples:
+                self._compute_normalization_params()
+            else:
+                self.norm_params = None
+
+            # 保存缓存
+            if use_cache and self.samples:
+                cache_path = get_cache_path(data_dir, max_cuts, normalize)
+                dims = self.get_dimensions()
+                save_cache(
+                    cache_path=cache_path,
+                    samples=self.samples,
+                    dims=dims,
+                    norm_params=self.norm_params,
+                    instance_names=instance_names,
+                    max_cuts=max_cuts,
+                    normalize=normalize,
+                )
     
     def _load_data(self, instance_names: Optional[List[str]]):
         """加载所有 JSON 数据文件"""

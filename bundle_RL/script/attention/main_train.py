@@ -129,26 +129,32 @@ def main(experiment_name, config_path=None):
     
     Args:
         experiment_name: 实验名称（必须指定）
-        config_path: 配置文件路径（可选，默认为 configs/train_config.yml）
+        config_path: 配置文件路径（可选，默认为 train_config.yml）
     """
-    # 获取项目根目录的绝对路径
-    project_root = Path(__file__).parent.absolute()
+    # 获取项目根目录的绝对路径（bundle_RL 目录）
+    project_root = Path(__file__).parent.parent.parent.absolute()
     
     # 加载配置文件
     if config_path is None:
-        config_path = project_root / "configs" / "train_config.yml"
+        config_path = Path(__file__).parent.absolute() / "train_config.yml"
     else:
         config_path = Path(config_path)
     
     config = load_train_config(config_path)
     
-    # 日志目录
+    # 训练结果目录（统一保存到 bundle_RL/train_result）
     log_dir = project_root / "train_result" / "model" / experiment_name
     log_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 保存配置文件到训练结果目录
+    config_save_path = log_dir / f"{experiment_name}.yml"
+    with open(config_save_path, 'w', encoding='utf-8') as f:
+        yaml.dump(config, f, default_flow_style=False, encoding='utf-8')
     
     logger = get_logger(str(log_dir / "bundle_env_train.log"))
     logger.info(f"项目根目录: {project_root}")
     logger.info(f"配置文件: {config_path}")
+    logger.info(f"配置文件已保存到: {config_save_path}")
     logger.info(f"完整配置: {config}")
     
     # ===========================================

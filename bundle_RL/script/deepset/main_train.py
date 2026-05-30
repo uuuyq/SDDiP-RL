@@ -1,21 +1,19 @@
 """
-Dirichlet PPO 主训练入口
+DeepSet PPO 主训练入口
 
-基于 main_train.py 的结构，使用 Dirichlet 分布策略进行训练。
+基于 main_train.py 的结构，使用 DeepSet 架构进行训练。
 
 ===========================================
               使用方法
 ===========================================
 
-python dirichlet_main.py
+python main_train.py
 
 ===========================================
-              Dirichlet 特有参数
+              DeepSet 特有参数
 ===========================================
 
-- min_alpha: Dirichlet concentration 最小值（默认 1.0）
-- eta_scale: 步长缩放因子（默认 1.0）
-- dirichlet_hidden_dim: Dirichlet 策略头隐藏层维度（默认 64）
+- policy_type: 策略类型 ("deepset", "shared", "separate")
 """
 import os
 from pathlib import Path
@@ -24,8 +22,8 @@ import yaml
 
 from bundle_RL.config import BundleConfig
 from bundle_RL.script.logger import get_logger
-from bundle_RL.script.dirichlet.env import BundleDualEnv
-from bundle_RL.script.dirichlet.train_dirichlet import train
+from bundle_RL.script.deepset.env import BundleDualEnv
+from bundle_RL.script.deepset.train import train
 
 
 def load_train_config(config_path: str) -> dict:
@@ -40,7 +38,7 @@ def train_interleaved(
     configs,
     rounds=3,
     steps_per_config_per_round=20_000,
-    experiment_name="dirichlet_exp",
+    experiment_name="deepset_exp",
     K=20,
     learning_rate=3e-4,
     clip_range=0.2,
@@ -56,20 +54,14 @@ def train_interleaved(
     target_kl=None,
     features_dim=128,
     hidden_dim=64,
-    num_heads=4,
-    num_layers=1,
-    ffn_dim=128,
     dropout=0.1,
     actor_net_arch=None,
     critic_net_arch=None,
-    # Dirichlet 特有参数
-    dirichlet_hidden_dim=64,
-    min_alpha=1.0,
-    eta_scale=1.0,
+    policy_type="deepset",
     overwrite=False
 ):
     """
-    Dirichlet 版本的交错训练函数
+    DeepSet 版本的交错训练函数
 
     Args:
         configs: 配置列表（每个 config 包含自己的 n 参数）
@@ -90,16 +82,11 @@ def train_interleaved(
         max_grad_norm: 最大梯度范数
         target_kl: KL 散度目标
         features_dim: 特征提取器维度
-        hidden_dim: 编码器隐藏层维度
-        num_heads: Attention 头数
-        num_layers: Attention 层数
-        ffn_dim: FFN 维度
+        hidden_dim: 编码器隐藏层维度（同时用于 Query/Key 维度）
         dropout: Dropout 概率
         actor_net_arch: Actor 网络结构
         critic_net_arch: Critic 网络结构
-        dirichlet_hidden_dim: Dirichlet 策略头隐藏层维度
-        min_alpha: Dirichlet concentration 最小值
-        eta_scale: 步长缩放因子
+        policy_type: 策略类型 ("deepset", "shared", "separate")
         overwrite: 是否覆盖已有模型重新训练
 
     Returns:
@@ -142,16 +129,10 @@ def train_interleaved(
                 target_kl=target_kl,
                 features_dim=features_dim,
                 hidden_dim=hidden_dim,
-                num_heads=num_heads,
-                num_layers=num_layers,
-                ffn_dim=ffn_dim,
                 dropout=dropout,
-                K=K,
-                dirichlet_hidden_dim=dirichlet_hidden_dim,
-                min_alpha=min_alpha,
-                eta_scale=eta_scale,
                 actor_net_arch=actor_net_arch,
                 critic_net_arch=critic_net_arch,
+                policy_type=policy_type,
                 overwrite=overwrite
             )
 
@@ -189,27 +170,33 @@ def main(experiment_name, config_path=None, configs_dir=None, **kwargs):
 
     Args:
         experiment_name: 实验名称（必须指定）
-        config_path: 配置文件路径（可选，默认为 dirichlet_config.yml）
+        config_path: 配置文件路径（可选，默认为 deepset_config.yml）
         **kwargs: 其他训练参数
     """
-    # 获取项目根目录的绝对路径
-    project_root = Path(__file__).parent.absolute()
+    # 获取项目根目录的绝对路径（bundle_RL 目录）
+    project_root = Path(__file__).parent.parent.parent.absolute()
 
-    # 加载配置文件（默认使用 Dirichlet 配置）
+    # 加载配置文件（默认使用 DeepSet 配置）
     if config_path is None:
-        config_path = project_root / "dirichlet_config.yml"
+        config_path = Path(__file__).parent.absolute() / "deepset_config.yml"
     else:
         config_path = Path(config_path)
 
     config = load_train_config(config_path)
 
-    # 日志目录
+    # 训练结果目录（统一保存到 bundle_RL/train_result）
     log_dir = project_root / "train_result" / "model" / experiment_name
     log_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 保存配置文件到训练结果目录
+    config_save_path = log_dir / f"{experiment_name}.yml"
+    with open(config_save_path, 'w', encoding='utf-8') as f:
+        yaml.dump(config, f, default_flow_style=False, encoding='utf-8')
 
-    logger = get_logger(str(log_dir / "dirichlet_bundle_env_train.log"))
+    logger = get_logger(str(log_dir / "deepset_bundle_env_train.log"))
     logger.info(f"项目根目录: {project_root}")
     logger.info(f"配置文件: {config_path}")
+    logger.info(f"配置文件已保存到: {config_save_path}")
     logger.info(f"完整配置: {config}")
 
     # 提取配置参数
@@ -217,14 +204,9 @@ def main(experiment_name, config_path=None, configs_dir=None, **kwargs):
     env_config = config['environment']
     ppo_config = config['ppo']
     net_config = config['network']
-
-    # Dirichlet 特有参数（可从配置或 kwargs 获取）
-    dirichlet_config = config.get('dirichlet', {})
-
     train_config = config['training']
 
     # 创建 config 列表
-
     train_configs = create_config_list(configs_dir)
     logger.info(f"加载了 {len(train_configs)} 个配置")
 
@@ -254,20 +236,14 @@ def main(experiment_name, config_path=None, configs_dir=None, **kwargs):
         target_kl=ppo_config.get('target_kl', None),
         features_dim=net_config['features_dim'],
         hidden_dim=net_config['hidden_dim'],
-        num_heads=net_config['num_heads'],
-        num_layers=net_config['num_layers'],
-        ffn_dim=net_config['ffn_dim'],
         dropout=net_config['dropout'],
         actor_net_arch=net_config['actor_net_arch'],
         critic_net_arch=net_config['critic_net_arch'],
-        # Dirichlet 参数（优先使用 kwargs 中的值）
-        dirichlet_hidden_dim=kwargs.get('dirichlet_hidden_dim') if kwargs.get('dirichlet_hidden_dim') is not None else dirichlet_config.get('dirichlet_hidden_dim', 64),
-        min_alpha=kwargs.get('min_alpha') if kwargs.get('min_alpha') is not None else dirichlet_config.get('min_alpha', 1.0),
-        eta_scale=kwargs.get('eta_scale') if kwargs.get('eta_scale') is not None else dirichlet_config.get('eta_scale', 1.0),
+        policy_type=exp_config['policy_type'],  # 从配置文件读取策略类型
         overwrite=exp_config['overwrite']
     )
 
-    logger.info("Dirichlet PPO 训练完成！")
+    logger.info("DeepSet PPO 训练完成！")
     return model
 
 
@@ -275,23 +251,15 @@ if __name__ == "__main__":
     # ========================================================
     # 训练参数配置（在这里调整实验名称和训练参数）
     # ========================================================
-    experiment_name = "exp_dirichlet_01"          # 实验名称
-    config_path = None                            # 配置文件路径（None 表示使用默认配置 dirichlet_config.yml）
-    
-    # Dirichlet 特有参数（可覆盖配置文件中的值）
-    min_alpha = None                             # Dirichlet concentration 最小值（None 表示使用配置文件值）
-    eta_scale = None                             # 步长缩放因子（None 表示使用配置文件值）
-    dirichlet_hidden_dim = None                  # Dirichlet 策略头隐藏层维度（None 表示使用配置文件值）
+    experiment_name = "exp_deepset_02"          # 实验名称
+    config_path = None                            # 配置文件路径（None 表示使用默认配置 deepset_config.yml）
     configs_dir = Path(r"D:\tools\workspace_pycharm\SDDiP-RL\bundle_RL\configs")
-    
+
     # ========================================================
     # 启动训练
     # ========================================================
     main(
         experiment_name=experiment_name,
         config_path=config_path,
-        min_alpha=min_alpha,
-        eta_scale=eta_scale,
-        dirichlet_hidden_dim=dirichlet_hidden_dim,
-        configs_dir=configs_dir
+        configs_dir=configs_dir,
     )
