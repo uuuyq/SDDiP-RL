@@ -6,7 +6,7 @@
 # 实验设置
 # ------------------------------
 experiment:
-  rounds: 1              # 训练轮数（单 config 诊断：1 轮即可）
+  rounds: 15             # 训练轮数（每个 config 累计 15×5000=75k 步）
   overwrite: false       # 是否覆盖已有模型重新训练
 
 # ------------------------------
@@ -19,18 +19,18 @@ environment:
 # PPO 算法超参数
 # ------------------------------
 ppo:
-  learning_rate: 1.0e-4  # 学习率（action_space 扩展后可使用标准 PPO 学习率）
+  learning_rate: 3.0e-5  # 学习率（平衡：5e-6太慢无学习，1e-4太快 KL 爆炸）
   n_steps: 500           # 每次更新采集的步数
   batch_size: 128        # 批大小
-  clip_range: 0.1        # PPO clip 范围
+  clip_range: 0.2        # PPO clip 范围（标准默认值；0.1 太窄导致 clip_fraction 偏高）
   clip_range_decay: false # 是否启用 clip_range 线性衰减
   ent_coef: 0.005        # 熵系数（从 0.05 下调拑制 log_std 暴涨，止住 KL 飙升）
-  vf_coef: 0.5           # 价值函数系数
+  vf_coef: 0.5           # 价值函数系数（1.0→ 0.5：降低以避免 V(s) 过度专注当前 config，减少切换时的 EV 崩溃）
   max_grad_norm: 0.5     # 最大梯度范数
-  gamma: 0.99            # 折扣因子
+  gamma: 0.95            # 折扣因子（episode 仅 10 步，0.99 太接近 1 使 V(s) 几乎等于总回报，降为 0.95 让 bootstrap 更局部）
   gae_lambda: 0.95       # GAE 参数
   n_epochs: 10           # 训练轮数
-  target_kl: 0.02        # KL 散度目标（启用：approx_kl > 0.02 时提前终止 update，防 KL 爆炸）
+  target_kl: 0.05        # KL 散度目标（放宽到 0.05，避免初期 V(s)差时频繁 early stop 卡死学习）
 
 # ------------------------------
 # 网络结构设置
@@ -55,5 +55,5 @@ checkpoint:
 # 训练步数设置
 # ------------------------------
 training:
-  steps_per_config_per_round: 50000  # 每轮每个 config 训练的步数（单 config 诊断：拉长观察是否能学）
+  steps_per_config_per_round: 5000  # 每轮每个 config 训练的步数（=10次 PPO update，足够适应当前 env）
   max_timesteps_per_env: -1         # 单个环境最大训练步数（-1表示不限制）

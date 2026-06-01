@@ -52,6 +52,7 @@ class CutEncoder(nn.Module):
         super().__init__()
 
         self.encoder = nn.Sequential(
+            nn.LayerNorm(state_dim),           # 归一化 raw g，消除量级差异
             nn.Linear(state_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
@@ -135,6 +136,7 @@ class GlobalEncoder(nn.Module):
         global_input_dim = state_dim + trial_point_dim + realization_dim
 
         self.encoder = nn.Sequential(
+            nn.LayerNorm(global_input_dim),     # 归一化 [pi, trial_point, realization] 拼接
             nn.Linear(global_input_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
