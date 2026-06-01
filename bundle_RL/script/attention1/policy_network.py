@@ -65,6 +65,7 @@ class LambdaHead(nn.Module):
     流程:
         q = QueryNet(h_combined)               (B, H)
         scores = q @ Hᵀ / sqrt(H)              (B, K)
+        scores = tanh(scores) * 3.0            (B, K)  # 软约束在 (-3, 3)，防数值漂移
     """
 
     def __init__(self, hidden_dim: int = 64):
@@ -96,6 +97,9 @@ class LambdaHead(nn.Module):
         q = q.unsqueeze(1)                          # (B, 1, H)
         scores = torch.bmm(q, cut_embeddings.transpose(1, 2))  # (B, 1, K)
         scores = scores.squeeze(1) / self.scale     # (B, K)
+        # 不再使用 tanh 压缩。
+        # action_space 已扩展到 [-10, 10]，配合 target_kl + max_grad_norm
+        # 足以约束增长速度，同时保留 softmax 产生集中分布的能力。
         return scores
 
 

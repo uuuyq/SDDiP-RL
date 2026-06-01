@@ -97,11 +97,14 @@ class BundleDualEnv(gym.Env):
         })
 
         # ========== 动作空间 ==========
-        # 前K维是 raw_lambda，最后1维是 raw_eta
-        # 使用标准范围 [-1, 1]，在 step 方法中进行缩放
+        # 前K维是 raw_lambda（将在 step 中经 softmax 归一化），最后1维是 raw_eta（经 sigmoid）
+        # 使用宽范围 [-10, 10]：
+        #   - softmax 在 [-10,10] 范围内可产生从均匀到接近 one-hot 的全部分布
+        #   - sigmoid(-10)≈0, sigmoid(10)≈1，步长 eta 覆盖 (0,1) 全域
+        #   - 避免窄 action_space 导致 SB3 clip 破坏策略梯度信号
         self.action_space = gym.spaces.Box(
-            low=-1,
-            high=1,
+            low=-10.0,
+            high=10.0,
             shape=(self.action_dim,),
             dtype=np.float32
         )
