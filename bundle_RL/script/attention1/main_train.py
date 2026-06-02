@@ -112,8 +112,7 @@ def main(experiment_name, config_path=None):
         experiment_name: 实验名称（必须指定）
         config_path: 配置文件路径（可选，默认为 train_config.yml）
     """
-    # 获取 bundle_RL 目录的绝对路径（与 train.py 保持一致）
-    project_root = Path(__file__).parent.parent.absolute()
+    project_root = Path(__file__).parent.parent.parent.absolute()
 
     if config_path is None:
         config_path = Path(__file__).parent.absolute() / "train_config.yml"
@@ -216,7 +215,7 @@ if __name__ == "__main__":
     # ========================================================
     # 训练参数配置
     # ========================================================
-    experiment_name = "exp_attention1_11"     # 实验名称
+    experiment_name = "exp_attention1_13"     # 实验名称
 
     # ========================================================
     # 启动训练

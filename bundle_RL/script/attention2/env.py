@@ -6,13 +6,12 @@ from bundle_RL.script.lag_problem import SubProblem
 Attention1 Bundle Environment（简化版）
 
 state：当前的所有cuts，valid_mask，当前的pi值，当前的trial_point、以及场景 realization
-action：lambda 和 步长（policy 输出的 raw 值）
+action：lambda（policy 输出的 raw 值）
 
 状态转移：
     raw_lambda → masked_fill(valid_mask==0, -inf) → softmax → lambdas
-    raw_eta    → sigmoid → eta
     d_t = Σ λᵢ gᵢ
-    π_new = π + η · d_t
+    π_new = π + 1.0 · d_t  # eta 固定为 1.0
     SubProblem.solve(π_new) → g_new, φ_new
 
 reward：基于子问题目标函数的提升值 (φ_new - φ_prev) / scale
@@ -39,7 +38,7 @@ class BundleDualEnv(gym.Env):
         self.subproblem = SubProblem(logger, config, n)
         self.K = K
         self.state_dim = state_dim
-        self.action_dim = K + 1  # 输出lambda以及步长
+        self.action_dim = K  # 只输出 lambda
         self.logger = logger
         self.verbose = verbose
 
@@ -97,10 +96,9 @@ class BundleDualEnv(gym.Env):
         })
 
         # ========== 动作空间 ==========
-        # 前K维是 raw_lambda（将在 step 中经 softmax 归一化），最后1维是 raw_eta（经 sigmoid）
+        # 动作是 raw_lambda（将在 step 中经 softmax 归一化）
         # 使用宽范围 [-10, 10]：
         #   - softmax 在 [-10,10] 范围内可产生从均匀到接近 one-hot 的全部分布
-        #   - sigmoid(-10)≈0, sigmoid(10)≈1，步长 eta 覆盖 (0,1) 全域
         #   - 避免窄 action_space 导致 SB3 clip 破坏策略梯度信号
         self.action_space = gym.spaces.Box(
             low=-10.0,
@@ -155,17 +153,15 @@ class BundleDualEnv(gym.Env):
 
     def step(self, action):
         """
-        action = [raw_lambda_1 ... raw_lambda_K , raw_eta]
+        action = [raw_lambda_1 ... raw_lambda_K]
 
-        简化版处理流程：
+        处理流程：
             1. 对 raw_lambda 用 valid_mask 做 mask_fill(-inf)
             2. softmax 得到合法分布 lambdas
-            3. raw_eta 经 sigmoid 得到 eta ∈ (0, 1)
-            4. d_t = lambdas @ G,  pi_new = pi + eta * d_t
+            3. d_t = lambdas @ G,  pi_new = pi + 1.0 * d_t  # eta 固定为 1.0
         """
-        # 拆分动作
+        # 动作就是 raw_lambda
         raw_lambda = np.asarray(action[:self.K], dtype=np.float32).copy()
-        raw_eta = float(action[-1])
 
         # ---------- 取 state ----------
         state = self._get_state()
@@ -182,18 +178,12 @@ class BundleDualEnv(gym.Env):
         denom = np.sum(exp_lambda) + 1e-8
         lambdas = exp_lambda / denom
 
-        # ---------- 步长映射 ----------
-        # sigmoid 保证 eta ∈ (0, 1)
-        eta = 1.0 / (1.0 + np.exp(-raw_eta))
-
-        eta = 0.5
-
-
         # ---------- 方向构造与 pi 更新 ----------
         d = lambdas @ G  # (state_dim,)
-        print("############bundle_RL#########")
-        print("lambda = ", lambdas)
-        print("eta = ", eta)
+        eta = 0.5  # 固定步长
+        # print("############bundle_RL#########")
+        # print("lambda = ", lambdas)
+        # print("eta = ", eta)
 
         self.pi = self.pi + eta * d
 
@@ -223,7 +213,6 @@ class BundleDualEnv(gym.Env):
         # 记录每次step的输出值（仅在verbose模式下）
         if self.verbose:
             self.logger.debug(f"[BundleEnv Step {self.t}] "
-                              f"raw_eta={raw_eta:.4f}, "
                               f"eta={eta:.4f}, "
                               f"pi_norm={np.linalg.norm(self.pi):.6f}, "
                               f"phi_new={phi_new:.6f}, "

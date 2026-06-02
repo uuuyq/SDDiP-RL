@@ -58,7 +58,7 @@ def bundle_RL(env, model, master, logger, deterministic):
     for step in range(20):
         start_time = time.time()
         master.add_cut(x_new, f_new, g_new)
-        ub, _ = master.solve_master()
+        ub, x_new_bundle = master.solve_master()
         _, delta, stop_flag = master.update_strategy(x_new, f_new, g_new, ub=ub)
         action, _ = model.predict(obs, deterministic=deterministic)
         state, reward, terminated, truncated, info = env.step(action)
@@ -77,7 +77,11 @@ def bundle_RL(env, model, master, logger, deterministic):
         x_new = sub_result["pi"]
         f_new = sub_result["phi"]
         g_new = sub_result["g"]
-        
+
+        # logger.info(f"############################")
+        # logger.info(f"x_new_bundle: {x_new_bundle}   x_new_RL: {x_new}")
+        # logger.info(f"############################")
+
         # 添加终止条件（与baseline保持一致）
         if stop_flag:
             logger.info(f"RL Model - 满足终止条件，提前停止，rel_gap: {delta:.6e}")

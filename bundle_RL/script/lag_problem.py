@@ -254,6 +254,7 @@ class MasterProblem:
         self.i_u = 0
         self.var_est = 10 ** 9
         self.cuts_storage = []
+        self.cuts_constrains = []
         self.tolerance = tolerance
 
         self.x_best = np.zeros(n_vars)
@@ -281,8 +282,35 @@ class MasterProblem:
         self.model.optimize()
         # self.logger.info(self.model.status)
 
-
         x_candidate = np.array([self.x_vars[j].x for j in range(self.n_vars)])
+
+        # =========================
+        # 提取 lambda
+        # =========================
+
+        lambdas = np.array([
+            c.Pi for c in self.cuts_constrains
+        ])
+
+        # Gurobi 最大化问题可能符号相反
+        if lambdas.sum() < 0:
+            lambdas = -lambdas
+
+        lambdas[np.abs(lambdas) < 1e-10] = 0
+
+
+        # =========================
+        # Debug
+        # =========================
+
+        print("\n========== Bundle Dual ==========")
+
+        print("lambda = ", lambdas)
+
+        print("eta = ", self.u / 2)
+
+        print("=================================\n")
+
         # 返回预测值（问题的上界）和候选点
         return self.v.x, x_candidate
 
@@ -292,7 +320,8 @@ class MasterProblem:
             g_new[j] * (self.x_vars[j] - x_new[j]) for j in range(self.n_vars)
         )
         self.cuts_storage.append((g_new, x_new, f_new))
-        self.model.addConstr(self.v <= cut_expr, name=f"cut_{self.iter_idx}")
+        constr = self.model.addConstr(self.v <= cut_expr, name=f"cut_{self.iter_idx}")
+        self.cuts_constrains.append(constr)
 
     def update_strategy(self, x_new, f_new, g_new, ub=None):
         """

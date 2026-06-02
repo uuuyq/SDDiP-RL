@@ -441,7 +441,7 @@ if __name__ == "__main__":
     from bundle_RL.script.attention1.env import BundleDualEnv
 
     test_configs = [
-        ("exp_attention1_09", "exp_attention1_09", 10),
+        ("exp_attention1_13", "exp_attention1_13", 10),
     ]
 
     # 获取当前文件所在目录的绝对路径，定位到 bundle_RL/
