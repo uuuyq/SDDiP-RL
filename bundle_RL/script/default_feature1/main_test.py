@@ -272,7 +272,7 @@ def load_latest_model(train_experiment_name, logger):
     logger.info(f"加载模型: {model_path}")
 
     try:
-        from bundle_RL.script.default_feature.train import SimpleBundleExtractor
+        from bundle_RL.script.default_feature1.train import SimpleBundleExtractor
 
         model = PPO.load(
             model_path,
@@ -431,7 +431,7 @@ def collect_configs(i=2):
 
 if __name__ == "__main__":
 
-    from bundle_RL.script.default_feature.env import BundleDualEnv
+    from bundle_RL.script.default_feature1.env import BundleDualEnv
 
     test_configs = [
         ("exp25", "exp25", 10),

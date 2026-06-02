@@ -1,0 +1,64 @@
+# ================================================================
+# Bundle Method RL 训练配置文件
+# ================================================================
+
+# ------------------------------
+# 实验设置
+# ------------------------------
+experiment:
+  rounds: 30             # 训练轮数
+  overwrite: false       # 是否覆盖已有模型重新训练
+
+# ------------------------------
+# 环境设置
+# ------------------------------
+environment:
+  K: 10                  # 最大 cuts 数量
+
+# ------------------------------
+# PPO 算法超参数
+# ------------------------------
+ppo:
+  learning_rate: 5.0e-5  # 学习率（进一步降低以稳定训练）
+  n_steps: 500           # 每次更新采集的步数
+  batch_size: 128        # 批大小
+  clip_range: 0.2        # PPO clip 范围（减小以限制策略更新幅度）
+  clip_range_decay: false # 是否启用 clip_range 线性衰减
+  ent_coef: 0.03        # 熵系数（探索程度）
+  vf_coef: 0.5           # 价值函数系数
+  max_grad_norm: 0.5     # 最大梯度范数
+  gamma: 0.99            # 折扣因子
+  gae_lambda: 0.95       # GAE 参数
+  n_epochs: 10           # 训练轮数
+  # target_kl: 0.02      # KL 散度目标（设置为有效数值以稳定训练）
+
+# ------------------------------
+# 网络结构设置
+# ------------------------------
+network:
+  features_dim: 128      # 特征提取器输出维度
+  hidden_dim: 64         # 编码器隐藏层维度
+  num_heads: 2           # Attention 头数
+  num_layers: 1          # Attention 层数
+  ffn_dim: 128           # FFN 维度
+  dropout: 0.1           # Dropout 概率
+  actor_net_arch:        # Actor 网络结构
+    - 128
+    - 128
+  critic_net_arch:       # Critic 网络结构
+    - 128
+    - 128
+  share_encoder: false    # 是否共享 Actor/Critic 的 encoder（默认 True）
+
+# ------------------------------
+# 检查点设置
+# ------------------------------
+checkpoint:
+  save_freq: 5000        # 检查点保存频率（步数）
+
+# ------------------------------
+# 训练步数设置
+# ------------------------------
+training:
+  steps_per_config_per_round: 2000  # 每轮每个 config 训练的步数
+  max_timesteps_per_env: -1         # 单个环境最大训练步数（-1表示不限制）
