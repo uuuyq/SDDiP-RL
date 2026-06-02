@@ -62,6 +62,9 @@ def bundle_RL(env, model, master, logger, deterministic):
         _, delta, stop_flag = master.update_strategy(x_new, f_new, g_new, ub=ub)
         action, _ = model.predict(obs, deterministic=deterministic)
         state, reward, terminated, truncated, info = env.step(action)
+
+        obs = state
+
         end_time = time.time()
         
         # 保存数据
@@ -139,6 +142,9 @@ def bundle_RL_warmstart(env, model, master, logger, warmstart_threshold=1e-6, pa
         _, delta, stop_flag = master.update_strategy(x_new, f_new, g_new, ub=ub)
         action, _ = model.predict(obs, deterministic=deterministic)
         state, reward, terminated, truncated, info = env.step(action)
+
+        obs = state
+
         end_time = time.time()
         
         delta_history.append(delta)

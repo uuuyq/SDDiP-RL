@@ -152,12 +152,15 @@ class BundleDualEnv(gym.Env):
         # TODO: 步长的上界具体设置可以查看bundle算法中的步长大小
         eta = 1.0 * (1 / (1 + np.exp(-raw_eta)))
 
+        # eta = 0.5
+
         # ---------- 用 state 聚合 ----------
         state = self._get_state()
         G = state["cuts"]
         d = lambdas @ G  # (state_dim,)
 
         print("############bundle_RL#########")
+        print("action = ", action)
         print("lambda = ", lambdas)
         print("eta = ", eta)
 
