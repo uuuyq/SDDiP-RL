@@ -222,8 +222,8 @@ class BundleDualEnv(gym.Env):
                              f"eta={eta:.4f}, "
                              f"pi_norm={np.linalg.norm(self.pi):.6f}, "
                              f"phi_new={phi_new:.6f}, "
-                             f"gap_new={gap_new:.6f}, "
-                             f"raw_reward={raw_reward:.6f}, "
+                             # f"gap_new={gap_new:.6f}, "
+                             # f"raw_reward={raw_reward:.6f}, "
                              f"reward={reward:.6f}, "
                              f"active_cuts={int(np.sum(valid_mask))}, "
                              f"terminated={terminated}")

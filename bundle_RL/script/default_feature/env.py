@@ -51,9 +51,10 @@ class BundleDualEnv(gym.Env):
         # 获取当前 realization 的数据
         self.p_d = np.array(self.problem_params.p_d[self.stage][self.n], dtype=np.float32)
         self.re = np.array(self.problem_params.re[self.stage][self.n], dtype=np.float32)
-        
+        self.prob = float(self.problem_params.prob[self.stage][self.n])
+
         # 计算 realization 特征维度（不包含 prob）
-        self.realization_dim = len(self.p_d) + len(self.re)  # p_d + re
+        self.realization_dim = len(self.p_d) + len(self.re) + 1 # p_d + re
 
         # shape = (K, state_dim)
         # 使用Box，padding部分为0
@@ -156,6 +157,10 @@ class BundleDualEnv(gym.Env):
         G = state["cuts"]
         d = lambdas @ G  # (state_dim,)
 
+        print("############bundle_RL#########")
+        print("lambda = ", lambdas)
+        print("eta = ", eta)
+
         # 更新pi
         self.pi = self.pi + eta * d
 
@@ -207,7 +212,8 @@ class BundleDualEnv(gym.Env):
         # 构建 realization 特征向量（不包含 prob）
         realization_feature = np.concatenate([
             self.p_d,
-            self.re
+            self.re,
+            np.array([self.prob], dtype=np.float32)
         ])
 
         return {

@@ -410,21 +410,23 @@ def collect_configs(i=2):
     """收集指定 i 的所有 config"""
     configs = []
     config_info = []
-    t = 5
+
     
     # 获取 bundle_RL 目录的绝对路径
     current_dir = os.path.dirname(os.path.abspath(__file__))
     bundle_rl_dir = os.path.dirname(os.path.dirname(current_dir))
-    
-    for n in range(6):
-        config_path = Path(os.path.join(bundle_rl_dir, "configs", f"config_{i}_{t}_{n}.pkl"))
-        if config_path.exists():
-            config = BundleConfig.from_pkl(config_path)
-            configs.append(config)
-            config_info.append({"i": i, "t": t, "n": n})
-            print(f"Loaded config_{i}_{t}_{n}.pkl")
-        else:
-            print(f"Config file not found: {config_path}")
+    # for t in range(1, 24):
+    #     for n in range(6):
+    t = 4
+    n = 5
+    config_path = Path(os.path.join(bundle_rl_dir, "configs", f"config_{i}_{t}_{n}.pkl"))
+    if config_path.exists():
+        config = BundleConfig.from_pkl(config_path)
+        configs.append(config)
+        config_info.append({"i": i, "t": t, "n": n})
+        print(f"Loaded config_{i}_{t}_{n}.pkl")
+    else:
+        print(f"Config file not found: {config_path}")
 
     return configs, config_info
 
@@ -434,7 +436,7 @@ if __name__ == "__main__":
     from bundle_RL.script.default_feature.env import BundleDualEnv
 
     test_configs = [
-        ("exp101", "exp101", 10),
+        ("exp17", "exp17", 10),
     ]
 
     # 获取当前文件所在目录的绝对路径，定位到 bundle_RL/
