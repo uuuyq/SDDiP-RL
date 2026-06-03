@@ -159,12 +159,23 @@ class BundleDualEnv(gym.Env):
         # 获取 raw_lambda
         raw_lambda = action[:self.K]
 
-        # ---------- lambda 归一化 ----------
-        exp_lambda = np.exp(raw_lambda)
+        # ---------- 计算 valid_mask ----------
+        # valid_mask: True 表示该位置是有效的 cut，False 表示是 padding
+        valid_mask = np.zeros(self.K, dtype=bool)
+        num_active = min(len(self.bundle), self.K)
+        start = self.K - num_active
+        valid_mask[start:] = True
+
+        # ---------- lambda 归一化（使用 valid_mask 屏蔽 padding） ----------
+        # 先对 padding 位置的 raw_lambda 减去一个很大的值，使得 exp 后接近 0
+        masked_raw_lambda = raw_lambda.copy()
+        masked_raw_lambda[~valid_mask] = -1e10
+        
+        exp_lambda = np.exp(masked_raw_lambda)
         lambdas = exp_lambda / (np.sum(exp_lambda) + 1e-8)
 
         # ---------- 固定步长 ----------
-        eta = 0.5
+        eta = 0.05
 
         # ---------- 用 state 聚合 ----------
         state = self._get_state()
@@ -176,7 +187,7 @@ class BundleDualEnv(gym.Env):
         print("lambda = ", lambdas)
         print("eta = ", eta)
 
-        # 更新pi
+        # 更新 pi
         self.pi = self.pi + eta * d
 
         # 子问题求解
