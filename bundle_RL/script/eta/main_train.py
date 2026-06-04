@@ -136,7 +136,7 @@ def main(experiment_name, config_path=None):
     
     # 加载配置文件
     if config_path is None:
-        config_path = project_root/ "script" / "default_feature1" / "train_config.yml"
+        config_path = project_root/ "script" / "eta" / "train_config.yml"
     else:
         config_path = Path(config_path)
     
@@ -229,14 +229,14 @@ def create_config_list(config_dir: Path):
     return configs
 
 
-from bundle_RL.script.default_feature1.train import train
-from bundle_RL.script.default_feature1.env import BundleDualEnv
+from bundle_RL.script.eta.train import train
+from bundle_RL.script.eta.env import BundleDualEnv
 
 if __name__ == "__main__":
     # ========================================================
     # 训练参数配置（在这里调整实验名称和训练数据选择）
     # ========================================================
-    experiment_name = "exp_feature_07"          # 实验名称
+    experiment_name = "exp_eta_01"          # 实验名称
     
     # ========================================================
     # 启动训练

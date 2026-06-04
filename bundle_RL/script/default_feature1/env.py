@@ -182,7 +182,7 @@ class BundleDualEnv(gym.Env):
         lambdas = exp_lambda / (np.sum(exp_lambda) + 1e-8)
 
         # ---------- 固定步长 ----------
-        eta = 0.05
+        eta = 0.5
 
         # ---------- 用 state 聚合 ----------
         state = self._get_state()
@@ -207,7 +207,9 @@ class BundleDualEnv(gym.Env):
         }
 
         # reward 使用子问题的目标函数的提升值
-        reward = (phi_new - self.bundle[-1]["phi"]) / self.scale
+        # reward = (phi_new - self.bundle[-1]["phi"]) / self.scale
+        reward = np.log(phi_new) - np.log(self.bundle[-1]["phi"])
+        print(f"reward: {reward}")
         self.bundle.append(cut_new)
 
         # 保存当前的d和lambda用于下一次计算新特征
