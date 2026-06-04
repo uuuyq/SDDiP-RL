@@ -436,8 +436,8 @@ if __name__ == "__main__":
     test_configs = [
         # ("exp_feature_01", "exp_feature_01", 10),  # 初步测试
         # ("exp_feature_02", "exp_feature_02", 10),  # mask
-        ("exp_feature_03", "exp_feature_03", 10),  # 缩减固定的eta 为 0.05
-        # ("exp_feature_04", "exp_feature_04", 10),  # 增加input 的norm
+        # ("exp_feature_03", "exp_feature_03", 10),  # 缩减固定的eta 为 0.05
+        ("exp_feature_04", "exp_feature_04", 10),  # 增加input 的norm
 
 
     ]

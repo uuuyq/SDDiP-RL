@@ -86,18 +86,25 @@ class BundleDualEnv(gym.Env):
                 shape=(1,),
                 dtype=np.float32
             ),
-            "linear_improvement": gym.spaces.Box(
-                low=-np.inf,
-                high=np.inf,
-                shape=(1,),
-                dtype=np.float32
-            ),
+            # "linear_improvement": gym.spaces.Box(
+            #     low=-np.inf,
+            #     high=np.inf,
+            #     shape=(1,),
+            #     dtype=np.float32
+            # ),
             "cosine_sim": gym.spaces.Box(
                 low=-1.0,
                 high=1.0,
                 shape=(1,),
                 dtype=np.float32
-            )
+            ),
+            "bundle_ratio": gym.spaces.Box(
+                low=0.0,
+                high=1.0,
+                shape=(1,),
+                dtype=np.float32
+            ),
+
         })
 
         # ========== 动作空间 ==========
@@ -161,10 +168,10 @@ class BundleDualEnv(gym.Env):
 
         # ---------- 计算 valid_mask ----------
         # valid_mask: True 表示该位置是有效的 cut，False 表示是 padding
+        # 有效 cut 在最前面，padding 在后面
         valid_mask = np.zeros(self.K, dtype=bool)
         num_active = min(len(self.bundle), self.K)
-        start = self.K - num_active
-        valid_mask[start:] = True
+        valid_mask[:num_active] = True
 
         # ---------- lambda 归一化（使用 valid_mask 屏蔽 padding） ----------
         # 先对 padding 位置的 raw_lambda 减去一个很大的值，使得 exp 后接近 0
@@ -232,10 +239,9 @@ class BundleDualEnv(gym.Env):
         # 取出最后K个最新数据（为了应对迭代次数超过K的情况，丢弃旧数据）
         active = self.bundle[-self.K:]
 
-        start = self.K - len(active)
-
+        # 有效 cut 在最前面，padding 在后面
         for i, cut in enumerate(active):
-            cuts[start + i] = cut["g"]
+            cuts[i] = cut["g"]
 
         # 构建 realization 特征向量（不包含 prob）
         realization_feature = np.concatenate([
@@ -244,6 +250,16 @@ class BundleDualEnv(gym.Env):
             np.array([self.prob], dtype=np.float32)
         ])
 
+        bundle_ratio = np.array(
+            [len(active) / self.K],
+            dtype=np.float32
+        )
+
+        current_phi = self.bundle[-1]["phi"]
+
+        gap = max(-current_phi, 1e-8)
+
+
         # ========== 计算新特征 ==========
         
         # 1. search_direction_norm：上一次d的二范数
@@ -251,15 +267,15 @@ class BundleDualEnv(gym.Env):
         
         # 2. linear_improvement：截距项加权和
         # 截距项 = f_new - g_new · pi_new
-        linear_improvement = 0.0
-        if len(self.bundle) > 0 and len(active) > 0:
-            # 使用上一次的lambda对当前active cuts的截距项加权
-            # 注意：这里需要确保lambda和cut的对应关系
-            for i, cut in enumerate(active):
-                intercept = cut["phi"] - np.dot(cut["g"], cut["pi"])
-                if start + i < len(self.last_lambdas):
-                    linear_improvement += self.last_lambdas[start + i] * intercept
-        linear_improvement = np.array([linear_improvement], dtype=np.float32)
+        # linear_improvement = 0.0
+        # if len(self.bundle) > 0 and len(active) > 0:
+        #     # 使用上一次的lambda对当前active cuts的截距项加权
+        #     # 注意：这里需要确保lambda和cut的对应关系
+        #     for i, cut in enumerate(active):
+        #         intercept = cut["phi"] - np.dot(cut["g"], cut["pi"])
+        #         if start + i < len(self.last_lambdas):
+        #             linear_improvement += self.last_lambdas[start + i] * intercept
+        # linear_improvement = np.array([linear_improvement], dtype=np.float32)
         
         # 3. cosine_sim：最新g_new与d的余弦相似度
         cosine_sim = 0.0
@@ -279,8 +295,9 @@ class BundleDualEnv(gym.Env):
             "trial_point": self.trial_point,
             "realization": realization_feature,
             "search_direction_norm": search_direction_norm,
-            "linear_improvement": linear_improvement,
-            "cosine_sim": cosine_sim
+            # "linear_improvement": linear_improvement,
+            "cosine_sim": cosine_sim,
+            "bundle_ratio": bundle_ratio,
         }
 
     @classmethod

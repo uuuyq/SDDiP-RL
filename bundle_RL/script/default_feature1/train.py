@@ -18,22 +18,23 @@ class SimpleBundleExtractor(BaseFeaturesExtractor):
         trial_point_shape = observation_space["trial_point"].shape
         realization_shape = observation_space["realization"].shape
         search_dir_norm_shape = observation_space["search_direction_norm"].shape
-        linear_imp_shape = observation_space["linear_improvement"].shape
         cosine_sim_shape = observation_space["cosine_sim"].shape
+        bundle_ratio_shape = observation_space["bundle_ratio"].shape
 
         self.cuts_dim = cuts_shape[0] * cuts_shape[1]
         self.pi_dim = pi_shape[0]
         self.trial_point_dim = trial_point_shape[0]
         self.realization_dim = realization_shape[0]
         self.search_dir_norm_dim = search_dir_norm_shape[0]
-        self.linear_imp_dim = linear_imp_shape[0]
         self.cosine_sim_dim = cosine_sim_shape[0]
+        self.bundle_ratio_dim = bundle_ratio_shape[0]
 
         # 计算处理后的输入维度
         input_dim = (self.pi_dim + self.cosine_sim_dim) + \
-                    (self.linear_imp_dim + self.search_dir_norm_dim) + \
+                    self.search_dir_norm_dim + \
                     (self.trial_point_dim + self.realization_dim) + \
-                    self.cuts_dim
+                    self.cuts_dim + \
+                    self.bundle_ratio_dim
 
         # 在网络入口处添加 LayerNorm
         self.input_ln = nn.LayerNorm(input_dim)
@@ -53,16 +54,14 @@ class SimpleBundleExtractor(BaseFeaturesExtractor):
         trial_point = observations["trial_point"]
         realization = observations["realization"]
         search_dir_norm = observations["search_direction_norm"]
-        linear_imp = observations["linear_improvement"]
         cosine_sim = observations["cosine_sim"]
+        bundle_ratio = observations["bundle_ratio"]
 
         # 1. 纯天然健康特征，保持原样
         feat_pure = torch.cat([pi, cosine_sim], dim=-1)
         
         # 2. 对数转换（治愈极端大数）
-        linear_imp_log = torch.log(linear_imp + 1.0)
         search_dir_norm_log = torch.log(search_dir_norm + 1.0)
-        feat_log = torch.cat([linear_imp_log, search_dir_norm_log], dim=-1)
         
         # 3. 坐标/物理量特征（基础缩放）
         feat_scale = torch.cat([trial_point, realization], dim=-1) / 100.0
@@ -70,10 +69,13 @@ class SimpleBundleExtractor(BaseFeaturesExtractor):
         # 4. 割平面特征
         feat_cuts = cuts
         
-        # 5. 最终大拼接
-        state_vector = torch.cat([feat_pure, feat_log, feat_scale, feat_cuts], dim=-1)
+        # 5. 新增特征：bundle_ratio 保持原样
+        feat_bundle_ratio = bundle_ratio
         
-        # 6. 全局 LayerNorm 做最终的协同对齐
+        # 6. 最终大拼接
+        state_vector = torch.cat([feat_pure, search_dir_norm_log, feat_scale, feat_cuts, feat_bundle_ratio], dim=-1)
+        
+        # 7. 全局 LayerNorm 做最终的协同对齐
         state_vector = self.input_ln(state_vector)
 
         return self.net(state_vector)
