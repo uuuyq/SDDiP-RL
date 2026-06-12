@@ -197,6 +197,8 @@ class BundleDualEnv(gym.Env):
         a = action[0]
         eta_old = self.eta
         self.eta = eta_old * np.exp(0.5 * a)
+        print("#################bundle_RL#############")
+        print(f"eta: {self.eta}")
 
         # ========== 2. 求解 Master Problem ==========
         ub, self.x_new = self._solve_master(self.eta)
@@ -269,6 +271,7 @@ class BundleDualEnv(gym.Env):
         """
         # 处理初始状态
         if self.d is None or self.delta is None:
+            g_norm_sq_init = np.linalg.norm(self.g_new) ** 2 if self.g_new is not None else 0.0
             return {
                 "log_eta": np.array([np.log(self.eta)], dtype=np.float32),
                 "log_delta": np.array([0.0], dtype=np.float32),
@@ -279,7 +282,7 @@ class BundleDualEnv(gym.Env):
                 "gap_improve_1": np.array([0.0], dtype=np.float32),
                 "gap_improve_2": np.array([0.0], dtype=np.float32),
                 "gap_improve_3": np.array([0.0], dtype=np.float32),
-                "g_norm_sq": np.array([np.linalg.norm(self.g_new) ** 2], dtype=np.float32),
+                "g_norm_sq": np.array([np.log1p(g_norm_sq_init)], dtype=np.float32),
                 "cos_gd": np.array([0.0], dtype=np.float32)
             }
 
@@ -308,13 +311,13 @@ class BundleDualEnv(gym.Env):
             "log_eta": np.array([np.log(self.eta)], dtype=np.float32),
             "log_delta": np.array([current_log_delta], dtype=np.float32),
             "serious_step": np.array([1.0 if self.serious_step else 0.0], dtype=np.float32),
-            "d_norm_sq": np.array([d_norm ** 2], dtype=np.float32),
-            "proximal_term": np.array([self.eta * (d_norm ** 2)], dtype=np.float32),
-            "lin_error": np.array([self.lin_error], dtype=np.float32),
+            "d_norm_sq": np.array([np.log1p(d_norm ** 2)], dtype=np.float32),
+            "proximal_term": np.array([np.log1p(self.eta * (d_norm ** 2))], dtype=np.float32),
+            "lin_error": np.array([np.sign(self.lin_error) * np.log1p(np.abs(self.lin_error))], dtype=np.float32),
             "gap_improve_1": np.array([gap_improve_1], dtype=np.float32),
             "gap_improve_2": np.array([gap_improve_2], dtype=np.float32),
             "gap_improve_3": np.array([gap_improve_3], dtype=np.float32),
-            "g_norm_sq": np.array([g_norm ** 2], dtype=np.float32),
+            "g_norm_sq": np.array([np.log1p(g_norm ** 2)], dtype=np.float32),
             "cos_gd": np.array([cos_gd], dtype=np.float32)
         }
 

@@ -175,11 +175,15 @@ class BundleDualEnv(gym.Env):
 
         # ---------- lambda 归一化（使用 valid_mask 屏蔽 padding） ----------
         # 先对 padding 位置的 raw_lambda 减去一个很大的值，使得 exp 后接近 0
-        masked_raw_lambda = raw_lambda.copy()
-        masked_raw_lambda[~valid_mask] = -1e10
-        
-        exp_lambda = np.exp(masked_raw_lambda)
+        # masked_raw_lambda = raw_lambda.copy()
+        # masked_raw_lambda[~valid_mask] = -1e10
+        #
+        # exp_lambda = np.exp(masked_raw_lambda)
+        # lambdas = exp_lambda / (np.sum(exp_lambda) + 1e-8)
+
+        exp_lambda = np.exp(raw_lambda)
         lambdas = exp_lambda / (np.sum(exp_lambda) + 1e-8)
+
 
         # ---------- 固定步长 ----------
         eta = 0.5

@@ -435,6 +435,7 @@ if __name__ == "__main__":
 
     test_configs = [
         ("exp_eta_01", "exp_eta_01", 10),
+        ("exp_eta_02", "exp_eta_02", 10),  # input norm
     ]
 
     # 获取当前文件所在目录的绝对路径，定位到 bundle_RL/

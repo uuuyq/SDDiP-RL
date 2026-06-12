@@ -292,6 +292,8 @@ class AttentionActorCriticPolicy(ActorCriticPolicy):
         action_mean = self._compute_action_mean(h_combined, cut_embeddings)
         distribution = self.action_dist.proba_distribution(action_mean, self.log_std)
 
+        # print("self.log_std: ", self.log_std)
+
         actions = distribution.get_actions(deterministic=deterministic)
         log_prob = distribution.log_prob(actions)
 
@@ -341,6 +343,8 @@ class AttentionActorCriticPolicy(ActorCriticPolicy):
         """
         cut_embeddings, h_combined, _, _ = self._encode(observation)
         action_mean = self._compute_action_mean(h_combined, cut_embeddings)
+        print("action_mean: ", action_mean)
+        print("self.log_std: ", self.log_std)
         distribution = self.action_dist.proba_distribution(action_mean, self.log_std)
         return distribution.get_actions(deterministic=deterministic)
 

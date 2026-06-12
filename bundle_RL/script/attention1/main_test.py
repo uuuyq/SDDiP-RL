@@ -422,7 +422,7 @@ def collect_configs(i=2):
     # 获取 bundle_RL 目录的绝对路径
     current_dir = os.path.dirname(os.path.abspath(__file__))
     bundle_rl_dir = os.path.dirname(os.path.dirname(current_dir))
-    
+    # for t in range(1, 24):
     for n in range(6):
         config_path = Path(os.path.join(bundle_rl_dir, "configs", f"config_{i}_{t}_{n}.pkl"))
         if config_path.exists():
@@ -441,7 +441,7 @@ if __name__ == "__main__":
     from bundle_RL.script.attention1.env import BundleDualEnv
 
     test_configs = [
-        ("exp_attention1_13", "exp_attention1_13", 10),
+        ("exp_attention1_14", "exp_attention1_14", 10),
     ]
 
     # 获取当前文件所在目录的绝对路径，定位到 bundle_RL/

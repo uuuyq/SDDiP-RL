@@ -117,6 +117,8 @@ class BundleDualEnv(gym.Env):
         self.pi = np.zeros(self.state_dim)
         self.t = 0  # 迭代次数
 
+        self.best_phi = 0
+
         # 初始solve
         g, phi = self.subproblem.solve(self.pi)
 
@@ -177,7 +179,22 @@ class BundleDualEnv(gym.Env):
         }
 
         # reward 使用子问题的目标函数的提升值
-        reward = (phi_new - self.bundle[-1]["phi"]) / self.scale
+        # reward = (phi_new - self.bundle[-1]["phi"]) / self.scale
+
+        best_phi_old = self.best_phi
+
+        self.best_phi = max(
+            self.best_phi,
+            phi_new
+        )
+
+        improve = phi_new - best_phi_old
+
+        reward = np.sign(improve) * np.log1p(abs(improve))
+
+        reward -= 0.01
+
+
         self.bundle.append(cut_new)
 
         self.t += 1
@@ -194,6 +211,8 @@ class BundleDualEnv(gym.Env):
                              f"phi_new={phi_new:.6f}, "
                              f"reward={reward:.6f}, "
                              f"terminated={terminated}")
+
+        assert np.isfinite(reward), f"reward={reward}"
 
         return self._get_state(), reward, terminated, False, {}
 

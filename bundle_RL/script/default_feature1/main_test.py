@@ -439,10 +439,10 @@ if __name__ == "__main__":
         # ("exp_feature_03", "exp_feature_03", 10),  # 缩减固定的eta 为 0.05
         # ("exp_feature_04", "exp_feature_04", 10),  # 增加input 的norm
         # ("exp_feature_05", "exp_feature_05", 10),  # 增加feature 调整padding位置  eta 为 0.05
-        ("exp_feature_06", "exp_feature_06", 10),  # 增加feature 调整padding位置  eta 为 0.5
+        # ("exp_feature_06", "exp_feature_06", 10),  # 增加feature 调整padding位置  eta 为 0.5
+        ("exp_feature_07", "exp_feature_07", 10),  # 删除mask
 
 
-        # ("exp_feature_07", "exp_feature_07", 10),  # 调整reward为log形式
         ()
 
 
