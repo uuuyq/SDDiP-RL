@@ -434,7 +434,7 @@ if __name__ == "__main__":
     from bundle_RL.script.default_feature.env import BundleDualEnv
 
     test_configs = [
-        ("exp25", "exp25", 10),
+        ("exp25-11", "exp25-11", 10),
     ]
 
     # 获取当前文件所在目录的绝对路径，定位到 bundle_RL/

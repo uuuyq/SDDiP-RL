@@ -44,6 +44,11 @@ def bundle_RL(env, model, master, logger, deterministic):
     ub_history = []      # 上界历史
     f_best_history = []  # 最优下界历史
 
+    # 如果 master 为 None（如 attention1 版本），创建独立的 MasterProblem 用于评估
+    if master is None:
+        from bundle_RL.config import BundleConfig
+        master = MasterProblem(logger, env.state_dim, tolerance=getattr(env, 'tolerance', 1e-5))
+
     obs, _ = env.reset()
 
     sub_result = env.bundle[-1]
@@ -102,7 +107,7 @@ def bundle_RL_warmstart(env, model, master, logger, warmstart_threshold=1e-6, pa
     Args:
         env: 环境
         model: RL 模型
-        master: MasterProblem 对象
+        master: MasterProblem 对象（可为 None，将自动创建）
         logger: 日志记录器
         warmstart_threshold: delta 变化阈值，小于此值认为不再变化
         patience: 连续多少次 delta 变化小于阈值后切换到 baseline
@@ -115,6 +120,10 @@ def bundle_RL_warmstart(env, model, master, logger, warmstart_threshold=1e-6, pa
         f_best_history: 最优下界历史
         switch_step: 切换到 baseline 的步骤（None表示未切换）
     """
+    # 如果 master 为 None（如 attention1 版本），创建独立的 MasterProblem 用于评估
+    if master is None:
+        master = MasterProblem(logger, env.state_dim, tolerance=getattr(env, 'tolerance', 1e-5))
+
     delta_history = []
     reward_history = []
     time_history = []

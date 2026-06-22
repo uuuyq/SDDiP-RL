@@ -300,55 +300,61 @@ def run_test_for_configs(configs, config_info_list, experiment_name, logger, mod
     for idx, (config, config_info) in enumerate(zip(configs, config_info_list)):
         logger.info(f"=== Testing config {idx+1}/{len(configs)}: i={config_info['i']}, t={config_info['t']}, n={config_info['n']} ===")
 
-        logger.info("Running Baseline...")
-        baseline_delta, baseline_time, baseline_ub, baseline_f_best = bundle_baseline(logger, config, tolerance=tolerance)
+        try:
+            logger.info("Running Baseline...")
+            baseline_delta, baseline_time, baseline_ub, baseline_f_best = bundle_baseline(logger, config, tolerance=tolerance)
 
-        logger.info("Running RL...")
-        test_env, test_master = BundleDualEnv.create_env(logger, config, tolerance=tolerance, verbose=True, K=K)
-        rl_delta, rl_reward, rl_time, rl_ub, rl_f_best = bundle_RL(
-            test_env, model, test_master, logger, deterministic=True)
-        rl_switch_step = None
+            logger.info("Running RL...")
+            test_env, test_master = BundleDualEnv.create_env(logger, config, tolerance=tolerance, verbose=True, K=K)
+            rl_delta, rl_reward, rl_time, rl_ub, rl_f_best = bundle_RL(
+                test_env, model, test_master, logger, deterministic=True)
+            rl_switch_step = None
 
-        logger.info("Running RL Warmstart...")
-        warmstart_env, warmstart_master = BundleDualEnv.create_env(logger, config, tolerance=tolerance, verbose=True, K=K)
-        ws_delta, ws_reward, ws_time, ws_ub, ws_f_best, ws_switch_step = bundle_RL_warmstart(
-            warmstart_env, model, warmstart_master, logger,
-            warmstart_threshold=warmstart_threshold,
-            patience=patience,
-            deterministic=True)
+            logger.info("Running RL Warmstart...")
+            warmstart_env, warmstart_master = BundleDualEnv.create_env(logger, config, tolerance=tolerance, verbose=True, K=K)
+            ws_delta, ws_reward, ws_time, ws_ub, ws_f_best, ws_switch_step = bundle_RL_warmstart(
+                warmstart_env, model, warmstart_master, logger,
+                warmstart_threshold=warmstart_threshold,
+                patience=patience,
+                deterministic=True)
 
-        rel_gap_dict, lr = compute_relative_gap(baseline_f_best, rl_f_best, ws_f_best)
+            rel_gap_dict, lr = compute_relative_gap(baseline_f_best, rl_f_best, ws_f_best)
 
-        result = {
-            "config_info": config_info,
-            "lr": lr,
-            "baseline": {
-                "delta": baseline_delta,
-                "time": baseline_time,
-                "ub": baseline_ub,
-                "f_best": baseline_f_best,
-                "rel_gap": rel_gap_dict["baseline"]
-            },
-            "rl": {
-                "delta": rl_delta,
-                "time": rl_time,
-                "ub": rl_ub,
-                "f_best": rl_f_best,
-                "rel_gap": rel_gap_dict["rl"],
-                "switch_step": rl_switch_step
-            },
-            "rl_warmstart": {
-                "delta": ws_delta,
-                "time": ws_time,
-                "ub": ws_ub,
-                "f_best": ws_f_best,
-                "rel_gap": rel_gap_dict["rl_warmstart"],
-                "switch_step": ws_switch_step
+            result = {
+                "config_info": config_info,
+                "lr": lr,
+                "baseline": {
+                    "delta": baseline_delta,
+                    "time": baseline_time,
+                    "ub": baseline_ub,
+                    "f_best": baseline_f_best,
+                    "rel_gap": rel_gap_dict["baseline"]
+                },
+                "rl": {
+                    "delta": rl_delta,
+                    "time": rl_time,
+                    "ub": rl_ub,
+                    "f_best": rl_f_best,
+                    "rel_gap": rel_gap_dict["rl"],
+                    "switch_step": rl_switch_step
+                },
+                "rl_warmstart": {
+                    "delta": ws_delta,
+                    "time": ws_time,
+                    "ub": ws_ub,
+                    "f_best": ws_f_best,
+                    "rel_gap": rel_gap_dict["rl_warmstart"],
+                    "switch_step": ws_switch_step
+                }
             }
-        }
 
-        all_results.append(result)
-        logger.info(f"=== Finished config {idx+1}/{len(configs)} ===")
+            all_results.append(result)
+            logger.info(f"=== Finished config {idx+1}/{len(configs)} ===")
+        except Exception as e:
+            logger.error(f"=== Config {idx+1} 出错，跳过: {e} ===")
+            import traceback
+            traceback.print_exc()
+            continue
 
     return all_results
 
@@ -422,16 +428,16 @@ def collect_configs(i=2):
     # 获取 bundle_RL 目录的绝对路径
     current_dir = os.path.dirname(os.path.abspath(__file__))
     bundle_rl_dir = os.path.dirname(os.path.dirname(current_dir))
-    # for t in range(1, 24):
-    for n in range(6):
-        config_path = Path(os.path.join(bundle_rl_dir, "configs", f"config_{i}_{t}_{n}.pkl"))
-        if config_path.exists():
-            config = BundleConfig.from_pkl(config_path)
-            configs.append(config)
-            config_info.append({"i": i, "t": t, "n": n})
-            print(f"Loaded config_{i}_{t}_{n}.pkl")
-        else:
-            print(f"Config file not found: {config_path}")
+    for t in range(1, 24):
+        for n in range(6):
+            config_path = Path(os.path.join(bundle_rl_dir, "configs", f"config_{i}_{t}_{n}.pkl"))
+            if config_path.exists():
+                config = BundleConfig.from_pkl(config_path)
+                configs.append(config)
+                config_info.append({"i": i, "t": t, "n": n})
+                print(f"Loaded config_{i}_{t}_{n}.pkl")
+            else:
+                print(f"Config file not found: {config_path}")
 
     return configs, config_info
 
@@ -441,7 +447,7 @@ if __name__ == "__main__":
     from bundle_RL.script.attention1.env import BundleDualEnv
 
     test_configs = [
-        ("exp_attention1_14", "exp_attention1_14", 10),
+        ("exp_attention1_28", "exp_attention1_28", 10),
     ]
 
     # 获取当前文件所在目录的绝对路径，定位到 bundle_RL/

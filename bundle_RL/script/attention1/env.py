@@ -1,5 +1,10 @@
+import copy
+
 import gymnasium as gym
+import gurobipy as gp
 import numpy as np
+import torch
+
 from bundle_RL.script.lag_problem import SubProblem
 
 """
@@ -25,7 +30,7 @@ reward：基于子问题目标函数的提升值 (φ_new - φ_prev) / scale
 
 
 class BundleDualEnv(gym.Env):
-    def __init__(self, logger, config, n, state_dim, K, verbose=False):
+    def __init__(self, logger, config, n, state_dim, K, verbose=False, tolerance=1e-3):
         """
         :param logger: 日志器
         :param config: BundleConfig 对象
@@ -42,6 +47,15 @@ class BundleDualEnv(gym.Env):
         self.action_dim = K + 1  # 输出lambda以及步长
         self.logger = logger
         self.verbose = verbose
+
+        # Master problem 参数 (仅训练时使用)
+        self.tolerance = tolerance
+        self.m_l = 0.2
+        self.m_r = 0.5
+        self.u_min = 0.1
+        self.training = not verbose  # verbose=True 表示推理/测试模式
+
+        self.training = True
 
         # 保存 config 用于获取额外特征
         self.config = config
@@ -151,7 +165,113 @@ class BundleDualEnv(gym.Env):
 
         self.bundle.append(sub_result)
 
+        # 初始化 Master Problem (仅训练时)
+        if self.training:
+            self._init_master()
+            self._add_cut(self.pi, phi, g)
+            self.master_x_best = self.pi.copy()
+            self.master_f_best = phi
+            self.master_u = 1.0
+            self.master_i_u = 0
+            self.master_var_est = 1e9
+            self.ub = None
+
         return self._get_state(), {}
+
+    # ---------- Master Problem 方法 (仅训练时使用) ----------
+
+    def _compute_diversity_reward(self, g_new):
+        """
+        计算多样性奖励 r_div = 1 - max_i cos(g_i, g_new)
+        衡量新子梯度与 bundle 中已有子梯度的最大余弦相似度，
+        相似度越低说明新 cut 提供的信息越多样，奖励越高。
+        """
+        g_norm = np.linalg.norm(g_new)
+        if g_norm < 1e-12:
+            return 0.0
+
+        max_sim = -1.0
+        for cut in self.bundle:
+            g_i = cut["g"]
+            g_i_norm = np.linalg.norm(g_i)
+            if g_i_norm < 1e-12:
+                continue
+            sim = np.dot(g_i, g_new) / (g_i_norm * g_norm)
+            max_sim = max(max_sim, sim)
+
+        return 1.0 - max_sim
+
+    def _init_master(self):
+        """初始化 Master Problem 的 Gurobi 模型"""
+        self.master_model = gp.Model("Master_Bundle")
+        self.master_model.setParam("OutputFlag", 0)
+        self.master_v = self.master_model.addVar(lb=-gp.GRB.INFINITY, name="v")
+        self.master_x_vars = self.master_model.addVars(self.state_dim, lb=-gp.GRB.INFINITY, name="x")
+        self.master_cuts_constraints = []
+        self.master_iter_idx = 0
+
+    def _add_cut(self, x_new, f_new, g_new):
+        """向 Master Problem 添加一个 cut"""
+        self.master_iter_idx += 1
+        cut_expr = f_new + gp.quicksum(
+            g_new[j] * (self.master_x_vars[j] - x_new[j]) for j in range(self.state_dim)
+        )
+        constr = self.master_model.addConstr(self.master_v <= cut_expr, name=f"cut_{self.master_iter_idx}")
+        self.master_cuts_constraints.append(constr)
+
+    def _solve_master(self):
+        """求解 Master Problem，返回 (ub, x_candidate)，求解失败返回 (None, None)"""
+        u = self.master_u
+        obj = self.master_v - u / 2 * gp.quicksum(
+            (self.master_x_vars[j] - self.master_x_best[j]) ** 2 for j in range(self.state_dim)
+        )
+        self.master_model.setObjective(obj, gp.GRB.MAXIMIZE)
+        self.master_model.optimize()
+
+        if self.master_model.status != gp.GRB.OPTIMAL:
+            return None, None
+
+        x_candidate = np.array([self.master_x_vars[j].x for j in range(self.state_dim)])
+        ub = self.master_v.x
+        return ub, x_candidate
+
+    def _update_strategy(self, x_new, f_new, g_new, ub):
+        """Weight update 逻辑 (移植自 lag_problem.py)"""
+        if self.master_iter_idx <= 1:
+            return
+
+        delta = ub - self.master_f_best
+        rel_gap = delta / max(abs(self.master_f_best), 1)
+
+        serious_step = (f_new - self.master_f_best) >= self.m_l * rel_gap
+
+        u_int = 2 * self.master_u * (1 - (f_new - self.master_f_best) / delta) if abs(delta) > 1e-12 else self.master_u
+        u = self.master_u
+
+        if serious_step:
+            weight_too_large = (f_new - self.master_f_best) >= (self.m_r * delta)
+            if weight_too_large and self.master_i_u > 0:
+                u = u_int
+            elif self.master_i_u > 3:
+                u = self.master_u / 2
+            u_new = max(u, self.master_u / 10, self.u_min)
+            self.master_var_est = max(self.master_var_est, 2 * delta)
+            self.master_i_u = max(self.master_i_u + 1, 1) if u_new == self.master_u else 1
+        else:
+            p = -self.master_u * (np.array(x_new) - np.array(self.master_x_best))
+            alpha = delta - np.linalg.norm(p, ord=2) ** 2 / self.master_u
+            self.master_var_est = min(self.master_var_est, np.linalg.norm(p, ord=1) + alpha)
+            linearization_error = f_new + np.dot(g_new, self.master_x_best - x_new) - self.master_f_best
+            if linearization_error > max(self.master_var_est, 10 * delta) and self.master_i_u < -3:
+                u = u_int
+            u_new = min(u, 10 * self.master_u)
+            self.master_i_u = min(self.master_i_u - 1, -1) if u_new == self.master_u else -1
+
+        self.master_u = u_new
+
+        if serious_step:
+            self.master_x_best = x_new.copy()
+            self.master_f_best = f_new
 
     # --------------------------------------------------
 
@@ -187,6 +307,8 @@ class BundleDualEnv(gym.Env):
         # ---------- 步长映射 ----------
         # sigmoid 保证 eta ∈ (0, 1)
         eta = 1.0 / (1.0 + np.exp(-raw_eta))
+        # eta = 0.5
+        # eta = np.clip(eta, 0.1, 0.9)
 
 
 
@@ -195,25 +317,70 @@ class BundleDualEnv(gym.Env):
         print("############bundle_RL#########")
         print("lambda = ", lambdas)
         print("eta = ", eta)
+        print("d_norm = ", np.linalg.norm(d, axis=0))
 
         self.pi = self.pi + eta * d
 
         # 子问题求解
         g, phi_new = self.subproblem.solve(self.pi)
 
+        # ========== Master 计算 (仅训练时) ==========
+        phi_master = None
+        if self.training:
+            self._add_cut(self.pi, phi_new, g)
+            self.ub, pi_master = self._solve_master()
+            if self.ub is not None:
+                g_master, phi_master = self.subproblem.solve(pi_master)
+                self._update_strategy(self.pi, phi_new, g, self.ub)
+            else:
+                self.ub = None
+
         # reward 使用子问题的目标函数的提升值
         # reward = (phi_new - self.bundle[-1]["phi"]) / self.scale
 
+        best_phi_old = self.best_phi
         self.best_phi = max(
             self.best_phi,
             phi_new
         )
-        best_phi_old = self.best_phi
-        improve = phi_new - best_phi_old
 
-        reward = np.sign(improve) * np.log1p(abs(improve))
+        # # 判断是否是第一次取得有效进展（即从 0 突破）
+        # if best_phi_old < 1e-6:
+        #     if phi_new > 0:
+        #         reward = 0.5  # 或者设为 0.5，给一个温和的初始启动奖励
+        #     else:
+        #         reward = 0.0
+        # else:
+        #     # 后面恢复正常的百分比提升奖励
+        #     reward = (phi_new - best_phi_old) / best_phi_old
 
-        reward -= 0.01
+
+        # reward = (phi_new - best_phi_old) / self.scale
+        # reward = -np.log1p(max(0, -improve))
+        # reward = np.sign(improve) * np.log1p(abs(improve))
+        # reward -= 0.01
+
+        # 稀疏的奖励设置
+        # best_phi_old = self.best_phi
+        # best_phi_new = max(
+        #     self.best_phi,
+        #     phi_new
+        # )
+        # reward = (best_phi_new - best_phi_old) / self.scale
+        # self.best_phi = best_phi_new
+
+        # 多样性奖励: 鼓励探索与已有 cut 不同的方向
+        # r_div = self._compute_diversity_reward(g)
+        # reward += r_div
+
+        # print("reward: ", reward)
+
+        reward = 0
+
+
+        # 附加 reward 项: RL 策略的 phi - master 策略的 phi (仅训练时)
+        # if self.training and phi_master is not None:
+        #     reward += (phi_new - phi_master) / self.scale
 
 
         # 更新 cut age
@@ -233,6 +400,22 @@ class BundleDualEnv(gym.Env):
         self.t += 1
         terminated = self.t >= self.K
 
+        if terminated:
+            rel_gap = (
+                              self.ub - self.best_phi
+                      ) / max(abs(self.best_phi), 1)
+            rel_gap = max(rel_gap, 1e-8)
+            reward = -np.log(
+                rel_gap
+            )
+
+        # Gap 停止条件 (仅训练时)
+        # if self.training and self.ub is not None and not terminated:
+        #     rel_gap = (self.ub - self.best_phi) / max(abs(self.best_phi), 1)
+        #     if rel_gap <= self.tolerance:
+        #         reward += 5
+        #         terminated = True
+
         # 记录每次step的输出值（仅在verbose模式下）
         if self.verbose:
             self.logger.debug(f"[BundleEnv Step {self.t}] "
@@ -243,6 +426,13 @@ class BundleDualEnv(gym.Env):
                               f"reward={reward:.6f}, "
                               f"active_cuts={int(np.sum(valid_mask))}, "
                               f"terminated={terminated}")
+
+        if not np.isfinite(reward):
+            print("reward nan")
+            print("ub =", self.ub)
+            print("best_phi =", self.best_phi)
+            print("rel_gap =", rel_gap)
+            raise ValueError
 
         return self._get_state(), reward, terminated, False, {}
 
@@ -281,15 +471,13 @@ class BundleDualEnv(gym.Env):
     @classmethod
     def create_env(cls, logger, config, tolerance=1e-5, verbose=False, K=20):
         """创建单个环境（使用 config 中的 n 参数）"""
-        from bundle_RL.script.lag_problem import MasterProblem
-
         env = cls(
             logger=logger,
             config=config,
             n=config.n,
             state_dim=config.N_VARS,
             K=K,
-            verbose=verbose
+            verbose=verbose,
+            tolerance=tolerance
         )
-        master = MasterProblem(logger, config.N_VARS, tolerance=tolerance)
-        return env, master
+        return env, None

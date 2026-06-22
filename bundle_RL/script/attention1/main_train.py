@@ -199,7 +199,7 @@ def create_config_list(config_dir: Path):
     i = 1
     t = 5
     # for t in range(1, 24):
-    for n in range(6):  # 加载全部 6 个 realization
+    for n in range(1):  # 加载全部 6 个 realization
         config_path = config_dir / f"config_{i}_{t}_{n}.pkl"
         if config_path.exists():
             configs.append(BundleConfig.from_pkl(config_path))
@@ -215,7 +215,7 @@ if __name__ == "__main__":
     # ========================================================
     # 训练参数配置
     # ========================================================
-    experiment_name = "exp_attention1_14"     # 实验名称
+    experiment_name = "exp_attention1_28"     # 实验名称
 
     # ========================================================
     # 启动训练

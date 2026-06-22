@@ -24,7 +24,7 @@ ppo:
   batch_size: 128        # 批大小
   clip_range: 0.2        # PPO clip 范围（标准默认值；0.1 太窄导致 clip_fraction 偏高）
   clip_range_decay: false # 是否启用 clip_range 线性衰减
-  ent_coef: 0.005        # 熵系数（从 0.05 下调拑制 log_std 暴涨，止住 KL 飙升）
+  ent_coef: 0.01        # 熵系数（从 0.05 下调拑制 log_std 暴涨，止住 KL 飙升）
   vf_coef: 0.5           # 价值函数系数（1.0→ 0.5：降低以避免 V(s) 过度专注当前 config，减少切换时的 EV 崩溃）
   max_grad_norm: 0.5     # 最大梯度范数
   gamma: 0.95            # 折扣因子（episode 仅 10 步，0.99 太接近 1 使 V(s) 几乎等于总回报，降为 0.95 让 bootstrap 更局部）
