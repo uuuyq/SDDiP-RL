@@ -28,7 +28,7 @@ class OuterModel:
                     vtype=gp.GRB.CONTINUOUS, lb=-gp.GRB.INFINITY, name="pi_%i" % (i + 1)
                 )
             )
-        self.pi0 = self.model.addVar(vtype=gp.GRB.CONTINUOUS, lb=0.0, name="pi0")
+        self.pi0 = self.model.addVar(vtype=gp.GRB.CONTINUOUS, lb=1e-4, name="pi0")
 
         self.add_l1_norm_constrains()
         # if self.benders_pi_list is not None:
@@ -89,7 +89,7 @@ class OuterModel:
             )
         for i in range(self.dim_pi):
             self.model.addConstr(self.abs_pi[i] == gp.abs_(self.pi[i]))
-        self.model.addConstr(gp.quicksum(self.abs_pi[i] for i in range(self.dim_pi)) + self.pi0 <= 1)
+        self.model.addConstr(gp.quicksum(self.abs_pi[i] for i in range(self.dim_pi)) + 20 * self.pi0 <= 1)
         self.model.update()
 
     def add_CL_constrains(self):

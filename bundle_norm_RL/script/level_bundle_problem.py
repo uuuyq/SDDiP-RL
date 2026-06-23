@@ -26,7 +26,7 @@ import gurobipy as gp
 from sddip.sddip import ucmodelclassical
 from sddip.sddip.outermodel import OuterModel
 
-logger = logging.getLogger(__name__)
+# logger = logging.getLogger(__name__)
 
 
 class SolverResults:
@@ -352,10 +352,7 @@ class LevelBundleSolver:
         theta_trial = config.THETA_TRIAL
 
         # 初始化乘子
-        # pi_hat = np.zeros(config.N_VARS)
-        # pi0_hat = 1.0
-        pi_hat = np.random.randn(len(X_trial)) * 0.1
-
+        pi_hat = np.zeros(len(X_trial))
         pi0_hat = 0.001
 
         # 最优乘子
@@ -364,7 +361,6 @@ class LevelBundleSolver:
 
         LB = float('-inf')
         UB = float('inf')
-
         subgradient_list = []
 
         for iter_idx in range(config.iteration_limit):
@@ -374,10 +370,16 @@ class LevelBundleSolver:
             z_X_values, obj_term_value, inner_obj = self.inner_problem.solve(
                 pi_hat, pi0_hat
             )
+            # print(
+            #     "pi0_hat",
+            #     pi0_hat,
+            #     "pi_dot_z",
+            #     inner_obj - pi0_hat * obj_term_value,
+            #     "pi0*q",
+            #     pi0_hat * obj_term_value
+            # )
 
-            print("z_x: ", max(abs(x) for x in z_X_values))
-            print("pi0: ", obj_term_value)
-            print("pi0 / z_x: ", obj_term_value / max(abs(x) for x in z_X_values))
+            obj_terms.append(obj_term_value)
 
             if z_X_values is None:
                 self.logger.warning(f"Iter {iter_idx}: Inner model failed, stopping")
@@ -472,11 +474,11 @@ class LevelBundleSolver:
             self.outer_problem.recover()
 
             # 日志输出
-            if iter_idx % 50 == 0:
-                self.logger.info(
-                    f"Iter {iter_idx}: LB={LB:.6f}, UB={UB:.6f}, "
-                    f"gap={UB - LB:.6e}, pi0_hat={pi0_hat:.6f}"
-                )
+            # if iter_idx % 50 == 0:
+            self.logger.info(
+                f"Iter {iter_idx}: LB={LB:.6f}, UB={UB:.6f}, "
+                f"gap={UB - LB:.6e}, pi0_hat={pi0_hat:.6f}"
+            )
 
             # 时间限制检查
             if time() - start_time >= config.time_limit:
@@ -486,6 +488,9 @@ class LevelBundleSolver:
         elapsed = time() - start_time
         results = SolverResults()
         results.set_values(pi_star, pi0_star, False, LB, UB, iter_idx + 1, elapsed)
+
+        # for cut, i in zip(subgradient_list, range(len(subgradient_list))):
+        #     print(f"cut_{i}: ", cut)
         return results
 
 
@@ -524,11 +529,9 @@ def main():
 
 
 def load_config_and_solve(
-    i: int,
-    t: int,
-    n: int,
+    log=None,
     configs_dir: str = r"D:\tools\workspace_pycharm\SDDiP-RL\bundle_norm_RL\configs",
-    log_path: str = "./level_bundle_loaded.log",
+
 ) -> SolverResults:
     """
     从保存的 pkl 文件加载 LevelBundleConfig 并求解
@@ -544,25 +547,33 @@ def load_config_and_solve(
         SolverResults
     """
     from bundle_norm_RL.script.config import LevelBundleConfig
-    from bundle_norm_RL.script.logger import get_logger
+    count = 0
+    all = 0
+    for i in range(8, 11):
+        for t in range(2, 12):
+            for n in range(0, 1):
 
-    pkl_path = f"{configs_dir}/config_{i}_{t}_{n}.pkl"
-    config = LevelBundleConfig.from_pkl(pkl_path)
+                pkl_path = f"{configs_dir}/config_{i}_{t}_{n}.pkl"
+                config = LevelBundleConfig.from_pkl(pkl_path)
 
-    log = get_logger(log_path)
-    log.info(f"Loaded config from {pkl_path}")
-    log.info(config.toString())
 
-    solver = LevelBundleSolver(log, config, n=n)
-    results = solver.solve()
+                log.info(f"Loaded config from {pkl_path}")
+                log.info(config.toString())
 
-    log.info(f"Results: {results.toString()}")
-    return results
+                solver = LevelBundleSolver(log, config, n=n)
+                results = solver.solve()
+
+                log.info(f"Results: {results.toString()}")
+                if results.converged:
+                    count += 1
+                all += 1
+    print(f"ratio: {count}/{all}")
 
 
 if __name__ == "__main__":
     # main()
-    for i in range(1, 2):
-        for t in range(1, 4):
-            for n in range(0, 6):
-                load_config_and_solve(i, t, n)
+    from bundle_norm_RL.script.logger import get_logger
+    log_path = "level_bundle_loaded.log"
+    log = get_logger(log_path)
+
+    load_config_and_solve(log)

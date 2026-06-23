@@ -31,7 +31,7 @@ class LevelBundleConfig:
         level_factor: float = 0.3,
         iteration_limit: int = 200,
         gap_tol: float = 5e-3,
-        pi0_tol: float = 1e-4,
+        pi0_tol: float = 1e-8,
         time_limit: int = 3600,  # 秒
     ):
         self.T = T
