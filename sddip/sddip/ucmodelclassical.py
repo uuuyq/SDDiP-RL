@@ -373,3 +373,102 @@ class ClassicalModel(BackwardModelBuilder):
         )
 
         self.model.update()
+
+    def add_inner_objective_with_regularization(
+        self, coefficients: list, pi_hat, pi0_hat, sigma: float,
+        X_trial: list, norm_type: str = "l1"
+    ):
+        """
+        带正则化的 inner objective:
+            π^T · z_X + π0 · obj_term + σ · ||z_X - X_trial||
+
+        Args:
+            coefficients: 目标函数系数
+            pi_hat: π 乘子
+            pi0_hat: π0 乘子
+            sigma: 正则化系数 σ_t
+            X_trial: trial point (与 z_X 对应的拼接向量)
+            norm_type: "l1" 或 "linf"，正则化范数类型
+
+        Returns:
+            z_X: z 变量列表
+            obj_term: 目标函数线性表达式
+        """
+        x_bs_p = [x for g in range(self.n_generators) for x in self.x_bs_p[g]]
+        x_bs_n = [x for g in range(self.n_generators) for x in self.x_bs_n[g]]
+
+        penalty = coefficients[-1]
+        coefficients = (
+                coefficients + [penalty] * (2 * self.n_storages + 2 * len(x_bs_p) + 1) + [1]
+        )
+        variables = (
+                self.y
+                + self.s_up
+                + self.s_down
+                + [self.ys_p, self.ys_n]
+                + self.socs_p
+                + self.socs_n
+                + x_bs_p
+                + x_bs_n
+                + [self.delta]
+                + [self.theta]
+        )
+        obj_term = gp.LinExpr(coefficients, variables)
+
+        z_X = (
+                self.z_x
+                + self.z_y
+                + [val for bs in self.z_x_bs for val in bs]
+                + self.z_soc
+        )
+
+        # 构造正则化项 σ · ||z_X - X_trial||
+        reg_expr = self._build_regularization_term(z_X, X_trial, sigma, norm_type)
+
+        self.model.setObjective(gp.LinExpr(pi_hat, z_X) + pi0_hat * obj_term + reg_expr)
+        self.model.update()
+        return z_X, obj_term
+
+    def _build_regularization_term(self, z_X, X_trial, sigma, norm_type):
+        """
+        构造正则化项 σ · ||z_X - X_trial|| 的线性化表达式
+
+        L1 范数: σ · Σ_j |z_X_j - X_trial_j|
+            引入辅助变量 d_j ≥ 0, 约束 d_j ≥ z_X_j - X_trial_j, d_j ≥ X_trial_j - z_X_j
+            正则化项 = σ · Σ_j d_j
+
+        L∞ 范数: σ · max_j |z_X_j - X_trial_j|
+            引入辅助变量 d ≥ 0, 约束 d ≥ z_X_j - X_trial_j, d ≥ X_trial_j - z_X_j for all j
+            正则化项 = σ · d
+        """
+        if sigma <= 0:
+            return 0
+
+        n_z = len(z_X)
+
+        if norm_type == "l1":
+            # L1 范数正则化
+            d_vars = []
+            for j in range(n_z):
+                d_j = self.model.addVar(
+                    vtype=gp.GRB.CONTINUOUS, lb=0, name=f"reg_d_{j + 1}"
+                )
+                d_vars.append(d_j)
+                self.model.addConstr(d_j >= z_X[j] - X_trial[j], f"reg_d_lb_{j + 1}")
+                self.model.addConstr(d_j >= X_trial[j] - z_X[j], f"reg_d_ub_{j + 1}")
+            self.model.update()
+            return sigma * gp.quicksum(d_vars)
+
+        elif norm_type == "linf":
+            # L∞ 范数正则化
+            d = self.model.addVar(
+                vtype=gp.GRB.CONTINUOUS, lb=0, name="reg_d"
+            )
+            for j in range(n_z):
+                self.model.addConstr(d >= z_X[j] - X_trial[j], f"reg_d_lb_{j + 1}")
+                self.model.addConstr(d >= X_trial[j] - z_X[j], f"reg_d_ub_{j + 1}")
+            self.model.update()
+            return sigma * d
+
+        else:
+            raise ValueError(f"Unknown norm_type: {norm_type}, expected 'l1' or 'linf'")
