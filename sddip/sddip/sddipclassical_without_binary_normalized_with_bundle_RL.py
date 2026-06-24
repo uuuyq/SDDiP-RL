@@ -827,27 +827,27 @@ class Algorithm:
                 lag_cuts_list = []
                 for n in range(n_realizations):
                     # 保存 LevelBundleConfig
-                    collect_and_save_config(
-                        i=i,
-                        t=t,
-                        n=n,
-                        T=t,
-                        N_VARS=len(X_trial),
-                        X_TRIAL=x_trial_point,
-                        Y_TRIAL=y_trial_point,
-                        X_BS_TRIAL=x_bs_trial_point,
-                        SOC_TRIAL=soc_trial_point,
-                        THETA_TRIAL=theta_trial,
-                        PATH=self.problem_params.path,
-                        bc_storage=self.bc_storage,
-                        dual_solver_storage=self.dual_solver_storage,
-                    )
+                    # collect_and_save_config(
+                    #     i=i,
+                    #     t=t,
+                    #     n=n,
+                    #     T=t,
+                    #     N_VARS=len(X_trial),
+                    #     X_TRIAL=x_trial_point,
+                    #     Y_TRIAL=y_trial_point,
+                    #     X_BS_TRIAL=x_bs_trial_point,
+                    #     SOC_TRIAL=soc_trial_point,
+                    #     THETA_TRIAL=theta_trial,
+                    #     PATH=self.problem_params.path,
+                    #     bc_storage=self.bc_storage,
+                    #     dual_solver_storage=self.dual_solver_storage,
+                    # )
 
                     inner_model = self.create_inner_model(t, n, i, False)
                     outer_model = self.create_outer_model(X_trial, theta_trial)
                     # level bundle methods
                     pi_star, pi0_star, flag = self.level_bundle_methods(inner_model, outer_model, X_trial, theta_trial, 200)
-                    if pi0_star < 1e-6 or not flag :
+                    if pi0_star is None or not flag :
                         continue
                     # self.logger.info(f"t: {t} i : {i} pi_star: {pi_star}, pi0_star: {pi0_star}")
                     # cut: pi * x + pi0 * theta >= inner_model_obj + pi * x_hat + pi0 * theta_hat
@@ -1012,15 +1012,12 @@ class Algorithm:
             gapTol = 5e-3
             tol = 1e-4
             if UB - LB < gapTol * UB or UB - LB < 1e-6:
-                # print(f"LB:{LB} UB:{UB} ************bundle收敛***********")
-                # if pi0_star > 1e-6:
-                #     print(f"pi_star+pi0_star: {pi_star} {pi0_star}")
-                #     print(f"pi0_best > 1e-6")
-                # else:
-                #     print(f"pi_star+pi0_star: {pi_star} {pi0_star}")
-                #     print(f"pi0Hat <= 1e-6")
                 if pi0_star > 1e-6 and LB / pi0_star >= tol * (abs(theta_trial) + 1):
                     return pi_star, pi0_star, True
+                else:
+                    # gap 已收敛但 pi0_star 过小或 LB/pi0_star 过小，
+                    # 无法生成有效 Lagrangian cut，退出循环
+                    return None, None, True
 
             QPsolved = True
             # level
@@ -1062,12 +1059,12 @@ class Algorithm:
             # 若未找到最优解，或当前解与上次迭代的解非常接近（小于 1e-10），则认为解已收敛
             if QPsolved == False or (max(abs(pi_hat[i] - pi_hat_old[i]) for i in range(len(pi_hat))) < 1e-10 and abs(
                     pi0_hat - pi0_hat_old) < 1e-10 and abs(outer_model.L.x - lpiold) < 1e-10):
-                # print('Same Solution/QP not solved! QPsolved:', QPsolved)
-                # if pi0_star > 1e-6:
-                #     print('pi0_best > 1e-6')
-                # 若 pi0Best 足够大并且满足界限条件，则将该情景的割平面约束添加到主问题模型中
                 if pi0_star > 1e-6 and LB >= tol * (abs(theta_trial) + 1):
                     return pi_star, pi0_star, True
+                else:
+                    # 算法停滞但 pi0_star 过小或 LB 过小，
+                    # 无法生成有效 Lagrangian cut，退出循环
+                    return None, None, True
 
             # 恢复模型的目标函数、删去level约束
             outer_model.recover()

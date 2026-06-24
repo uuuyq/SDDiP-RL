@@ -83,7 +83,7 @@ def create_config_list(config_dir: Path, i=1, t=5):
 
 
 def main(experiment_name, config_path=None):
-    project_root = Path(__file__).parent.parent.parent.absolute()
+    project_root = Path(__file__).parent.parent.absolute()  # bundle_norm_RL
 
     if config_path is None:
         config_path = Path(__file__).parent.absolute() / "train_config.yml"
@@ -146,5 +146,5 @@ def main(experiment_name, config_path=None):
 
 
 if __name__ == "__main__":
-    experiment_name = "exp_level_bundle_01"
+    experiment_name = "exp_01"
     main(experiment_name=experiment_name)

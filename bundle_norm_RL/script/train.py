@@ -22,7 +22,7 @@ from bundle_norm_RL.script.policy_network import LevelBundleActorCriticPolicy
 def get_experiment_dirs(experiment_name):
     """获取实验相关的目录路径"""
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    base_dir = os.path.dirname(os.path.dirname(current_dir))
+    base_dir = os.path.dirname(current_dir)  # bundle_norm_RL
     base_dir = str(base_dir)
 
     experiment_dir = os.path.join(base_dir, "train_result", "model", experiment_name)
@@ -209,13 +209,13 @@ def train(
     if clip_range_decay:
         class ClipRangeDecayCallback(BaseCallback):
             def __init__(self, current_clip_range, initial_clip_range, remaining_timesteps, total_timesteps,
-                         final_clip_range=0.05, verbose=0):
+                         final_clip_range=0.05, verbose=0, start_timesteps=0):
                 super().__init__(verbose)
                 self.current_clip_range = current_clip_range
                 self.initial_clip_range = initial_clip_range
                 self.final_clip_range = final_clip_range
                 self.remaining_timesteps = remaining_timesteps
-                self.start_timesteps = total_timesteps - remaining_timesteps
+                self.start_timesteps = start_timesteps
 
             def _on_step(self):
                 progress = min(
@@ -227,7 +227,13 @@ def train(
                 )
                 return True
 
-        callbacks.append(ClipRangeDecayCallback(current_clip_range, clip_range, remaining_timesteps, total_timesteps))
+        # 使用模型当前的 num_timesteps 作为衰减起点的全局步数，
+        # 使交错训练中每个 config 都从初始 clip_range 开始独立衰减
+        start_timesteps = model.num_timesteps if model is not None else 0
+        callbacks.append(ClipRangeDecayCallback(
+            current_clip_range, clip_range, remaining_timesteps, total_timesteps,
+            start_timesteps=start_timesteps
+        ))
         print(f"启用 clip_range 衰减: 从 {clip_range} 线性衰减到 0.05")
 
     print(f"开始训练，剩余步数: {remaining_timesteps}/{total_timesteps}")

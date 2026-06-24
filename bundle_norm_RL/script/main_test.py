@@ -69,7 +69,7 @@ def level_bundle_rl(env, model, logger, deterministic=True, K=20):
 def load_latest_model(train_experiment_name, logger, hidden_dim=64):
     """加载最新训练的模型"""
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    base_dir = os.path.dirname(os.path.dirname(current_dir))
+    base_dir = os.path.dirname(current_dir)  # bundle_norm_RL
     base_dir = str(base_dir)
 
     model_dir = os.path.join(base_dir, "train_result", "model", train_experiment_name, "save")
@@ -103,7 +103,7 @@ def collect_configs(i=1, t=5):
     config_info = []
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    base_dir = os.path.dirname(os.path.dirname(current_dir))
+    base_dir = os.path.dirname(current_dir)  # bundle_norm_RL
     config_dir = Path(os.path.join(base_dir, "configs"))
 
     for n in range(6):
@@ -179,7 +179,7 @@ def main(experiment_name, train_experiment_name=None, i=1, t=5, K=20, hidden_dim
         train_experiment_name = experiment_name
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    base_dir = os.path.dirname(os.path.dirname(current_dir))
+    base_dir = os.path.dirname(current_dir)  # bundle_norm_RL
     base_dir = str(base_dir)
 
     save_dir = os.path.join(base_dir, "test_result", experiment_name)

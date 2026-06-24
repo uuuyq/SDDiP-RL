@@ -89,7 +89,7 @@ class OuterModel:
             )
         for i in range(self.dim_pi):
             self.model.addConstr(self.abs_pi[i] == gp.abs_(self.pi[i]))
-        self.model.addConstr(gp.quicksum(self.abs_pi[i] for i in range(self.dim_pi)) + 20 * self.pi0 <= 1)
+        self.model.addConstr(gp.quicksum(self.abs_pi[i] for i in range(self.dim_pi)) + self.pi0 <= 1)
         self.model.update()
 
     def add_CL_constrains(self):

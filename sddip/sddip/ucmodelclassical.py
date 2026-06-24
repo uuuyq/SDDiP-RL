@@ -440,6 +440,9 @@ class ClassicalModel(BackwardModelBuilder):
         L∞ 范数: σ · max_j |z_X_j - X_trial_j|
             引入辅助变量 d ≥ 0, 约束 d ≥ z_X_j - X_trial_j, d ≥ X_trial_j - z_X_j for all j
             正则化项 = σ · d
+
+        注意: 辅助变量和约束只在首次调用时创建，后续调用复用已有变量，
+              避免重复添加导致模型膨胀。
         """
         if sigma <= 0:
             return 0
@@ -447,28 +450,30 @@ class ClassicalModel(BackwardModelBuilder):
         n_z = len(z_X)
 
         if norm_type == "l1":
-            # L1 范数正则化
-            d_vars = []
-            for j in range(n_z):
-                d_j = self.model.addVar(
-                    vtype=gp.GRB.CONTINUOUS, lb=0, name=f"reg_d_{j + 1}"
-                )
-                d_vars.append(d_j)
-                self.model.addConstr(d_j >= z_X[j] - X_trial[j], f"reg_d_lb_{j + 1}")
-                self.model.addConstr(d_j >= X_trial[j] - z_X[j], f"reg_d_ub_{j + 1}")
-            self.model.update()
-            return sigma * gp.quicksum(d_vars)
+            # L1 范数正则化: 只在首次调用时创建 d_vars 和约束
+            if not hasattr(self, '_reg_d_vars_l1') or self._reg_d_vars_l1 is None:
+                self._reg_d_vars_l1 = []
+                for j in range(n_z):
+                    d_j = self.model.addVar(
+                        vtype=gp.GRB.CONTINUOUS, lb=0, name=f"reg_d_{j + 1}"
+                    )
+                    self._reg_d_vars_l1.append(d_j)
+                    self.model.addConstr(d_j >= z_X[j] - X_trial[j], f"reg_d_lb_{j + 1}")
+                    self.model.addConstr(d_j >= X_trial[j] - z_X[j], f"reg_d_ub_{j + 1}")
+                self.model.update()
+            return sigma * gp.quicksum(self._reg_d_vars_l1)
 
         elif norm_type == "linf":
-            # L∞ 范数正则化
-            d = self.model.addVar(
-                vtype=gp.GRB.CONTINUOUS, lb=0, name="reg_d"
-            )
-            for j in range(n_z):
-                self.model.addConstr(d >= z_X[j] - X_trial[j], f"reg_d_lb_{j + 1}")
-                self.model.addConstr(d >= X_trial[j] - z_X[j], f"reg_d_ub_{j + 1}")
-            self.model.update()
-            return sigma * d
+            # L∞ 范数正则化: 只在首次调用时创建 d 和约束
+            if not hasattr(self, '_reg_d_var_linf') or self._reg_d_var_linf is None:
+                self._reg_d_var_linf = self.model.addVar(
+                    vtype=gp.GRB.CONTINUOUS, lb=0, name="reg_d"
+                )
+                for j in range(n_z):
+                    self.model.addConstr(self._reg_d_var_linf >= z_X[j] - X_trial[j], f"reg_d_lb_{j + 1}")
+                    self.model.addConstr(self._reg_d_var_linf >= X_trial[j] - z_X[j], f"reg_d_ub_{j + 1}")
+                self.model.update()
+            return sigma * self._reg_d_var_linf
 
         else:
             raise ValueError(f"Unknown norm_type: {norm_type}, expected 'l1' or 'linf'")

@@ -118,6 +118,9 @@ class LevelBundleEnv(gym.Env):
         # 初始 LB
         self.LB = inner_obj - self.pi @ self.X_trial - self.pi0 * self.theta_trial
 
+        # 初始 UB（必须为有限值，否则 inf 会通过 LayerNorm 传播为 NaN）
+        self.UB = self.LB * 1.1
+
         # 缩放因子
         self.scale = abs(self.LB) + 1.0
 
