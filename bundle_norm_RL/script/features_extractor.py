@@ -64,7 +64,7 @@ class LevelBundleFeaturesExtractor(BaseFeaturesExtractor):
             valid_mask=observations["valid_mask"],
             pi=observations["pi"],
             pi0=observations["pi0"],
-            lb_ub=observations["lb_ub"],
+            lb_ub=observations["lb_ub_norm"],
             trial_point=observations["trial_point"],
             realization=observations["realization"],
         )

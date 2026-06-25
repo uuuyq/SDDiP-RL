@@ -73,7 +73,7 @@ def train_interleaved(
 def create_config_list(config_dir: Path, i=1, t=5):
     """从指定目录加载配置文件"""
     configs = []
-    for n in range(6):
+    for n in range(1):
         config_path = config_dir / f"config_{i}_{t}_{n}.pkl"
         if config_path.exists():
             configs.append(LevelBundleConfig.from_pkl(config_path))
@@ -146,5 +146,5 @@ def main(experiment_name, config_path=None):
 
 
 if __name__ == "__main__":
-    experiment_name = "exp_01"
+    experiment_name = "exp_08"
     main(experiment_name=experiment_name)

@@ -128,8 +128,8 @@ def save_results_to_json(all_results, save_dir):
         data = {
             "config_info": result["config_info"],
             "baseline": {
-                "lb_history": [float(x) for x in result["baseline"].get("lb_history", [])],
-                "time_history": [float(x) for x in result["baseline"].get("time_history", [])],
+                "lb_history": [float(x) for x in result.get("baseline", {}).get("lb_history", [])],
+                "time_history": [float(x) for x in result.get("baseline", {}).get("time_history", [])],
             },
             "rl": {
                 "lb_history": [float(x) for x in result["rl"].get("lb_history", [])],
@@ -205,7 +205,7 @@ def main(experiment_name, train_experiment_name=None, i=1, t=5, K=20, hidden_dim
 
         # RL 测试
         logger.info("Running RL...")
-        env = LevelBundleEnv.create_env(logger, config, K=K, verbose=True)
+        env = LevelBundleEnv.create_env(logger, config, K=K, verbose=True, use_outer=False)
         rl_lb, rl_reward, rl_time = level_bundle_rl(env, model, logger, deterministic=True, K=K)
         env.close()
 
@@ -231,7 +231,7 @@ def main(experiment_name, train_experiment_name=None, i=1, t=5, K=20, hidden_dim
 
 
 if __name__ == "__main__":
-    experiment_name = "exp_level_bundle_01"
+    experiment_name = "exp_06"
     main(
         experiment_name=experiment_name,
         train_experiment_name=experiment_name,

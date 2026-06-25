@@ -6,7 +6,7 @@ Custom Actor-Critic Policy for Level Bundle RL
 网络结构:
     FeaturesExtractor → [seq_emb; global_emb] (B, 2H)
         ├── ActorHead → action_mean (B, N_VARS+1)
-        └── ValueHead → V(s) (B, 1)
+        └── ValueHead → V(s) (B, 1) — 更深的网络 + LayerNorm
 """
 
 import torch
@@ -21,17 +21,14 @@ from bundle_norm_RL.script.features_extractor import LevelBundleFeaturesExtracto
 class ActorHead(nn.Module):
     """
     Actor Head: 输出 action_mean (B, N_VARS+1)
-
-    输入: h_combined (B, 2H)
-    输出: action_mean (B, N_VARS+1)
     """
-
     def __init__(self, input_dim: int, action_dim: int, hidden_dim: int = 64):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, action_dim),
+            # 不加 tanh：环境侧做归一化，action_space [-1,1] 由 SB3 的 squash 处理
         )
 
     def forward(self, h: torch.Tensor) -> torch.Tensor:
@@ -40,18 +37,18 @@ class ActorHead(nn.Module):
 
 class ValueHead(nn.Module):
     """
-    Value Head: 输出 V(s)
+    Value Head: 输出 V(s)，比 Actor 更深以增加容量
 
-    输入: h_combined (B, 2H)
-    输出: value (B, 1)
+    Critic 需要更强的拟合能力，因为 V(s) 需要预测累积回报
     """
-
     def __init__(self, input_dim: int, hidden_dim: int = 64):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, 1),
         )
@@ -98,6 +95,11 @@ class LevelBundleActorCriticPolicy(ActorCriticPolicy):
 
         self.actor_head = ActorHead(combined_dim, action_dim, hidden_dim)
         self.value_head = ValueHead(combined_dim, hidden_dim)
+
+        # log_std 初始化为较小值，控制初始探索幅度
+        # log_std=-2 → std≈0.135
+        with torch.no_grad():
+            self.log_std.fill_(-2.0)
 
         # 重建优化器以包含新 head
         self.optimizer = self.optimizer_class(

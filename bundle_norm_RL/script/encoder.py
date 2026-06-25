@@ -1,10 +1,15 @@
 """
-Conv1d Encoder for Level Bundle RL
+DeepSet Encoder for Level Bundle RL
 
-使用 1D 卷积编码次梯度历史序列，结合全局特征编码器。
+使用 DeepSet (置换不变网络) 编码次梯度集合，结合全局特征编码器。
+
+DeepSet 原理: ρ( Σ_i φ(x_i) )
+- φ: 逐元素变换 (MLP)，将每个 cut 映射到高维空间
+- Σ: 置换不变的聚合 (masked sum)
+- ρ: 聚合后变换 (MLP)，生成集合表示
 
 输入:
-├── subgradient_history: (B, K, N_VARS+1) - 次梯度历史
+├── subgradient_history: (B, K, N_VARS+1) - 次梯度集合
 ├── valid_mask: (B, K) - 有效掩码
 ├── pi: (B, N_VARS) - 当前乘子
 ├── pi0: (B, 1) - 当前 pi0
@@ -13,7 +18,7 @@ Conv1d Encoder for Level Bundle RL
 └── realization: (B, realization_dim)
 
 输出:
-├── sequence_embedding: (B, hidden_dim) - Conv1d 编码的序列表示
+├── set_embedding: (B, hidden_dim) - DeepSet 编码的集合表示
 └── global_embedding: (B, hidden_dim) - 全局信息编码
 """
 
@@ -21,30 +26,29 @@ import torch
 import torch.nn as nn
 
 
-class Conv1dSubgradientEncoder(nn.Module):
+class DeepSetEncoder(nn.Module):
     """
-    使用 1D 卷积编码次梯度历史序列
+    DeepSet 编码器: ρ( Σ_i φ(x_i) )
 
-    输入: (B, K, N_VARS+1) → 转置为 (B, N_VARS+1, K) → Conv1d → (B, hidden_dim)
+    输入: (B, K, state_dim) → φ → masked sum → ρ → (B, hidden_dim)
     """
 
-    def __init__(self, state_dim: int, K: int, hidden_dim: int = 64):
+    def __init__(self, state_dim: int, hidden_dim: int = 64):
         super().__init__()
 
-        self.conv = nn.Sequential(
-            nn.Conv1d(state_dim, hidden_dim, kernel_size=3, padding=1),
+        # φ: 逐元素变换
+        self.phi = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),
             nn.ReLU(),
-            nn.Conv1d(hidden_dim, hidden_dim, kernel_size=3, padding=1),
+            nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
         )
 
-        # 使用 adaptive pooling 将变长序列压缩为固定长度
-        self.pool = nn.AdaptiveAvgPool1d(1)
-
-        # 将 masked 位置置零后 pooling
-        self.proj = nn.Sequential(
+        # ρ: 聚合后变换
+        self.rho = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
         )
 
     def forward(self, subgradient_history: torch.Tensor, valid_mask: torch.Tensor) -> torch.Tensor:
@@ -54,22 +58,21 @@ class Conv1dSubgradientEncoder(nn.Module):
             valid_mask: (B, K), 1=有效, 0=padding
 
         Returns:
-            sequence_embedding: (B, hidden_dim)
+            set_embedding: (B, hidden_dim)
         """
-        # Conv1d 需要 (B, C, L) 格式
-        x = subgradient_history.transpose(1, 2)  # (B, state_dim, K)
+        # φ: 逐元素变换
+        h = self.phi(subgradient_history)  # (B, K, hidden_dim)
 
         # mask: 将无效位置置零
-        mask = valid_mask.unsqueeze(1)  # (B, 1, K)
-        x = x * mask
+        h = h * valid_mask.unsqueeze(-1)  # (B, K, hidden_dim)
 
-        x = self.conv(x)  # (B, hidden_dim, K)
-        x = x * mask  # 再次 mask（卷积可能泄漏 padding 信息）
+        # 聚合: masked sum (置换不变)
+        h = h.sum(dim=1)  # (B, hidden_dim)
 
-        x = self.pool(x).squeeze(-1)  # (B, hidden_dim)
-        x = self.proj(x)
+        # ρ: 聚合后变换
+        h = self.rho(h)  # (B, hidden_dim)
 
-        return x
+        return h
 
 
 class GlobalEncoder(nn.Module):
@@ -120,10 +123,10 @@ class LevelBundleEncoder(nn.Module):
     """
     完整的 Level Bundle 编码器
 
-    整合 Conv1dSubgradientEncoder + GlobalEncoder
+    整合 DeepSetEncoder + GlobalEncoder
 
     输出:
-        sequence_embedding: (B, hidden_dim) - 次梯度序列编码
+        set_embedding: (B, hidden_dim) - 次梯度集合编码
         global_embedding: (B, hidden_dim) - 全局信息编码
     """
 
@@ -140,7 +143,7 @@ class LevelBundleEncoder(nn.Module):
 
         self.hidden_dim = hidden_dim
 
-        self.conv_encoder = Conv1dSubgradientEncoder(state_dim, K, hidden_dim)
+        self.deepset_encoder = DeepSetEncoder(state_dim, hidden_dim)
         self.global_encoder = GlobalEncoder(
             n_vars, trial_point_dim, realization_dim, hidden_dim
         )
@@ -157,9 +160,9 @@ class LevelBundleEncoder(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Returns:
-            sequence_embedding: (B, hidden_dim)
+            set_embedding: (B, hidden_dim)
             global_embedding: (B, hidden_dim)
         """
-        seq_emb = self.conv_encoder(subgradient_history, valid_mask)
+        set_emb = self.deepset_encoder(subgradient_history, valid_mask)
         global_emb = self.global_encoder(pi, pi0, lb_ub, trial_point, realization)
-        return seq_emb, global_emb
+        return set_emb, global_emb

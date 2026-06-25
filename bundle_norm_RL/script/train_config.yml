@@ -18,19 +18,25 @@ environment:
 # ------------------------------
 # PPO 算法超参数
 # ------------------------------
+# 关键调整思路:
+#   - reward 已 clip 到 [-1,1]，value_loss 量级会大幅下降
+#   - vf_coef 提高到 1.0，让 Critic 有足够的梯度信号
+#   - n_steps 增大以获得更稳定的 GAE 估计
+#   - clip_range=0.2（标准值），配合 target_kl 做 hard stop
+#   - ent_coef 适度，避免 log_std 暴涨但保持探索
 ppo:
   learning_rate: 3.0e-5
-  n_steps: 500
-  batch_size: 128
+  n_steps: 1024           # 增大采样量，每个 episode 20 步，约 50 个完整 episode
+  batch_size: 256         # 增大 batch，更稳定的梯度
   clip_range: 0.2
-  clip_range_decay: false
-  ent_coef: 0.005
-  vf_coef: 0.5
+  clip_range_decay: true  # 启用衰减，训练后期更保守
+  ent_coef: 0.01          # 适度熵系数，保持探索
+  vf_coef: 1.0            # 提高 Critic 权重（reward clip 后 value_loss 量级合理）
   max_grad_norm: 0.5
-  gamma: 0.95
+  gamma: 0.99             # 提高 gamma，短 episode 中让每步 reward 对 V(s) 影响更大
   gae_lambda: 0.95
-  n_epochs: 10
-  target_kl: 0.05
+  n_epochs: 5
+  target_kl: 0.03         # 适中的 KL 目标
 
 # ------------------------------
 # 网络结构设置
