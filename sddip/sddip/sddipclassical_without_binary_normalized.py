@@ -27,7 +27,9 @@ class Algorithm:
         path: Path,
         log_dir: str,
         dual_solver: dualsolver.BundleMethod,
-        mylog_dir: str
+        mylog_dir: str,
+        sigma_list: list = None,
+        norm_type: str = "l1",
     ) -> None:
         # Logger
         self.runtime_logger = sddip_logging.RuntimeLogger(log_dir)
@@ -61,6 +63,18 @@ class Algorithm:
         self.n_samples_secondary = 1
 
         self.cut_types_added = set()
+
+        # 正则化参数
+        # sigma_list: 各阶段的正则化系数列表，长度为 n_stages
+        #   sigma_list[0] = 0 (第一阶段不需要正则化)
+        #   sigma_list[t] > 0 时启用正则化，= 0 时关闭
+        #   None 表示全部关闭正则化
+        # norm_type: 正则化范数类型 "l1" 或 "linf"
+        if sigma_list is None:
+            self.sigma_list = [0.0] * self.problem_params.n_stages
+        else:
+            self.sigma_list = sigma_list
+        self.norm_type = norm_type
 
         # Result storage
         self.ps_storage = storage.ResultStorage(
@@ -338,12 +352,6 @@ class Algorithm:
             for t, n in zip(
                 range(self.problem_params.n_stages), samples[k], strict=False
             ):
-                # y_binary_trial_multipliers = linalg.block_diag(
-                #     *self.bin_multipliers["y"]
-                # )
-                # soc_binary_trial_multipliers = linalg.block_diag(
-                #     *self.bin_multipliers["soc"]
-                # )
 
                 # Create forward model
                 uc_fw = ucmodelclassical.ClassicalModel(
@@ -356,25 +364,9 @@ class Algorithm:
                     self.problem_params.backsight_periods,
                 )
 
-                # uc_fw.binary_approximation(
-                #     self.bin_multipliers["y"], self.bin_multipliers["soc"]
-                # )
-
                 uc_fw: ucmodelclassical.ClassicalModel = (
                     self.add_problem_constraints(uc_fw, t, n, i)
                 )
-
-                # 新增变量x_bin_copy_vars = x_binary_trial_point
-                # uc_fw.add_sddip_copy_constraints(
-                #     x_trial_point,
-                #     y_trial_point,
-                #     x_bs_trial_point,
-                #     soc_trial_point,
-                # )
-                # 约束 x_bin_copy_vars = z_x
-                # uc_fw.add_copy_constraints(
-                #     y_binary_trial_multipliers, soc_binary_trial_multipliers
-                # )
 
                 # 增加约束 relaxed_terms = x_trial_point - z_x
                 uc_fw.relaxed_terms_calculate_without_binary(
@@ -384,8 +376,22 @@ class Algorithm:
                     soc_trial_point,
                 )
 
-                # relaxed_terms = 0
-                uc_fw.zero_relaxed_terms()
+                sigma_t = self.sigma_list[t] if t < len(self.sigma_list) else 0.0
+
+                if sigma_t > 0:
+                    # 正则化模式：不固定 z = X_trial，添加 σ·‖z - X_trial‖ 到目标函数
+                    X_trial = (
+                        x_trial_point
+                        + y_trial_point
+                        + [val for bs in x_bs_trial_point for val in bs]
+                        + soc_trial_point
+                    )
+                    reg_constrs, reg_vars = uc_fw.add_regularization_term_to_objective(
+                        sigma_t, X_trial, self.norm_type
+                    )
+                else:
+                    # 基础模式：固定 z = X_trial
+                    uc_fw.zero_relaxed_terms()
 
                 # Solve problem
                 uc_fw.disable_output()
@@ -407,6 +413,9 @@ class Algorithm:
                 # Value of stage t objective function
                 v_value_function = uc_fw.model.getObjective().getValue()
                 v_opt_kt = v_value_function - uc_fw.theta.x
+                # 正则化模式下，减去正则化项的值以获得真实的阶段目标值
+                if sigma_t > 0:
+                    v_opt_kt = uc_fw.objective_terms.getValue() - uc_fw.theta.x
                 v_opt_k[-1] += v_opt_kt
 
                 x_trial_point = x_kt
@@ -447,12 +456,6 @@ class Algorithm:
             for t, n in zip(
                 range(self.problem_params.n_stages), samples[k], strict=False
             ):
-                # y_binary_trial_multipliers = linalg.block_diag(
-                #     *self.bin_multipliers["y"]
-                # )
-                # soc_binary_trial_multipliers = linalg.block_diag(
-                #     *self.bin_multipliers["soc"]
-                # )
 
                 # Create forward model
                 uc_fw = ucmodelclassical.ClassicalModel(
@@ -465,25 +468,9 @@ class Algorithm:
                     self.problem_params.backsight_periods,
                 )
 
-                # uc_fw.binary_approximation(
-                #     self.bin_multipliers["y"], self.bin_multipliers["soc"]
-                # )
-
                 uc_fw: ucmodelclassical.ClassicalModel = (
                     self.add_problem_constraints(uc_fw, t, n, i)
                 )
-
-                # 新增变量x_bin_copy_vars = x_binary_trial_point
-                # uc_fw.add_sddip_copy_constraints(
-                #     x_trial_point,
-                #     y_trial_point,
-                #     x_bs_trial_point,
-                #     soc_trial_point,
-                # )
-                # 约束 x_bin_copy_vars = z_x
-                # uc_fw.add_copy_constraints(
-                #     y_binary_trial_multipliers, soc_binary_trial_multipliers
-                # )
 
                 # 增加约束 relaxed_terms = x_trial_point - z_x
                 uc_fw.relaxed_terms_calculate_without_binary(
@@ -493,8 +480,21 @@ class Algorithm:
                     soc_trial_point,
                 )
 
-                # relaxed_terms = 0
-                uc_fw.zero_relaxed_terms()
+                sigma_t = self.sigma_list[t] if t < len(self.sigma_list) else 0.0
+
+                if sigma_t > 0:
+                    # 正则化模式
+                    X_trial = (
+                        x_trial_point
+                        + y_trial_point
+                        + [val for bs in x_bs_trial_point for val in bs]
+                        + soc_trial_point
+                    )
+                    reg_constrs, reg_vars = uc_fw.add_regularization_term_to_objective(
+                        sigma_t, X_trial, self.norm_type
+                    )
+                else:
+                    uc_fw.zero_relaxed_terms()
 
                 # Solve problem
                 uc_fw.disable_output()
@@ -515,9 +515,10 @@ class Algorithm:
 
                 # Value of stage t objective function
                 v_value_function = uc_fw.model.getObjective().getValue()
-
-
                 v_opt_kt = v_value_function - uc_fw.theta.x
+                # 正则化模式下，减去正则化项的值以获得真实的阶段目标值
+                if sigma_t > 0:
+                    v_opt_kt = uc_fw.objective_terms.getValue() - uc_fw.theta.x
                 v_opt_k[-1] += v_opt_kt
 
                 x_trial_point = x_kt
@@ -528,15 +529,6 @@ class Algorithm:
                         for g in range(self.problem_params.n_gens)
                     ]
                 soc_trial_point = soc_kt
-
-                # ps_dict = self.ps_storage.create_empty_result_dict()
-                # ps_dict[ResultKeys.x_key] = x_kt
-                # ps_dict[ResultKeys.y_key] = y_kt
-                # ps_dict[ResultKeys.x_bs_key] = x_bs_trial_point
-                # ps_dict[ResultKeys.soc_key] = soc_kt
-                # ps_dict[ResultKeys.v_key] = v_value_function
-                #
-                # self.ps_storage.add_result(i, k, t, ps_dict)
 
         return v_opt_k
 
@@ -762,15 +754,56 @@ class Algorithm:
                         + soc_trial_point
                 )
 
+                sigma_t = self.sigma_list[t] if t < len(self.sigma_list) else 0.0
+
+                # 位置2：后向 Primal 正则化
+                # 在进入 Lagrangian 对偶前，求解带正则化的 Primal 子问题获取 primal_obj 上界
+                primal_obj = None
+                if sigma_t > 0:
+                    for n in range(n_realizations):
+                        # 构造 Primal 子问题
+                        uc_bw_primal = ucmodelclassical.ClassicalModel(
+                            self.problem_params.n_buses,
+                            self.problem_params.n_lines,
+                            self.problem_params.n_gens,
+                            self.problem_params.n_storages,
+                            self.problem_params.gens_at_bus,
+                            self.problem_params.storages_at_bus,
+                            self.problem_params.backsight_periods,
+                        )
+                        uc_bw_primal: ucmodelclassical.ClassicalModel = (
+                            self.add_problem_constraints(uc_bw_primal, t, n, i)
+                        )
+                        uc_bw_primal.relaxed_terms_calculate_without_binary(
+                            x_trial_point,
+                            y_trial_point,
+                            x_bs_trial_point,
+                            soc_trial_point,
+                        )
+                        # 正则化模式：不固定 z = X_trial，添加正则化项
+                        reg_constrs, reg_vars = uc_bw_primal.add_regularization_term_to_objective(
+                            sigma_t, X_trial, self.norm_type
+                        )
+                        uc_bw_primal.disable_output()
+                        uc_bw_primal.model.optimize()
+
+                        if uc_bw_primal.model.status == 2:
+                            # 使用原始目标函数值（不含正则化项）作为 primal_obj
+                            obj_val = uc_bw_primal.objective_terms.getValue()
+                            if primal_obj is None or obj_val < primal_obj:
+                                primal_obj = obj_val
+
                 lag_cuts_list = []
                 for n in range(n_realizations):
                     inner_model = self.create_inner_model(t, n, i, False)
                     outer_model = self.create_outer_model(X_trial, theta_trial)
                     # level bundle methods
-                    pi_star, pi0_star, flag = self.level_bundle_methods(inner_model, outer_model, X_trial, theta_trial, 200)
-                    if pi0_star < 1e-6 or not flag :
+                    pi_star, pi0_star, flag = self.level_bundle_methods(
+                        inner_model, outer_model, X_trial, theta_trial, 200,
+                        primal_obj_bound=primal_obj
+                    )
+                    if pi0_star is None or not flag :
                         continue
-                    # self.logger.info(f"t: {t} i : {i} pi_star: {pi_star}, pi0_star: {pi0_star}")
                     # cut: pi * x + pi0 * theta >= inner_model_obj + pi * x_hat + pi0 * theta_hat
                     inner_model.add_inner_objective(self.problem_params.cost_coeffs, pi_star, pi0_star)
                     inner_model.model.optimize()
@@ -781,7 +814,6 @@ class Algorithm:
                 # Calculate and store cut coefficients
                 if len(lag_cuts_list) > 1:
                     lag_cuts_list = np.mean(np.array(lag_cuts_list), axis=0).tolist()
-                    # print("lag_average", lag_cuts_list)
                     cc_dict[ResultKeys.ci_key] = lag_cuts_list[-1]
                     cc_dict[ResultKeys.cg_key] = lag_cuts_list[:-1]
 
@@ -834,7 +866,8 @@ class Algorithm:
             atol=1e-2,
             rtol=1e-2,
             pi0Coef=1e-2,
-            timeLimit=60 * 60
+            timeLimit=60 * 60,
+            primal_obj_bound=None,
     ):
 
         subgradient_list = []
@@ -845,6 +878,9 @@ class Algorithm:
 
         LB = float('-inf')  # LB
         UB = float('inf')  # UB
+        # 若有 primal_obj_bound，用它作为初始 UB
+        if primal_obj_bound is not None:
+            UB = primal_obj_bound - sum(pi_hat[i] * X_trial[i] for i in range(len(X_trial))) - pi0_hat * theta_trial
         lpiold = float("inf")
         iter = 0
         while iter < iteration_limit:
@@ -942,6 +978,10 @@ class Algorithm:
                 #     print(f"pi0Hat <= 1e-6")
                 if pi0_star > 1e-6 and LB / pi0_star >= tol * (abs(theta_trial) + 1):
                     return pi_star, pi0_star, True
+                else:
+                    # gap 已收敛但 pi0_star 过小或 LB/pi0_star 过小，
+                    # 无法生成有效 Lagrangian cut，退出循环
+                    return None, None, True
 
             QPsolved = True
             # level
@@ -989,6 +1029,10 @@ class Algorithm:
                 # 若 pi0Best 足够大并且满足界限条件，则将该情景的割平面约束添加到主问题模型中
                 if pi0_star > 1e-6 and LB >= tol * (abs(theta_trial) + 1):
                     return pi_star, pi0_star, True
+                else:
+                    # 算法停滞但 pi0_star 过小或 LB 过小，
+                    # 无法生成有效 Lagrangian cut，退出循环
+                    return None, None, True
 
             # 恢复模型的目标函数、删去level约束
             outer_model.recover()
@@ -1169,21 +1213,9 @@ class Algorithm:
             self.problem_params.backsight_periods,
         )
 
-        # uc_fw.binary_approximation(
-        #     self.bin_multipliers["y"], self.bin_multipliers["soc"]
-        # )
-
         uc_fw: ucmodelclassical.ClassicalModel = self.add_problem_constraints(
             uc_fw, t, n, i
         )
-
-        # uc_fw.add_sddip_copy_constraints(
-        #     x_trial_point, y_trial_point, x_bs_trial_point, soc_trial_point
-        # )
-        #
-        # uc_fw.add_copy_constraints(
-        #     y_binary_trial_multipliers, soc_binary_trial_multipliers
-        # )
 
         uc_fw.relaxed_terms_calculate_without_binary(
             x_trial_point,
@@ -1192,6 +1224,7 @@ class Algorithm:
             soc_trial_point,
         )
 
+        # 第一阶段(t=0)不需要正则化，sigma_list[0] = 0
         uc_fw.zero_relaxed_terms()
 
         # Solve problem

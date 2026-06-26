@@ -347,6 +347,95 @@ class ClassicalModel(BackwardModelBuilder):
             )
         self.model.update()
 
+    def add_regularization_term_to_objective(
+        self, sigma: float, X_trial: list, norm_type: str = "l1"
+    ):
+        """
+        在 Primal 子问题目标函数中添加正则化项 σ · ||z_X - X_trial||
+
+        用于前向和后向过程中的 Primal 子问题正则化（位置1和位置2）。
+
+        L1 范数正则化: σ · Σ_j |z_X_j - X_trial_j|
+            引入辅助变量 d_j ≥ 0, 约束 d_j ≥ z_X_j - X_trial_j, d_j ≥ X_trial_j - z_X_j
+            正则化项 = σ · Σ_j d_j
+
+        L∞ 范数正则化: σ · max_j |z_X_j - X_trial_j|
+            引入辅助变量 d ≥ 0, 约束 d ≥ z_X_j - X_trial_j, d ≥ X_trial_j - z_X_j for all j
+            正则化项 = σ · d
+
+        Args:
+            sigma: 正则化系数 σ_t (> 0 时启用正则化)
+            X_trial: trial point 拼接向量 (x + y + x_bs_flat + soc)
+            norm_type: "l1" 或 "linf"
+
+        Returns:
+            reg_constrs: 正则化引入的约束列表 (用于后续移除)
+            reg_vars: 正则化引入的辅助变量列表 (用于后续移除)
+        """
+        z_X = (
+            self.z_x
+            + self.z_y
+            + [val for bs in self.z_x_bs for val in bs]
+            + self.z_soc
+        )
+
+        reg_constrs = []
+        reg_vars = []
+
+        if norm_type == "l1":
+            # L1 范数正则化
+            for j in range(len(z_X)):
+                d_j = self.model.addVar(
+                    vtype=gp.GRB.CONTINUOUS, lb=0, name=f"reg_d_{j + 1}"
+                )
+                reg_vars.append(d_j)
+                c1 = self.model.addConstr(d_j >= z_X[j] - X_trial[j], f"reg_lb_{j + 1}")
+                c2 = self.model.addConstr(d_j >= X_trial[j] - z_X[j], f"reg_ub_{j + 1}")
+                reg_constrs.extend([c1, c2])
+            reg_expr = sigma * gp.quicksum(reg_vars)
+
+        elif norm_type == "linf":
+            # L∞ 范数正则化
+            d = self.model.addVar(vtype=gp.GRB.CONTINUOUS, lb=0, name="reg_d")
+            reg_vars.append(d)
+            for j in range(len(z_X)):
+                c1 = self.model.addConstr(d >= z_X[j] - X_trial[j], f"reg_lb_{j + 1}")
+                c2 = self.model.addConstr(d >= X_trial[j] - z_X[j], f"reg_ub_{j + 1}")
+                reg_constrs.extend([c1, c2])
+            reg_expr = sigma * d
+
+        else:
+            raise ValueError(f"Unknown norm_type: {norm_type}, expected 'l1' or 'linf'")
+
+        # 将正则化项加入目标函数
+        current_obj = self.model.getObjective()
+        self.model.setObjective(current_obj + reg_expr)
+        self.model.update()
+
+        return reg_constrs, reg_vars
+
+    def remove_regularization_term(
+        self, reg_constrs: list, reg_vars: list
+    ):
+        """
+        移除正则化项引入的辅助变量和约束，恢复原始目标函数
+
+        Args:
+            reg_constrs: add_regularization_term_to_objective 返回的约束列表
+            reg_vars: add_regularization_term_to_objective 返回的辅助变量列表
+        """
+        # 移除约束
+        for constr in reg_constrs:
+            self.model.remove(constr)
+
+        # 移除辅助变量
+        for var in reg_vars:
+            self.model.remove(var)
+
+        # 恢复原始目标函数 (去掉正则化项，即用原始 objective_terms)
+        self.model.setObjective(self.objective_terms)
+        self.model.update()
+
     def add_z_var_constrains(self, max_soc, min_generation, max_generation):
         # TODO: 增加了z_soc约束，与soc的约束保持一致  需要用delta吗？
         self.model.addConstrs(
