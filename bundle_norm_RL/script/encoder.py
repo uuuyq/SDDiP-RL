@@ -1,12 +1,12 @@
 """
-DeepSet Encoder for Level Bundle RL
+Encoder for Level Bundle RL
 
-使用 DeepSet (置换不变网络) 编码次梯度集合，结合全局特征编码器。
+支持三种次梯度集合编码器:
+1. DeepSetEncoder: 置换不变的集合编码 (ρ( Σ_i φ(x_i) ))
+2. CrossAttentionEncoder: Cross-Attention 编码，用全局状态作为 query 关注最相关的 cut
+3. SelfAttentionEncoder: Self-Attention 编码，cuts 之间相互关注捕捉交互关系
 
-DeepSet 原理: ρ( Σ_i φ(x_i) )
-- φ: 逐元素变换 (MLP)，将每个 cut 映射到高维空间
-- Σ: 置换不变的聚合 (masked sum)
-- ρ: 聚合后变换 (MLP)，生成集合表示
+通过 encoder_type 参数切换，默认 "deepset"。
 
 输入:
 ├── subgradient_history: (B, K, N_VARS+1) - 次梯度集合
@@ -18,7 +18,7 @@ DeepSet 原理: ρ( Σ_i φ(x_i) )
 └── realization: (B, realization_dim)
 
 输出:
-├── set_embedding: (B, hidden_dim) - DeepSet 编码的集合表示
+├── set_embedding: (B, hidden_dim) - 次梯度集合编码
 └── global_embedding: (B, hidden_dim) - 全局信息编码
 """
 
@@ -75,6 +75,221 @@ class DeepSetEncoder(nn.Module):
         return h
 
 
+class TransformerBlock(nn.Module):
+    """
+    标准 Transformer block: MultiheadSelfAttention + FFN + LayerNorm + Residual
+    """
+    def __init__(self, hidden_dim: int, n_heads: int):
+        super().__init__()
+        self.attn = nn.MultiheadAttention(
+            embed_dim=hidden_dim,
+            num_heads=n_heads,
+            batch_first=True,
+        )
+        self.norm1 = nn.LayerNorm(hidden_dim)
+        self.ffn = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim * 2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim * 2, hidden_dim),
+        )
+        self.norm2 = nn.LayerNorm(hidden_dim)
+
+    def forward(self, x: torch.Tensor, key_padding_mask: torch.Tensor = None) -> torch.Tensor:
+        attn_out, _ = self.attn(x, x, x, key_padding_mask=key_padding_mask)
+        x = self.norm1(x + attn_out)
+        ffn_out = self.ffn(x)
+        x = self.norm2(x + ffn_out)
+        return x
+
+
+class CrossAttentionEncoder(nn.Module):
+    """
+    Cross-Attention 编码器: 用全局状态作为 query，次梯度 cuts 作为 key/value
+
+    让网络根据当前乘子位置动态关注最相关的 cut。
+    """
+
+    def __init__(
+        self,
+        state_dim: int,
+        n_vars: int,
+        hidden_dim: int = 64,
+        n_heads: int = 4,
+        n_layers: int = 2,
+    ):
+        super().__init__()
+
+        self.hidden_dim = hidden_dim
+
+        # 将 subgradient cut 投影到 hidden_dim
+        self.cut_proj = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+        )
+
+        # 将全局状态 (pi + pi0 + lb_ub) 投影为 query
+        self.query_proj = nn.Sequential(
+            nn.Linear(n_vars + 1 + 3, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+        )
+
+        # Cross-Attention 层（独立实现，不使用 TransformerBlock）
+        self.attn_layers = nn.ModuleList()
+        self.norm1_layers = nn.ModuleList()
+        self.ffn_layers = nn.ModuleList()
+        self.norm2_layers = nn.ModuleList()
+
+        for _ in range(n_layers):
+            self.attn_layers.append(nn.MultiheadAttention(
+                embed_dim=hidden_dim, num_heads=n_heads, batch_first=True,
+            ))
+            self.norm1_layers.append(nn.LayerNorm(hidden_dim))
+            self.ffn_layers.append(nn.Sequential(
+                nn.Linear(hidden_dim, hidden_dim * 2),
+                nn.ReLU(),
+                nn.Linear(hidden_dim * 2, hidden_dim),
+            ))
+            self.norm2_layers.append(nn.LayerNorm(hidden_dim))
+
+        # 输出投影
+        self.output_proj = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+        )
+
+    def forward(
+        self,
+        subgradient_history: torch.Tensor,
+        valid_mask: torch.Tensor,
+        pi: torch.Tensor,
+        pi0: torch.Tensor,
+        lb_ub: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Returns:
+            set_embedding: (B, hidden_dim)
+        """
+        # 构建 query: (B, 1, hidden_dim)
+        global_state = torch.cat([pi, pi0, lb_ub], dim=-1)
+        query = self.query_proj(global_state).unsqueeze(1)
+
+        # 构建 key/value: (B, K, hidden_dim)
+        kv = self.cut_proj(subgradient_history)
+
+        # attention mask: True = 忽略的位置
+        attn_mask = (valid_mask == 0)
+
+        # Cross-Attention 层: query attend to kv
+        x = query  # (B, 1, hidden_dim)
+        for attn, norm1, ffn, norm2 in zip(
+            self.attn_layers, self.norm1_layers,
+            self.ffn_layers, self.norm2_layers,
+        ):
+            attn_out, _ = attn(query=x, key=kv, value=kv, key_padding_mask=attn_mask)
+            x = norm1(x + attn_out)
+            ffn_out = ffn(x)
+            x = norm2(x + ffn_out)
+
+        x = x.squeeze(1)
+        x = self.output_proj(x)
+
+        return x
+
+
+class SelfAttentionEncoder(nn.Module):
+    """
+    Self-Attention 编码器: cuts 之间相互关注，捕捉 cut 间的交互关系
+
+    与 CrossAttention 的区别:
+    - 不使用 global state 作为 query，cuts 自己关注自己
+    - 通过 [CLS] token (learnable) 聚合所有 cut 的信息
+    - Global info 独立编码，最终在 actor/critic 中与 set_embedding 拼接
+
+    结构:
+    - cut_proj: 将每个 cut 映射到 hidden_dim
+    - [CLS] token: 可学习的聚合 token，与 cuts 一起做 self-attention
+    - 多层 Transformer block (Self-Attention + FFN)
+    - 输出 [CLS] 位置的 embedding 作为 set_embedding
+    """
+
+    def __init__(
+        self,
+        state_dim: int,
+        hidden_dim: int = 64,
+        n_heads: int = 4,
+        n_layers: int = 2,
+    ):
+        super().__init__()
+
+        self.hidden_dim = hidden_dim
+
+        # 将 subgradient cut 投影到 hidden_dim
+        self.cut_proj = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+        )
+
+        # [CLS] token: 可学习的聚合 token
+        self.cls_token = nn.Parameter(torch.randn(1, 1, hidden_dim) * 0.02)
+
+        # Self-Attention 层（标准 Transformer blocks）
+        self.blocks = nn.ModuleList([
+            TransformerBlock(hidden_dim, n_heads) for _ in range(n_layers)
+        ])
+
+        # 输出投影
+        self.output_proj = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+        )
+
+    def forward(
+        self,
+        subgradient_history: torch.Tensor,
+        valid_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Args:
+            subgradient_history: (B, K, state_dim)
+            valid_mask: (B, K), 1=有效, 0=padding
+
+        Returns:
+            set_embedding: (B, hidden_dim)
+        """
+        B = subgradient_history.shape[0]
+        K = subgradient_history.shape[1]
+
+        # 投影 cuts: (B, K, hidden_dim)
+        cut_emb = self.cut_proj(subgradient_history)
+
+        # 拼接 [CLS] token: (B, K+1, hidden_dim)
+        cls = self.cls_token.expand(B, -1, -1)
+        x = torch.cat([cls, cut_emb], dim=1)  # (B, K+1, hidden_dim)
+
+        # 构建 attention mask: 对 [CLS] 位置不 mask，cuts 按 valid_mask 处理
+        # key_padding_mask: (B, K+1), True = 忽略
+        # 在 cls 位置(索引0) 补 False
+        cls_mask = torch.zeros(B, 1, dtype=valid_mask.dtype, device=valid_mask.device)
+        attn_mask = torch.cat([cls_mask, (valid_mask == 0)], dim=1)  # (B, K+1)
+
+        # Self-Attention 层
+        for block in self.blocks:
+            x = block(x, key_padding_mask=attn_mask)
+
+        # 取 [CLS] 位置的输出: (B, hidden_dim)
+        cls_out = x[:, 0, :]
+
+        # 输出投影
+        cls_out = self.output_proj(cls_out)
+
+        return cls_out
+
+
 class GlobalEncoder(nn.Module):
     """
     全局信息编码器
@@ -123,7 +338,10 @@ class LevelBundleEncoder(nn.Module):
     """
     完整的 Level Bundle 编码器
 
-    整合 DeepSetEncoder + GlobalEncoder
+    支持三种次梯度集合编码器:
+    - "deepset": DeepSetEncoder (置换不变，sum pooling)
+    - "cross_attention": CrossAttentionEncoder (global→cut 交叉关注)
+    - "self_attention": SelfAttentionEncoder (cuts 之间相互关注，[CLS] 聚合)
 
     输出:
         set_embedding: (B, hidden_dim) - 次梯度集合编码
@@ -138,12 +356,38 @@ class LevelBundleEncoder(nn.Module):
         realization_dim: int,
         K: int,
         hidden_dim: int = 64,
+        encoder_type: str = "deepset",
+        n_heads: int = 4,
+        n_attn_layers: int = 2,
     ):
         super().__init__()
 
         self.hidden_dim = hidden_dim
+        self.encoder_type = encoder_type
 
-        self.deepset_encoder = DeepSetEncoder(state_dim, hidden_dim)
+        if encoder_type == "deepset":
+            self.set_encoder = DeepSetEncoder(state_dim, hidden_dim)
+        elif encoder_type == "cross_attention":
+            self.set_encoder = CrossAttentionEncoder(
+                state_dim=state_dim,
+                n_vars=n_vars,
+                hidden_dim=hidden_dim,
+                n_heads=n_heads,
+                n_layers=n_attn_layers,
+            )
+        elif encoder_type == "self_attention":
+            self.set_encoder = SelfAttentionEncoder(
+                state_dim=state_dim,
+                hidden_dim=hidden_dim,
+                n_heads=n_heads,
+                n_layers=n_attn_layers,
+            )
+        else:
+            raise ValueError(
+                f"Unknown encoder_type: {encoder_type}, "
+                f"expected 'deepset', 'cross_attention', or 'self_attention'"
+            )
+
         self.global_encoder = GlobalEncoder(
             n_vars, trial_point_dim, realization_dim, hidden_dim
         )
@@ -163,6 +407,14 @@ class LevelBundleEncoder(nn.Module):
             set_embedding: (B, hidden_dim)
             global_embedding: (B, hidden_dim)
         """
-        set_emb = self.deepset_encoder(subgradient_history, valid_mask)
+        if self.encoder_type == "deepset":
+            set_emb = self.set_encoder(subgradient_history, valid_mask)
+        elif self.encoder_type == "cross_attention":
+            set_emb = self.set_encoder(
+                subgradient_history, valid_mask, pi, pi0, lb_ub
+            )
+        else:  # self_attention
+            set_emb = self.set_encoder(subgradient_history, valid_mask)
+
         global_emb = self.global_encoder(pi, pi0, lb_ub, trial_point, realization)
         return set_emb, global_emb

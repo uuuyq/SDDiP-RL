@@ -1,11 +1,8 @@
 """
 PPO 训练函数 for Level Bundle RL
 
-遵循 bundle_RL/script/attention2/train.py 的代码风格:
-- checkpoint 保存/加载
-- training_log.csv 记录
-- clip_range 衰减
-- TensorBoard 日志
+使用 SB3 原生 MultiInputPolicy + 自定义 FeaturesExtractor，
+不再使用自定义 ActorCriticPolicy，避免初始化/优化器兼容性问题。
 """
 
 import csv
@@ -16,7 +13,6 @@ from datetime import datetime
 from stable_baselines3 import PPO
 
 from bundle_norm_RL.script.features_extractor import LevelBundleFeaturesExtractor
-from bundle_norm_RL.script.policy_network import LevelBundleActorCriticPolicy
 
 
 def get_experiment_dirs(experiment_name):
@@ -61,7 +57,6 @@ def load_latest_checkpoint(experiment_name, env, policy_kwargs):
         env=env,
         custom_objects={
             "LevelBundleFeaturesExtractor": LevelBundleFeaturesExtractor,
-            "LevelBundleActorCriticPolicy": LevelBundleActorCriticPolicy,
             "policy_kwargs": policy_kwargs,
         }
     )
@@ -80,21 +75,27 @@ def train(
     ent_coef=0,
     resume=True,
     overwrite=False,
-    learning_rate=3e-4,
-    clip_range=0.2,
+    learning_rate=1e-5,
+    clip_range=0.1,
     clip_range_decay=True,
-    n_steps=512,
-    batch_size=128,
+    n_steps=2048,
+    batch_size=512,
     gamma=0.99,
     gae_lambda=0.95,
-    n_epochs=10,
-    vf_coef=0.5,
+    n_epochs=3,
+    vf_coef=1.0,
     max_grad_norm=0.5,
-    target_kl=None,
-    hidden_dim=64,
+    target_kl=0.015,
+    hidden_dim=128,
+    log_std_init=-3.0,
+    encoder_type="deepset",
+    n_heads=4,
+    n_attn_layers=2,
 ):
     """
     Level Bundle PPO 训练函数
+
+    使用 SB3 原生 MultiInputPolicy + 自定义 FeaturesExtractor + net_arch 控制 MLP。
 
     Returns:
         model, trained_steps, total_trained_steps
@@ -121,15 +122,25 @@ def train(
         "max_grad_norm": max_grad_norm,
         "features_dim": 2 * hidden_dim,
         "hidden_dim": hidden_dim,
-        "net_arch": dict(pi=[], vf=[]),
+        "log_std_init": log_std_init,
+        "encoder_type": encoder_type,
+        "n_heads": n_heads,
+        "n_attn_layers": n_attn_layers,
     }
 
-    features_extractor_kwargs = dict(hidden_dim=hidden_dim)
+    features_extractor_kwargs = dict(
+        hidden_dim=hidden_dim,
+        encoder_type=encoder_type,
+        n_heads=n_heads,
+        n_attn_layers=n_attn_layers,
+    )
 
+    # SB3 原生 MultiInputPolicy + net_arch 控制 Actor/Critic MLP
     policy_kwargs = dict(
         features_extractor_class=LevelBundleFeaturesExtractor,
         features_extractor_kwargs=features_extractor_kwargs,
-        net_arch=[],
+        net_arch=dict(pi=[hidden_dim, hidden_dim], vf=[hidden_dim, hidden_dim]),
+        log_std_init=log_std_init,
     )
 
     existing_steps = 0
@@ -147,9 +158,10 @@ def train(
         print(f"超参数: lr={learning_rate}, ent_coef={ent_coef}, clip_range={clip_range}")
         print(f"         n_steps={n_steps}, batch_size={batch_size}, gamma={gamma}")
         print(f"         hidden_dim={hidden_dim}, target_kl={target_kl}")
+        print(f"         log_std_init={log_std_init}")
 
         ppo_kwargs = dict(
-            policy=LevelBundleActorCriticPolicy,
+            policy="MultiInputPolicy",
             env=env,
             policy_kwargs=policy_kwargs,
             verbose=1,
@@ -227,8 +239,6 @@ def train(
                 )
                 return True
 
-        # 使用模型当前的 num_timesteps 作为衰减起点的全局步数，
-        # 使交错训练中每个 config 都从初始 clip_range 开始独立衰减
         start_timesteps = model.num_timesteps if model is not None else 0
         callbacks.append(ClipRangeDecayCallback(
             current_clip_range, clip_range, remaining_timesteps, total_timesteps,

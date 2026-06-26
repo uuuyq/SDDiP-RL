@@ -26,27 +26,32 @@
 
 \section{多阶段问题定义、状态解耦与 Epigraph 近似}
 
-\subsection{1. 原始多阶段随机规划值函数}
+\subsection{原始多阶段随机规划值函数}
 在第 $t$ 阶段，给定前一阶段状态变量 $x_{t-1}$ 和当前场景的随机向量 $\xi_t$，最优值函数 $Q_t(x_{t-1}, \xi_t)$ 定义为：
 \begin{equation}
 Q_{t}(x_{t-1}, \xi_{t}) := \min_{x_{t}, y_{t}} \left\{ f_{t}(x_{t}, y_{t}) + \sum_{k \in K} p_{k} Q_{t+1}(x_{t}, \xi_{t+1}^{k}) : (x_{t}, y_{t}) \in \Phi_{n}(x_{t-1}, \xi_{t}) \right\}
 \end{equation}
-其中，点 $(x_{t-1}, \theta_{t}^{k})$ 构成了迭代计算中值函数上界的一个可行参考点。
+其中 $\Phi_{n}(x_{t-1}, \xi_{t})$ 表示在给定入状态 $x_{t-1}$ 和随机实现 $\xi_t$ 下的可行域，$K$ 为下一阶段的场景集合，$p_k$ 为场景 $k$ 的概率。
 
-\subsection{2. 引入状态解耦变量 $z_t$}
+\subsection{引入状态解耦变量 $z_t$}
 为了消除前后阶段状态变量的直接耦合，引入复制变量 $z_{t} = x_{t-1}$。未来阶段的期望值函数通过上方图（Epigraph）集合来约束逼近，问题可调整为如下等价形式：
 \begin{align}
 Q_{t}(x_{t-1}, \xi_{t}) = \min_{x_{t}, y_{t}, \theta_{t+1}^{k}} \quad & f_{t}(x_{t}, y_{t}) + \sum_{k \in K} p_{k} \theta_{t+1}^{k} \\
 \text{s.t.} \quad & (x_{t}, y_{t}) \in \Phi_{n}(z_{t}, \xi_{t}) \\
 & z_{t} = x_{t-1} \\
 & \theta_{t+1}^{k} \ge Q_{t+1}(x_{t}, \xi_{t+1}^{k}), \quad \forall k \in K \\
-& z_{t} \in Z_{t-1}, \quad x_{t} \in X_{t}
+& z_{t} \in X_{t-1}, \quad x_{t} \in X_{t}
 \end{align}
+注意：$z_t$ 松弛为连续变量
 
-\subsection{3. 值函数的 Cut 逼近近似}
-在迭代过程中，通过对未来所有场景依据概率 $p_k$ 取期望值，构造出与具体场景 $k$ 无关的统一状态逼近函数 $\psi_{t+1}^{i}(x_t)$：
+\subsection{值函数的 Cut 逼近近似}
+在迭代过程中，通过对未来所有场景依据概率 $p_k$ 取期望值，构造出与具体场景 $k$ 无关的统一状态逼近函数 $\psi_{t+1}^{i}(x_t)$。具体地，设前 $i$ 次迭代中已生成 $i$ 条仿射割平面，第 $j$ 条割对应的仿射函数定义为：
 \begin{equation}
-\psi_{t+1}^{i}(x_t) = \max \left\{ \lambda_1, \lambda_2, \lambda_3, \dots, \lambda_i \right\}
+\lambda_{j}(x_t) := \theta^{j} + (\pi^{j})^\top x_t
+\end{equation}
+其中 $\theta^{j}$ 为割的截距，$\pi^{j}$ 为割的斜率向量（对偶乘子）。值函数的逼近取所有历史割的上包络：
+\begin{equation}
+\psi_{t+1}^{i}(x_t) = \max \left\{ \lambda_{1}(x_t), \lambda_{2}(x_t), \dots, \lambda_{i}(x_t) \right\}
 \end{equation}
 在第 $i+1$ 次迭代的前向过程中，用 $\psi_{t+1}^{i}(x_t)$ 替代真实的期望值函数，第 $t$ 阶段的近似子模型表述为：
 \begin{align}
@@ -57,7 +62,7 @@ Q_{t}(x_{t-1}, \xi_{t}) = \min_{x_{t}, y_{t}, \theta_{t+1}^{k}} \quad & f_{t}(x_
 & z_{t} \in Z_{t-1}, \quad x_{t} \in X_{t}
 \end{align}
 
-\subsection{4. Epigraph 可行性判定子问题}
+\subsection{Epigraph 可行性判定子问题}
 为了检验当前前向探索点 $(x_{t-1}^i, \theta_t^i)$ 是否满足包络约束，我们需要求解一个可行性判定子问题。若该点不满足当前的近似上方图，则通过下式寻找违解程度：
 \begin{align}
 \min_{x_t, y_t, z_t, \theta_{t+1}} \quad & 0 \\
@@ -70,7 +75,7 @@ Q_{t}(x_{t-1}, \xi_{t}) = \min_{x_{t}, y_{t}, \theta_{t+1}^{k}} \quad & f_{t}(x_
 
 \section{拉格朗日松弛与对偶问题的外层 Bundle 求解}
 
-\subsection{1. 可行性问题的拉格朗日松弛与对偶割（Lagrangian Cut）的推导}
+\subsection{可行性问题的拉格朗日松弛与对偶割（Lagrangian Cut）的推导}
 对状态解耦约束 $z_t = x_{t-1}$（引入乘子 $\pi$）以及状态下界约束 $f_t(x_t, y_t) + \theta_{t+1} - \theta_t \le 0$（引入乘子 $\pi_0 \ge 0$）实施拉格朗日松弛。
 外层拉格朗日对偶问题的目标为：
 \begin{equation}
@@ -97,7 +102,37 @@ Q_{t}(x_{t-1}, \xi_{t}) = \min_{x_{t}, y_{t}, \theta_{t+1}^{k}} \quad & f_{t}(x_
 \theta_t \ge \frac{\omega_t^{i+1}(\pi, \pi_0)}{\pi_0} - \left(\frac{\pi}{\pi_0}\right)^\top x_{t-1}
 \end{equation}
 
-\subsection{2. 基于 Bundle 方法的对偶系统迭代求解}
+\subsection{ 基于 Bundle 方法的对偶迭代求解}
+\subsubsection{对偶乘子初始化}
+\textbf{$\pi_0$ 统一初始化}：
+    控制值函数基础权重的对偶乘子 $\pi_0$ 均统一初始化为常数 $1.0$：
+    \begin{equation}
+    \pi_0^{(0)} = 1.0
+    \end{equation}
+\begin{itemize}
+    \item \textbf{ZeroDuals（零向量初始化）}：
+    直接将状态解耦对偶乘子 $\pi$ 初始化为全零向量：
+    \begin{equation}
+    \pi^{(0)} = \mathbf{0}
+    \end{equation}
+
+    \item \textbf{LPDuals（LP 松弛对偶初始化）}：
+    该策略通过求解当前第 $t$ 阶段近似子模型的线性规划（LP）松弛问题来获取初始乘子。定义其连续松弛子模型为（即将原问题中的整数变量、非线性域等全部进行线性或凸松弛）：
+    \begin{align}
+    \min_{x_t, y_t, z_t, \theta_{t+1}} \quad & f_{t}(x_{t}, y_{t}) + \theta_{t+1} \\
+    \text{s.t.} \quad & (x_{t}, y_{t}) \in \text{R-cl}\left(\Phi_{n}(z_{t}, \xi_{t})\right) \\
+    & z_{t} = x_{t-1}^i \quad \left( \lambda \right) \\
+    & \theta_{t+1} \ge \psi_{t+1}^{i}(x_{t}) \\
+    & z_{t} \in \text{co}(Z_{t-1}), \quad x_{t} \in \text{co}(X_{t})
+    \end{align}
+    其中 $\text{R-cl}(\cdot)$ 和 $\text{co}(\cdot)$ 分别表示可行域与变量集合的连续/凸松弛约束。令该线性规划问题中状态解耦约束 $z_{t} = x_{t-1}^i$ 对应的最优对偶乘子（Shadow Price）为 $\lambda^*$。则 $\pi$ 的初始值赋值为：
+    \begin{equation}
+    \pi^{(0)} = \lambda^*
+    \end{equation}
+
+\end{itemize}
+
+\subsubsection{Bundle算法}
 外层对偶采用 Bundle（束方法）架构。在给定的内部循环中，将当前的中心乘子记为 $(\hat{\pi}, \hat{\pi}_0)$，代入内层松弛模型进行评估：
 \begin{align}
 \omega_t^{i+1}(\hat{\pi}, \hat{\pi}_0) = \min_{x_t, y_t, z_t, \theta_{t+1}} \quad & \hat{\pi}_0 f_t(x_t, y_t) + \hat{\pi}^\top z_t + \hat{\pi}_0 \theta_{t+1} \\
@@ -113,9 +148,8 @@ Q_{t}(x_{t-1}, \xi_{t}) = \min_{x_{t}, y_{t}, \theta_{t+1}^{k}} \quad & f_{t}(x_
 \frac{\partial \omega_t^{i+1}(\hat{\pi}, \hat{\pi}_0)}{\partial \pi} = \tilde{z}_t, \quad \frac{\partial \omega_t^{i+1}(\hat{\pi}, \hat{\pi}_0)}{\partial \pi_0} = f_t(\tilde{x}_t, \tilde{y}_t) + \tilde{\theta}_{t+1}
 \end{equation}
 
-\section{外层对偶割包络更新与级别集近端优化}
 
-\subsection{1. 对偶值函数的线性割（Cut）更新表达式}
+\subsubsection{ 对偶值函数的线性割（Cut）更新表达式}
 利用计算得到的次梯度，对偶值函数 $\omega_t^{i+1}(\pi, \pi_0)$ 的一阶泰勒支撑面（即对偶 Cut）表示为：
 \begin{align}
 \omega_t^{i+1}(\pi, \pi_0) &\le \omega_t^{i+1}(\hat{\pi}, \hat{\pi}_0) + \left(\frac{\partial \omega_t^{i+1}}{\partial \pi}\right)^\top (\pi - \hat{\pi}) + \frac{\partial \omega_t^{i+1}}{\partial \pi_0} (\pi_0 - \hat{\pi}_0) \nonumber \\
@@ -124,7 +158,7 @@ Q_{t}(x_{t-1}, \xi_{t}) = \min_{x_{t}, y_{t}, \theta_{t+1}^{k}} \quad & f_{t}(x_
 \end{align}
 注：最后一式利用了内层目标函数关于乘子的正齐次性结构（即 $\omega_t^{i+1}(\hat{\pi}, \hat{\pi}_0) = \hat{\pi}^\top \tilde{z}_t + \hat{\pi}_0 [f_t(\tilde{x}_t, \tilde{y}_t) + \tilde{\theta}_{t+1}]$）消除常数常项后展开得到。这与原文完全一致。
 
-\subsection{2. 外层对偶最大化问题的割平面标准型}
+\subsubsection{外层对偶最大化问题的割平面标准型}
 在外层优化中，我们将所有历史生成的对偶 Cut 作为一个分段线性的上包络函数加入系统中：
 \begin{align}
 \max_{\pi, \pi_0} \quad & \omega_t^{i+1}(\pi, \pi_0) - \pi^\top x_{t-1}^i - \pi_0 \theta_t^i \\
@@ -133,12 +167,33 @@ Q_{t}(x_{t-1}, \xi_{t}) = \min_{x_{t}, y_{t}, \theta_{t+1}^{k}} \quad & f_{t}(x_
 & \omega_t^{i+1}(\pi, \pi_0) \le \tilde{z}_t^\top \pi + [f_t(\tilde{x}_t, \tilde{y}_t) + \tilde{\theta}_{t+1}] \pi_0 \quad (\text{历史对偶 Cut 集合})
 \end{align}
 求解该最大化问题后，所得的最优目标函数值被记为当前系统对偶阶段的**上界（UB）**。
-相应地，在当前最佳乘子点评估出来的实际松弛收益作为系统的稳定**下界（LB）**：
+相应地，对偶函数在历史评估点上的最大已知值构成系统的**下界（LB）**：
+
 \begin{equation}
-\text{LB} := \omega_t^{i+1}(\hat{\pi}, \hat{\pi}_0) - \hat{\pi}^\top x_{t-1}^i - \hat{\pi}_0 \theta_t^i
+\mathrm{LB}^{k}
+:=
+\max_{j=1,\ldots,k}
+\Bigl\{
+\omega_t^{i+1}(\pi^{j},\pi_0^{j})
+-
+(\pi^{j})^\top x_{t-1}^{i}
+-
+\pi_0^{j}\theta_t^{i}
+\Bigr\}.
 \end{equation}
 
-\subsection{带有近端项的 Level（级别集）对偶步长更新}
+其中 $(\pi^{j},\pi_0^{j})$ 表示第 $j$ 次 Bundle 迭代中实际评估过的乘子点。
+
+由于对偶函数值是真实计算得到的，因此 $\mathrm{LB}^{k}$ 始终是当前对偶最优值的有效下界，并且具有单调不下降性质。
+
+
+
+
+\subsubsection{带有近端项的 Level（级别集）对偶步长更新}
+
+Level 的妙处：用“目标值”代替“步长参数”Level 方法换了一种思路。它不直接在目标函数里加惩罚项去限制步长(调参困难)，而是直接在目标函数上画一条“合格线”（也就是 $\text{level}$）：
+
+
 计算当前的对偶间隙 $\text{gap} = \text{UB} - \text{LB}$。利用缩放系数 $\text{level\_factor} \in (0,1)$，确定目标限制阈值（Level）：
 \begin{equation}
 \text{level} = \text{UB} - \text{gap} \times \text{level\_factor}
@@ -154,60 +209,101 @@ Q_{t}(x_{t-1}, \xi_{t}) = \min_{x_{t}, y_{t}, \theta_{t+1}^{k}} \quad & f_{t}(x_
 
 
 
+
 \section{正则化策略与范数边界约束}
 
-\subsection{正则化策略的引入动机}
+\subsection{正则化策略}
 
-在上述的 Level Bundle 算法中，对偶乘子 $(\pi, \pi_0)$ 的搜索范围仅受限于规范化约束（如 $\mathcal{L}_1$ 或 $\mathcal{L}_\infty$），但缺乏对乘子绝对大小的限制。这可能导致以下问题：
+在 SDDP 类算法的前向过程中，子问题的解（trial point）可能因割平面近似不精确而产生剧烈振荡，导致后向过程中生成的割质量下降、收敛缓慢。正则化策略通过在子问题目标函数中添加惩罚项 $\sigma_t \cdot \|z_t - x_{t-1}^i\|$，限制状态变量偏离前向传播中固定的状态值 $x_{t-1}^i$，从而稳定迭代过程。同时，正则化系数 $\sigma_t$ 还作为对偶乘子的范数边界 $B_t$，约束对偶乘子的绝对大小，防止对偶问题无界或数值不稳定。
 
-\begin{itemize}
-    \item 对偶问题可能无界，导致无法获得有效的割；
-    \item 对偶乘子可能发散到无穷大，引发数值不稳定；
-    \item 生成的割系数过大，影响后续迭代的收敛性。
-\end{itemize}
+\subsubsection{正则化项的数学形式}
 
-为解决上述问题，引入正则化策略（Regularization），通过在目标函数中添加惩罚项，限制状态变量偏离固定值的程度，从而间接约束对偶乘子的大小。
+在第 $t$ 阶段，给定固定的状态变量值 $x_{t-1}^i$（来自前向传播），正则化项为 $\sigma_t \cdot \|z_t - x_{t-1}^i\|$，其中 $\sigma_t$ 为正则化系数，范数 $\|\cdot\|$ 可选择 $\ell_1$ 或 $\ell_\infty$：
 
-\subsection{正则化项的数学形式}
-
-在第 $t$ 阶段，给定固定的状态变量值 $x_{t-1}^i$（来自前向传播），正则化的内层拉格朗日松弛子问题修正为：
-
-\begin{align}
-\omega_t^{i+1}(\pi, \pi_0) = \min_{x_t, y_t, z_t, \theta_{t+1}} \quad & \pi_0 f_t(x_t, y_t) + \pi^\top z_t + \pi_0 \theta_{t+1} + \sigma_t \cdot \|z_t - x_{t-1}^i\| \\
-\text{s.t.} \quad & (x_{t}, y_{t}) \in \Phi_{n}(z_{t}, \xi_{t}) \\
-& \theta_{t+1} \ge \psi_{t+1}^{i}(x_{t}) \\
-& z_{t} \in Z_{t-1}, \quad x_{t} \in X_{t}
-\end{align}
-
-其中：
-\begin{itemize}
-    \item $\sigma_t$ 为第 $t$ 阶段的正则化系数（Regularization Coefficient）；
-    \item $\|\cdot\|$ 为选取的范数，通常为 $\ell_1$ 范数或 $\ell_\infty$ 范数。
-\end{itemize}
-
-\paragraph{$\ell_1$ 范数正则化：}
-
-当选择 $\ell_1$ 范数时，正则化项为：
-
+\paragraph{$\ell_1$ 范数：}
 \begin{equation}
 \|z_t - x_{t-1}^i\|_1 = \sum_{j=1}^{n_x} |z_{t,j} - x_{t-1,j}^i|
 \end{equation}
 
-$\ell_1$ 范数具有稀疏性诱导特性，倾向于生成稀疏的对偶乘子。
+$\ell_1$ 范数具有稀疏性诱导特性，倾向于使对偶乘子稀疏。
 
-\paragraph{$\ell_\infty$ 范数正则化：}
-
-当选择 $\ell_\infty$ 范数时，正则化项为：
-
+\paragraph{$\ell_\infty$ 范数：}
 \begin{equation}
 \|z_t - x_{t-1}^i\|_\infty = \max_{j=1,\dots,n_x} |z_{t,j} - x_{t-1,j}^i|
 \end{equation}
 
-$\ell_\infty$ 范数具有均匀性特性，确保所有状态变量的偏离程度一致。
+$\ell_\infty$ 范数具有均匀性特性，约束所有状态变量分量的偏离程度一致。
 
-\subsection{3. 正则化系数与对偶边界的关系}
+\subsubsection{正则化在算法中的三个作用位置}
 
-正则化系数 $\sigma_t$ 不仅用于惩罚状态变量的偏离，同时也作为对偶乘子的理论上界（Dual Bound）。
+在 DynamicSDDiP.jl 中，正则化项出现在三个不同的位置，其数学形式和作用各不相同。
+
+- 位置1：前向过程的原始子问题
+
+在前向过程中，对 $t > 1$ 的阶段，求解子问题前先施加正则化。设 $x_{t-1}^i$ 为前向传播中固定的入状态值，$z_t$ 为 unfix 后的入状态变量（起拷贝变量的作用），正则化后的前向子问题为：
+
+\begin{align}
+\min_{x_t, y_t, \theta_{t+1}} \quad & f_{t}(x_{t}, y_{t}) + \theta_{t+1} + \sigma_t \cdot \|z_t - x_{t-1}^i\| \\
+\text{s.t.} \quad & (x_{t}, y_{t}) \in \Phi_{n}(z_{t}, \xi_{t}) \\
+& z_{t} = x_{t-1}^i \quad (\text{unfix 后松弛}) \\
+& \theta_{t+1} \ge \psi_{t+1}^{i}(x_{t}) \\
+& z_{t} \in X_{t-1}, \quad x_{t} \in X_{t}
+\end{align}
+
+\textbf{作用}：稳定前向过程的 trial point，避免因割平面近似不精确导致的状态变量跳跃。求解后，正则化项被移除，恢复原始子问题模型，继续沿场景路径前进。
+
+- 位置2：后向过程的原始子问题（Primal Bound）
+
+在后向过程中，当使用 `LagrangianDuality` 或 `UnifiedLagrangianDuality` 时，在进入 Lagrangian 对偶求解之前，先对原始子问题施加正则化并求解，获取带正则化的原始目标值 $\text{primal\_obj}$。其数学形式与位置1完全相同：
+
+\begin{align}
+\text{primal\_obj} = \min_{x_t, y_t, \theta_{t+1}} \quad & f_{t}(x_{t}, y_{t}) + \theta_{t+1} + \sigma_t \cdot \|z_t - x_{t-1}^i\| \\
+\text{s.t.} \quad & \text{同位置1的约束}
+\end{align}
+
+\textbf{作用}：$\text{primal\_obj}$ 作为 Lagrangian 对偶外层问题的目标值上界（\texttt{obj\_bound}），用于收敛判定和数值稳定。求解后，正则化项被移除，恢复原始子问题，再进入 Lagrangian 对偶的迭代求解。
+
+\textbf{注意}：在使用 `NormBound` 或 `BothBounds` 的对偶界方式时，$\text{primal\_obj}$ 中的正则化目标值提供对偶乘子的目标值约束；而在 `ValueBound` 方式下，$\text{primal\_obj}$ 直接作为 Lagrangian 对偶上界。
+
+- 位置3：增广 Lagrangian 内层松弛（Augmented Lagrangian，仅经典框架，默认关闭）
+
+当配置中显式启用 \texttt{augmented = true} 时，在经典 Lagrangian 对偶框架的内层松弛问题中加入正则化项。给定乘子 $\pi_k$，内层松弛问题修正为：
+
+\begin{align}
+L_k = \min_{x_t, y_t, z_t, \theta_{t+1}} \quad & f_t(x_t, y_t) + \theta_{t+1} - \pi_k^\top (z_t - x_{t-1}^i) + \rho \cdot \|z_t - x_{t-1}^i\| \\
+\text{s.t.} \quad & (x_{t}, y_{t}) \in \Phi_{n}(z_{t}, \xi_{t}) \\
+& \theta_{t+1} \ge \psi_{t+1}^{i}(x_{t}) \\
+& z_{t} \in X_{t-1}, \quad x_{t} \in X_{t}
+\end{align}
+
+其中 $\rho = \sigma_t$ 为增广系数，$\|z_t - x_{t-1}^i\|$ 为所选范数（代码中只有$\ell_1$范数，即绝对值求和的形式 ）。
+
+\textbf{作用}：增广 Lagrangian 方法通过在内层松弛中同时惩罚约束违反程度（$\rho \cdot \|z_t - x_{t-1}^i\|$），使对偶收敛更加稳定。
+
+\textbf{重要限制}：此选项\textbf{仅在经典 Lagrangian 对偶框架}（\texttt{LagrangianDuality}）中可用，\textbf{不适用于统一框架}（\texttt{UnifiedLagrangianDuality}）。且默认关闭，需在 \texttt{CutGenerationRegime} 的 \texttt{duality\_regime} 中显式设置 \texttt{augmented = true} 方可启用。
+
+\subsubsection{三个位置的对比总结}
+
+\begin{table}[htbp]
+\centering
+\caption{正则化项在算法中的三个作用位置对比}
+\label{tab:regularization_positions}
+\begin{tabular}{|c|c|c|c|c|}
+\hline
+\textbf{位置} & \textbf{作用对象} & \textbf{数学形式} & \textbf{主要作用} & \textbf{是否默认启用} \\
+\hline
+位置1 & 前向 Primal & $f_t + \theta_{t+1} + \sigma_t \|z_t - x_{t-1}^i\|$ & 稳定 trial point & 是（若启用 Regularization） \\
+\hline
+位置2 & 后向 Primal & $f_t + \theta_{t+1} + \sigma_t \|z_t - x_{t-1}^i\|$ & 提供对偶上界 primal\_obj & 是（若启用 Regularization） \\
+\hline
+位置3 & 后向 Lagrangian 内层 & $(f_t + \theta_{t+1}) - \pi^\top h + \rho \|h\|$ & 增广收敛稳定性 & 否（需 augmented=true） \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{正则化系数与对偶边界的关系}
+
+正则化系数 $\sigma_t$ 不仅用于惩罚状态变量的偏离，同时也作为对偶乘子的范数边界（Dual Bound）。
 
 根据拉格朗日对偶理论，正则化项 $\sigma_t \cdot \|z_t - x_{t-1}^i\|$ 的系数 $\sigma_t$ 对应于对偶乘子 $\pi$ 的最大可能值。因此，我们有：
 
@@ -215,20 +311,20 @@ $\ell_\infty$ 范数具有均匀性特性，确保所有状态变量的偏离程
 B_t = \sigma_t
 \end{equation}
 
-其中 $B_t$ 为第 $t$ 阶段的对偶边界值。
+其中 $B_t$ 为第 $t$ 阶段的对偶边界值。该边界值在范数边界约束中被直接使用（详见第\ref{sec:norm_bound}节）。
 
 \paragraph{正则化策略配置：}
 
 定义正则化策略配置 $\mathcal{R}_t = (\sigma_t, \|\cdot\|, \|\cdot\|_{\text{lifted}})$，其中：
 \begin{itemize}
     \item $\sigma_t$：第 $t$ 阶段的正则化系数；
-    \item $\|\cdot\|$：前向传播中使用的正则化范数；
-    \item $\|\cdot\|_{\text{lifted}}$：后向传播中使用的范数，用于范数边界约束。
+    \item $\|\cdot\|$：前向和后向 Primal 子问题中使用的正则化范数（L1 或 L∞）；
+    \item $\|\cdot\|_{\text{lifted}}$：后向过程中范数边界约束使用的范数（L1 或 L∞），用于约束对偶乘子的绝对大小。
 \end{itemize}
 
 \paragraph{正则化系数的自适应调整：}
 
-在迭代过程中，$\sigma_t$ 可根据算法收敛情况进行调整。定义缩放因子 $\sigma_{\text{factor}} > 0$，当算法收敛时，通过下式验证解的质量：
+在迭代过程中，$\sigma_t$ 可根据算法收敛情况进行调整。定义缩放因子 $\sigma_{\text{factor}} > 0$，当 Sigma 测试判定正则化不充分时，通过下式增大 $\sigma_t$：
 
 \begin{equation}
 \sigma_t^{\text{new}} = \sigma_{\text{factor}} \cdot \sigma_t
@@ -236,11 +332,10 @@ B_t = \sigma_t
 
 
 
-\section{范数边界约束的数学形式}
-
-范数边界约束（Norm Bound Constraints）直接限制对偶乘子 $(\pi, \pi_0)$ 的大小，确保对偶问题有唯一解且数值稳定。
-
-\subsection{约束的基本形式}
+\subsection{范数边界}
+\subsubsection{范数边界的基本形式}
+范数边界约束（Norm Bound Constraints）直接限制对偶乘子 $(\pi, \pi_0)$ 的大小，确保对偶问题有唯一解且数值稳定。以下描述均针对统一 Lagrangian 对偶框架。
+(经典lagrangian没有 pi0，因此形式会有差异)
 
 范数边界约束的核心思想是限制 $\pi$ 相对于 $\pi_0$ 的比值：
 
@@ -248,52 +343,49 @@ B_t = \sigma_t
 \frac{\|\pi\|}{\pi_0} \le B_t
 \end{equation}
 
-其中 $B_t$ 为对偶边界值。
+其中 $B_t = \sigma_t$ 为对偶边界值，由正则化系数决定。
 
-\subsection{$\ell_1$ 范数边界约束（限制 $\ell_\infty$ 范数）}
+\subsubsection{范数边界约束的两种形式}
+$\|\cdot\|$ 的具体范数类型由正则化所用的范数决定，存在对偶对应关系：
 
-当选择 $\|\cdot\|_{\text{lifted}} = \ell_1$ 时，范数边界约束具体化为：
-
+\begin{itemize}
+\item 正则化使用 $\ell_1$ 范数 $\Rightarrow$ 范数边界限制 $\ell_\infty$ 范数（逐元素上界）：
+\begin{equation}
+\|\pi\|_\infty \le B_t \cdot \pi_0
+\end{equation}
+等价于逐元素约束：
 \begin{equation}
 |\pi_j| \le B_t \cdot w_j \cdot \pi_0, \quad \forall j = 1,\dots,n_x
 \end{equation}
+其中 $w_j$ 为第 $j$ 个状态变量对应的权重系数（在二值近似下 $w_j = 2^{k-1}\beta$，在无状态近似下 $w_j = 1$）。
 
-其中 $w_j$ 为第 $j$ 个状态变量的权重系数。
-
-\textbf{等价的 $\ell_\infty$ 范数约束：}
-
+\item 正则化使用 $\ell_\infty$ 范数 $\Rightarrow$ 范数边界限制 $\ell_1$ 范数（加权求和上界）：
 \begin{equation}
-\|\pi\|_\infty \le B_t \cdot \|w\|_\infty \cdot \pi_0
+\|\pi\|_{w,1} \le B_t \cdot \pi_0
 \end{equation}
-
-\subsection{ $\ell_\infty$ 范数边界约束（限制加权 $\ell_1$ 范数）}
-
-当选择 $\|\cdot\|_{\text{lifted}} = \ell_\infty$ 时，范数边界约束具体化为：
-
+即：
 \begin{equation}
 \sum_{j=1}^{n_x} w_j \cdot |\pi_j| \le B_t \cdot \pi_0
 \end{equation}
+\end{itemize}
 
-\textbf{等价的加权 $\ell_1$ 范数约束：}
+\textbf{无正则化时，$B_t = \infty$，上述约束自动失效，对偶有界性由归一化约束单独保证。}
 
-\begin{equation}
-\|\pi\|_{w,1} = \sum_{j=1}^{n_x} w_j \cdot |\pi_j| \le B_t \cdot \pi_0
-\end{equation}
 
-\subsection{约束的几何解释}
+
+
+\subsubsection{约束的几何解释}
 
 范数边界约束在 $(\pi_0, \pi)$ 空间中定义了一个有界区域：
 
 \begin{itemize}
-    \item $\ell_1$ 范数边界约束定义了一个\textbf{棱锥}：所有对偶变量必须满足 $|\pi_j| \le B_t \cdot w_j \cdot \pi_0$；
-    \item $\ell_\infty$ 范数边界约束定义了一个\textbf{多面体锥}：所有对偶变量必须满足 $\sum_{j=1}^{n_x} w_j \cdot |\pi_j| \le B_t \cdot \pi_0$。
+    \item $\ell_1$ 时定义了一个\textbf{棱锥}：所有对偶变量必须满足 $|\pi_j| \le B_t \cdot w_j \cdot \pi_0$；
+    \item $\ell_\infty$ 时定义了一个\textbf{多面体锥}：所有对偶变量必须满足 $\sum_{j=1}^{n_x} w_j \cdot |\pi_j| \le B_t \cdot \pi_0$。
 \end{itemize}
 
-\section{权重系数的计算}
+\subsubsection{权重系数$w_j$的计算}
 
 权重系数 $w_j$ 用于缩放不同状态变量的对偶乘子边界，反映状态变量的相对重要性。
-
-\section{二进制近似下的权重计算}
 
 当状态变量采用二进制近似（Binary Approximation）时，权重系数由下式计算：
 
@@ -307,8 +399,6 @@ w_j = 2^{k_j - 1} \cdot \beta_j
     \item $\beta_j$：状态变量 $x_j$ 的二进制精度（每个二进制位代表的数值）。
 \end{itemize}
 
-\subsection{权重系数的含义}
-
 在二进制近似中，原始整数状态 $x_j$ 被分解为：
 
 \begin{equation}
@@ -321,39 +411,72 @@ x_j = \sum_{m=1}^{k_j} 2^{m-1} \cdot \beta_j \cdot b_{j,m}
     \item 精度 $\beta_j$ 越高，权重越大。
 \end{itemize}
 
-\subsection{非二进制近似下的权重}
-
-当不使用二进制近似（No State Approximation）时，权重系数默认为 1：
+\textbf{当不使用二进制近似（No State Approximation）时，权重系数默认为 1：}
 
 \begin{equation}
 w_j = 1, \quad \forall j = 1,\dots,n_x
 \end{equation}
 
-\section{规范化约束与范数边界约束的协同作用}
+\section{对偶乘子的 归一化 约束}
 
-在 Outer Problem 中，规范化约束和范数边界约束同时生效，共同定义对偶乘子的可行域。
+在统一 Lagrangian 对偶框架的 Outer Problem 中，规范化约束（Normalization Constraint）和范数边界约束（Norm Bound Constraint）同时生效，共同定义对偶乘子的可行域。\textbf{注意}：规范化约束仅存在于统一 Lagrangian 对偶框架（\texttt{UnifiedLagrangianDuality}）中，经典 Lagrangian 对偶框架不包含规范化约束。
 
-\subsection{ 完整的约束体系}
+\subsection{norm 约束形式}
 
-以选择 $\mathcal{L}_1$ 规范化和 $\ell_1$ 范数边界约束为例，完整的约束体系为：
+规范化约束的作用是对对偶乘子 $(\pi_0, \pi)$ 进行归一化，确保外层问题有界，同时使生成的割为"最深割"（Deep Cut）。不同归一化方式对应不同的规范化约束：
+
+\begin{itemize}
+    \item $\mathcal{L}_1$ 归一化（\texttt{L1\_Deep}）：
+    \begin{equation}
+    \pi_0 + \sum_{j=1}^{n_x} |\pi_j| \le 1
+    \end{equation}
+
+    \item $\mathcal{L}_\infty$ 归一化（\texttt{Linf\_Deep}）：
+    \begin{equation}
+    \pi_0 \le 1, \quad |\pi_j| \le 1, \quad \forall j
+    \end{equation}
+
+    \item $\mathcal{L}_2$ 归一化（\texttt{L2\_Deep}）：
+    \begin{equation}
+    \pi_0^2 + \sum_{j=1}^{n_x} \pi_j^2 \le 1
+    \end{equation}
+
+    \item Core 类归一化（反极割）：
+    \begin{equation}
+    \omega_0 \pi_0 + \sum_{j=1}^{n_x} \omega_j \pi_j \le 1
+    \end{equation}
+    其中 $(\omega_0, \omega)$ 为核心点方向系数。
+\end{itemize}
+
+\paragraph{代码实现中的松弛：}
+
+在代码中，对偶乘子被拆分为 $\pi = \pi^+ - \pi^-$（$\pi^+, \pi^- \ge 0$）。以 $\mathcal{L}_1$ 归一化为例，代码实现为：
+\begin{equation}
+\pi_0 + \sum_{j=1}^{n_x} (\pi_j^+ + \pi_j^-) \le 1
+\end{equation}
+由于 $|\pi_j| = |\pi_j^+ - \pi_j^-| \le \pi_j^+ + \pi_j^-$，代码约束是数学约束 $\pi_0 + \sum |\pi_j| \le 1$ 的\textbf{充分条件}（更松弛），而非等价形式。当 $\pi_j^+$ 和 $\pi_j^-$ 不同时为正时（这在最优解中成立），两者等价。
+
+\subsection{完整的约束体系}
+
+以选择 $\mathcal{L}_1$ 归一化和 \texttt{norm\_lifted} = $\ell_1$（限制 $\ell_\infty$ 范数）为例，统一框架外层问题的完整约束体系为：
 
 \begin{align}
 \max_{\pi, \pi_0} \quad & \omega_t^{i+1}(\pi, \pi_0) - \pi^\top x_{t-1}^i - \pi_0 \theta_t^i \\
-\text{s.t.} \quad & \pi_0 \ge \epsilon \quad (\text{非负约束，}\epsilon > 0) \\
-& \sum_{j=1}^{n_x} |\pi_j| + \pi_0 \le 1 \quad (\mathcal{L}_1 \text{ 规范化约束}) \\
-& |\pi_j| \le B_t \cdot w_j \cdot \pi_0, \quad \forall j \quad (\ell_1 \text{ 范数边界约束}) \\
+\text{s.t.} \quad & \pi_0 \ge 0 \\
+& \pi_0 + \sum_{j=1}^{n_x} |\pi_j| \le 1 \quad (\mathcal{L}_1 \text{ 规范化约束}) \\
+& |\pi_j| \le B_t \cdot w_j \cdot \pi_0, \quad \forall j \quad (\text{范数边界约束}) \\
 & \omega_t^{i+1}(\pi, \pi_0) \le \tilde{z}_t^\top \pi + [f_t(\tilde{x}_t, \tilde{y}_t) + \tilde{\theta}_{t+1}] \pi_0 \quad (\text{历史对偶 Cut})
 \end{align}
 
-\subsection{ 约束的作用分工}
+\subsection{约束的作用分工}
 
 \begin{itemize}
-    \item \textbf{规范化约束}：定义对偶变量的相对比例（单位球），确保生成"最深"的割；
-    \item \textbf{范数边界约束}：限制对偶变量的绝对大小，防止数值发散；
+    \item \textbf{规范化约束}：定义对偶变量的相对比例（单位球），确保生成"最深"的割，保证外层问题有界；
+    \item \textbf{范数边界约束}：限制对偶变量的绝对大小，利用正则化系数 $B_t = \sigma_t$ 防止数值发散；
     \item \textbf{两者协同}：规范化约束定义可行域的形状，范数边界约束定义可行域的大小，共同确保对偶问题有唯一解且数值稳定。
 \end{itemize}
 
-\subsection{ 可行域的几何描述}
+\subsection{可行域的几何描述}
 
 最终可行域是规范化约束的单位球与范数边界约束的锥的交集：
 
@@ -363,7 +486,7 @@ w_j = 1, \quad \forall j = 1,\dots,n_x
 
 其中 $\tilde{\pi} = (\pi_0, \pi_1, \dots, \pi_{n_x})$。
 
-\section{ 正则化与范数边界约束的算法流程集成}
+\section{算法流程}
 
 将正则化和范数边界约束集成到 Level Bundle 算法中的完整流程如下：
 

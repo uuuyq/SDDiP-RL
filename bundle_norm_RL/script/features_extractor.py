@@ -2,6 +2,7 @@
 SB3-compatible Features Extractor for Level Bundle RL
 
 包装 LevelBundleEncoder，输出 [sequence_embedding; global_embedding] (B, 2*hidden_dim)
+支持 "deepset", "cross_attention", "self_attention" 三种编码器，通过 encoder_type 参数切换。
 """
 
 import torch
@@ -27,12 +28,22 @@ class LevelBundleFeaturesExtractor(BaseFeaturesExtractor):
         - realization: (realization_dim,)
 
     输出 features_dim = 2 * hidden_dim
+
+    Args:
+        observation_space: gym Dict 空间
+        hidden_dim: 编码器隐藏层维度
+        encoder_type: "deepset", "cross_attention" 或 "self_attention"
+        n_heads: attention 头数 (仅 attention 模式)
+        n_attn_layers: attention 层数 (仅 attention 模式)
     """
 
     def __init__(
         self,
         observation_space: spaces.Dict,
         hidden_dim: int = 64,
+        encoder_type: str = "deepset",
+        n_heads: int = 4,
+        n_attn_layers: int = 2,
     ):
         super().__init__(observation_space, features_dim=2 * hidden_dim)
 
@@ -43,6 +54,7 @@ class LevelBundleFeaturesExtractor(BaseFeaturesExtractor):
         self.trial_point_dim = observation_space["trial_point"].shape[0]
         self.realization_dim = observation_space["realization"].shape[0]
         self.hidden_dim = hidden_dim
+        self.encoder_type = encoder_type
 
         self.encoder = LevelBundleEncoder(
             state_dim=self.state_dim,
@@ -51,6 +63,9 @@ class LevelBundleFeaturesExtractor(BaseFeaturesExtractor):
             realization_dim=self.realization_dim,
             K=self.K,
             hidden_dim=hidden_dim,
+            encoder_type=encoder_type,
+            n_heads=n_heads,
+            n_attn_layers=n_attn_layers,
         )
 
     def encode(self, observations: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:

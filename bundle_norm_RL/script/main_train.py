@@ -1,10 +1,8 @@
 """
 Level Bundle RL 训练入口
 
-遵循 bundle_RL/script/attention2/main_train.py 的代码风格:
-- YAML 配置加载
-- 交错训练（多 config 交替）
-- 配置文件保存
+使用 SB3 原生 MultiInputPolicy + 自定义 FeaturesExtractor，
+通过 net_arch 和 log_std_init 控制 Actor/Critic 结构。
 """
 
 import os
@@ -27,10 +25,11 @@ def load_train_config(config_path: str) -> dict:
 def train_interleaved(
     logger, configs, rounds=3, steps_per_config_per_round=20_000,
     experiment_name="level_bundle_exp", K=20,
-    learning_rate=3e-4, clip_range=0.2, clip_range_decay=True,
-    n_steps=512, batch_size=128, gamma=0.99, gae_lambda=0.95,
-    n_epochs=10, ent_coef=0.005, vf_coef=0.5, max_grad_norm=0.5,
-    target_kl=None, hidden_dim=64, overwrite=False,
+    learning_rate=1e-5, clip_range=0.1, clip_range_decay=True,
+    n_steps=2048, batch_size=512, gamma=0.99, gae_lambda=0.95,
+    n_epochs=3, ent_coef=0.005, vf_coef=1.0, max_grad_norm=0.5,
+    target_kl=0.015, hidden_dim=128, log_std_init=-3.0, overwrite=False,
+    encoder_type="deepset", n_heads=4, n_attn_layers=2,
 ):
     """交错训练函数：在多个 config 之间交替训练"""
     model = None
@@ -62,7 +61,11 @@ def train_interleaved(
                 max_grad_norm=max_grad_norm,
                 target_kl=target_kl,
                 hidden_dim=hidden_dim,
+                log_std_init=log_std_init,
                 overwrite=overwrite,
+                encoder_type=encoder_type,
+                n_heads=n_heads,
+                n_attn_layers=n_attn_layers,
             )
 
             env.close()
@@ -138,7 +141,11 @@ def main(experiment_name, config_path=None):
         max_grad_norm=ppo_config['max_grad_norm'],
         target_kl=ppo_config.get('target_kl', None),
         hidden_dim=net_config['hidden_dim'],
+        log_std_init=ppo_config.get('log_std_init', -3.0),
         overwrite=exp_config['overwrite'],
+        encoder_type=net_config.get('encoder_type', 'deepset'),
+        n_heads=net_config.get('n_heads', 4),
+        n_attn_layers=net_config.get('n_attn_layers', 2),
     )
 
     logger.info("训练完成！")
@@ -146,5 +153,5 @@ def main(experiment_name, config_path=None):
 
 
 if __name__ == "__main__":
-    experiment_name = "exp_08"
+    experiment_name = "exp_12"
     main(experiment_name=experiment_name)

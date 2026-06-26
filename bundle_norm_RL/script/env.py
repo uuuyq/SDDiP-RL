@@ -13,12 +13,14 @@ State:
     - realization: 场景特征 (realization_dim,)
 
 Action:
-    - raw_action: (N_VARS+1,) ∈ [-1, 1] → 后处理归一化得到 (pi, pi0)
-      pi0 = softplus(raw_pi0) 保证 > 0
-      pi = raw_pi / (||raw_pi||_1 + pi0) 归一化
+    - action: (N_VARS+1,) ∈ [-1, 1]
+      SB3 SquashedDiagGaussian 内置 tanh + log_prob 校正
+      pi 直接用 action ∈ [-1, 1]
+      pi0 = (action + 1) / 2 ∈ [0, 1]，保证非负
 
 Reward:
-    - LB 的提升量 / scale，clip 到 [-1, 1] 避免极端值
+    - dual 值差分 / running_std，clip 到 [-3, 3]
+    - running mean/std 跨 episode 持久化（Welford 在线算法）
 
 UB 计算:
     - 训练时 (use_outer=True): 使用 OuterProblem 求解真实 UB
@@ -31,6 +33,11 @@ from bundle_norm_RL.script.level_bundle_problem import InnerProblem, OuterProble
 
 
 class LevelBundleEnv(gym.Env):
+    # 跨 episode 持久化的 reward 归一化统计
+    _global_reward_mean = 0.0
+    _global_reward_var = 1.0
+    _global_reward_count = 0
+
     def __init__(self, logger, config, n, K=20, verbose=False, use_outer=True):
         """
         Args:
@@ -106,7 +113,9 @@ class LevelBundleEnv(gym.Env):
             ),
         })
 
-        # 动作空间: raw (pi_raw, pi0_raw)
+        # 动作空间: [-1, 1]，SB3 使用 SquashedDiagGaussian（内置 tanh + log_prob 校正）
+        # pi 直接用 action（SB3 的 tanh squash 已映射到 [-1,1]）
+        # pi0 = (action + 1) / 2 ∈ [0, 1]，保证非负
         self.action_space = gym.spaces.Box(
             low=-1.0, high=1.0,
             shape=(self.N_VARS + 1,), dtype=np.float32
@@ -168,27 +177,14 @@ class LevelBundleEnv(gym.Env):
     def step(self, action):
         """
         Action: raw (pi_raw[N_VARS], pi0_raw[1])
-        后处理归一化得到合法的 (pi, pi0)
+        后处理: pi = tanh(raw_pi), pi0 = softplus(raw_pi0)
         """
         action = np.asarray(action, dtype=np.float32).copy()
 
-        # 后处理: 确保 pi0 > 0, pi ∈ [-1,1], pi0 ∈ (0,1]
-        pi_raw = action[:self.N_VARS]
-        pi0_raw = action[self.N_VARS]
-
-        # pi0 = softplus 保证 > 0
-        pi0 = np.log1p(np.exp(pi0_raw)) + 1e-6
-        # pi 直接使用网络输出，action_space [-1,1] 已保证范围
-        pi = pi_raw
-
-        # # 归一化: ||pi||_1 + pi0 <= 1 （可选，暂时关闭看效果）
-        # l1_norm = np.sum(np.abs(pi_raw)) + pi0
-        # if l1_norm > 1e-8:
-        #     pi = pi_raw / l1_norm
-        #     pi0 = pi0 / l1_norm
-        # else:
-        #     pi = np.zeros(self.N_VARS, dtype=np.float32)
-        #     pi0 = 1.0
+        # pi 直接用 action（SB3 SquashedDiagGaussian 已将高斯映射到 [-1,1]）
+        pi = action[:self.N_VARS]
+        # pi0 = (action + 1) / 2 ∈ [0, 1]，保证非负
+        pi0 = (action[self.N_VARS] + 1.0) / 2.0 + 1e-6
 
         self.pi = pi
         self.pi0 = pi0
@@ -202,9 +198,23 @@ class LevelBundleEnv(gym.Env):
             # 计算 dual 值: inner_obj - pi^T * X_trial - pi0 * theta_trial
             dual = inner_obj - pi @ self.X_trial - pi0 * self.theta_trial
 
-            # reward = dual 提升量（相对于上一步的 dual，而非历史最优 LB）
-            # 这样每一步都有信号：好方向 → 正 reward，坏方向 → 负 reward
-            reward = np.clip((dual - self.prev_dual) / self.scale, -1.0, 1.0)
+            # reward = dual 相对于上一步的差分
+            raw_reward = dual - self.prev_dual
+
+            # 跨 episode 的 running mean/std 归一化（Welford 在线算法）
+            LevelBundleEnv._global_reward_count += 1
+            delta = raw_reward - LevelBundleEnv._global_reward_mean
+            LevelBundleEnv._global_reward_mean += delta / LevelBundleEnv._global_reward_count
+            delta2 = raw_reward - LevelBundleEnv._global_reward_mean
+            LevelBundleEnv._global_reward_var += delta * delta2
+            reward_std = max(
+                (LevelBundleEnv._global_reward_var / LevelBundleEnv._global_reward_count) ** 0.5,
+                1.0
+            )
+            reward = raw_reward / reward_std
+
+            # clip 防止极端值
+            reward = np.clip(reward, -3.0, 3.0)
 
             # 更新历史最优 LB
             if dual > self.LB:

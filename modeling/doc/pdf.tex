@@ -1,0 +1,294 @@
+%! Author = HK
+%! Date = 2026/6/26
+
+% Preamble
+% 将 article 修改为 ctexart 即可完美支持中文，建议使用 XeLaTeX 编译器编译
+\documentclass[11pt]{ctexart}
+
+% Packages
+\usepackage{amsmath}
+\usepackage{siunitx} % 修复 \unit{h} 找不到命令的问题
+\usepackage{enumitem} % 修复 itemsep 和 topsep 找不到属性的问题
+
+% Document
+\begin{document}
+
+\section{Problem Formulation (问题建模1)}
+
+该模型旨在时间分段机制（TOU tariffs）下，协同优化多建筑能源系统中的电动汽车（EVs）充电与建筑供暖、通风和空调（HVAC）系统的运行，以最小化系统总能源成本，同时满足用户的热舒适度和出行需求 \cite{ Zhao2025 }。
+
+\subsection{Objective Function (目标函数)}
+在整个调度周期 $K$ 内，多建筑能源系统的总能源成本最小化目标函数定义为：
+\begin{equation}
+\min \quad C = \sum_{k=1}^{K}\sum_{n=1}^{N} \left( c_{k}^{p}P_{k,n}^{p} - c_{k}^{s}P_{k,n}^{s} \right) \Delta k
+\end{equation}
+其中，$c_{k}^{p}$ 和 $c_{k}^{s}$ 分别为时段 $k$ 从电网购电和向电网售电的电价；$P_{k,n}^{p}$ 和 $P_{k,n}^{s}$ 分别为建筑 $n$ 在时段 $k$ 从电网购买和向电网出售的电功率；$\Delta k$ 为每个时间步长的时间长度。
+
+\subsection{System Constraints (系统约束条件)}
+
+\subsubsection{建筑功率平衡约束}
+为保证每栋建筑 $n$ 的实时功率平衡，必须满足：
+\begin{equation}
+P_{k,n}^{p} - P_{k,n}^{s} + P_{k,n}^{PV} = P_{k,n}^{e} + P_{k,n}^{EV} + \sum_{j \in J_{n}^{B}} a_{k,j}^{R}
+\end{equation}
+其中，$P_{k,n}^{PV}$ 为建筑 $n$ 的屋顶光伏发电功率；$P_{k,n}^{e}$ 为建筑 $n$ 内其他基础电气设备的用电负荷；$P_{k,n}^{EV}$ 为建筑 $n$ 与 EV 充电设施之间的交换功率；$a_{k,j}^{R}$ 为建筑 $n$ 中房间 $j$ 的 HVAC 系统实时运行功率。
+
+\subsubsection{电网交互与容量限制约束}
+建筑与电网的功率交换受制于输电线路容量，且购电与售电行为不能同时发生：
+\begin{align}
+0 \le P_{k,n}^{p} &\le z_{k,n}^{p} P_{n}^{cap} \\
+0 \le P_{k,n}^{s} &\le z_{k,n}^{s} P_{n}^{cap} \\
+z_{k,n}^{p} + z_{k,n}^{s} &\le 1
+\end{align}
+其中，$P_{n}^{cap}$ 为建筑 $n$ 与电网之间的变压器/线路容量上限；$z_{k,n}^{p}, z_{k,n}^{s} \in \{0, 1\}$ 为二进制变量，分别指示建筑 $n$ 在时段 $k$ 是否处于购电或售电状态。
+
+\subsubsection{电动汽车充电设施容量约束}
+每栋建筑内所有停放 EV 的充放电总功率不能超过该建筑充电设施的容量上限：
+\begin{align}
+P_{k,n}^{EV} &= \sum_{i=1}^{I} L_{k,i,n} (a_{k,i}^{V,c} - a_{k,i}^{V,d}) P_{i}^{V} \\
+-P_{n}^{EV,cap} &\le P_{k,n}^{EV} \le P_{n}^{EV,cap}
+\end{align}
+其中，$P_{n}^{EV,cap}$ 为建筑 $n$ 充电设施的功率容量上限；$P_{i}^{V}$ 为电动汽车 $i$ 的额定充放电功率；$a_{k,i}^{V,c}, a_{k,i}^{V,d} \in \{0, 1\}$ 为二进制决策变量，分别表示 EV $i$ 在时段 $k$ 是否进行充电或放电；$L_{k,i,n} \in \{0, 1\}$ 为状态参数，表示时段 $k$ 电动汽车 $i$ 是否停放在建筑 $n$。
+
+\subsubsection{电动汽车状态与动力学约束}
+电动汽车 $i$ 的荷电状态（SoC，记为 $S_{k,i}$）的时序演化及边界条件为：
+\begin{align}
+S_{k+1,i} &= S_{k,i} + \frac{(a_{k,i}^{V,c} - a_{k,i}^{V,d}) P_{i}^{V} \Delta k}{E_{i}^{V,cap}} - (1 - z_{k,i}^{EV}) \times \frac{f_{k,i}(\Delta k)}{E_{i}^{V,cap}} \\
+\underline{S} &\le S_{k,i} \le 1 \\
+z_{k,i}^{EV} &= \sum_{n=1}^{N} L_{k,i,n} \\
+a_{k,i}^{V,c} + a_{k,i}^{V,d} &\le z_{k,i}^{EV}
+\end{align}
+其中，$E_{i}^{V,cap}$ 为 EV $i$ 的电池总容量；$\underline{S}$ 为维持电池寿命所需的最低荷电状态上限；$f_{k,i}(\Delta k)$ 为时段 $k$ 该车在途行驶时的能量消耗；$z_{k,i}^{EV} \in \{0, 1\}$ 表示电动汽车 $i$ 在时段 $k$ 的停放状态（$1$ 为停放在某种建筑中，$0$ 为在途行驶状态）。约束 (13) 确保车辆只有在停放时才能充放电且不能同时充放电。
+
+\subsubsection{房间温度动力学与 HVAC 容量约束}
+采用阻容（RC）热网络模型来刻画房间 $j$ 的室内温度演化：
+\begin{gather}
+T_{k+1,j}^{R} = T_{k}^{o} - \eta_{j} a_{k,j}^{R} R_{j}^{e} + \left( T_{k,j}^{R} - T_{k}^{o} + \eta_{j} a_{k,j}^{R} R_{j}^{e} \right) e^{-\frac{\Delta k}{R_{j}^{e} C_{j}}} \\
+0 \le a_{k,j}^{R} \le P_{j}^{HVAC,cap}
+\end{gather}
+其中，$T_{k,j}^{R}$ 和 $T_{k}^{o}$ 分别为时段 $k$ 的室内温度和室外空气温度；$\eta_{j}$ 为房间 $j$ 的 HVAC 系统能效比（COP）；$R_{j}^{e}$ 为房间 $j$ 的等效热阻；$C_{j}}$ 为房间 $j$ 的等效热容；$P_{j}^{HVAC,cap}$ 为该房间 HVAC 系统的额定容量上限。
+
+\subsubsection{人体热舒适度与空间耦合约束}
+当房间有人占用时，室内温度必须维持在舒适区间内；无人时则不作硬性限制（通过大 $M$ 法松弛）：
+\begin{gather}
+-M(1 - O_{k,j}) + O_{k,j} T^{-} \le T_{k,j}^{R} \le O_{k,j} T^{+} + M(1 - O_{k,j}) \\
+O_{k,j} = \gamma_{k,i,j} \mathbb{I}(L_{k,i,n} = 1) + \nu_{k,i,j} (1 - \mathbb{I}(L_{k,i,n} = 1))
+\end{gather}
+其中，$T^{-}$ 和 $T^{+}$ 分别为人类热舒适度的温度下限和上限；$M$ 是一个足够大的正数；$O_{k,j}$ 为时段 $k$ 房间 $j$ 的占用状态。约束 (17) 建立了房间占用与车辆停放位置之间的空间行为耦合，其中 $\gamma_{k,i,j}$ 和 $\nu_{k,i,j}$ 是从历史数据中获取的随机二进制参数，分别表示车辆在位和不在位时房间被其对应主人占用的状态；$\mathbb{I}(\cdot)$ 为指示函数。
+
+\subsection{Centralized Coordinated Optimization Problem (集中式协同优化问题 P1)}
+综上所述，原中央控制器的全局协同优化问题 $\mathbf{P1}$ 可统一表述为：
+\begin{align*}
+\mathbf{P1}: \quad &\min_{\mathbf{A}} \quad C \\
+\text{s.t.} \quad &\text{公式 (2) 至 (17)}
+\end{align*}
+其中，全局决策空间向量为：
+$$ \mathbf{A}_k = [P_{k,n}^{p}, P_{k,n}^{s}, a_{k,j}^{R}, a_{k,i}^{V,c}, a_{k,i}^{V,d}], \quad \forall n \in N, \forall j \in J, \forall i \in I $$
+
+
+
+
+\section{Problem Formulation (问题建模2)}
+
+该模型旨在多建筑微网系统内，协同优化各建筑的购售电、电动汽车（EVs）集群的充放电行为，以及由温控器调节的建筑负荷柔性。其目标是在满足未来出行荷电状态（SOE）硬约束以及可再生能源（RES）和车辆迁移 spatio-temporal（时空耦合）不确定性的前提下，最小化系统的整体运行成本 \cite{Liu2025}。
+
+\subsection{Objective Function (目标函数)}
+在统一调度周期 $K$ 及多建筑集合 $M$ 内，集中式协同优化的总运行成本最小化目标函数（问题 $\mathbf{P1}$）定义为：
+\begin{equation}
+\min_{\mathbf{a}} \quad J = \sum_{k=1}^{K}\sum_{m=1}^{M} \left( c_{k}^{buy} \cdot p_{m,k}^{buy} - c_{k}^{sell} \cdot p_{m,k}^{sell} \right) \cdot \tau
+\end{equation}
+其中，$c_{k}^{buy}$ 和 $c_{k}^{sell}$ 分别为时段 $k$ 的购电和售电电价；$p_{m,k}^{buy}$ 和 $p_{m,k}^{sell}$ 分别为建筑 $m$ 在时段 $k$ 从电网购买和向电网出售的电功率；$\tau$ 为单个时间段的时长。
+
+\subsection{System Constraints (系统约束条件)}
+
+\subsubsection{建筑功率平衡与集群 EV 动力学约束}
+每个时间段 $k$ 内，建筑 $m$ 的实时功率平衡方程为：
+\begin{equation}
+p_{m,k}^{buy} - p_{m,k}^{sell} + p_{m,k}^{PV} = p_{m,k}^{b} + p_{m,k}^{ev,c} - p_{m,k}^{ev,d}
+\end{equation}
+其中，$p_{m,k}^{PV}$ 为建筑 $m$ 的屋顶光伏发电功率（随机变量）；$p_{m,k}^{b}$ 为经温控温度调整后的当前建筑总负荷；$p_{m,k}^{ev,c}$ 和 $p_{m,k}^{ev,d}$ 分别为停靠在建筑 $m$ 的所有电动汽车的总充电和总放电功率。
+
+停靠在建筑 $m$ 的所有电动汽车作为一个整体储能系统（ESS），其能量状态（SOE，记为 $E_{m,k}$）的时序演化方程为：
+\begin{equation}
+E_{m,k+1} = E_{m,k} + \left( \eta^{+} \cdot p_{m,k}^{ev,c} - \frac{p_{m,k}^{ev,d}}{\eta^{-}} \right) \cdot \tau - \xi_{m,k}
+\end{equation}
+其中，$\eta^{+}$ 和 $\eta^{-}$ 分别为车辆的充、放电效率系数；$\xi_{m,k}$ 为由于车辆进入或离开建筑 $m$ 引起的总储能量时空演化变化量（随机变量）。
+
+\subsubsection{温控建筑负荷柔性约束}
+通过调节室内温控器设定温度 $T_{m,k}$ 来调整建筑负荷 $p_{m,k}^{b}$。其负荷转移及舒适度约束如下：
+\begin{align}
+\sum_{k=1}^{K} p_{m,k}^{b} &= \sum_{k=1}^{K} p_{m,k}^{b,base} \\
+\underline{T}_{m,k} &\le T_{m,k} \le \overline{T}_{m,k} \\
+\underline{p}_{m,k}^{b} &\le p_{m,k}^{b} \le \overline{p}_{m,k}^{b}
+\end{align}
+其中，等式 (4) 表明温控器属于负荷转移设备，在整个调度周期内总用电量保持不变（即负荷只时移不削减）；$p_{m,k}^{b,base}$ 为基准负荷；$\underline{T}_{m,k}$ 与 $\overline{T}_{m,k}$ 为室内人体热舒适度设定的温度上下限；$\underline{p}_{m,k}^{b}$ 和 $\overline{p}_{m,k}^{b}$ 为建筑用电负荷的物理容量限界。
+同时，可调负荷与温度的关系通过分段线性函数表述：
+\begin{equation}
+p_{m,k}^{b} = p_{m,k}^{b,base} \cdot \left[ 1 + f(T_{m,k}) \right]
+\end{equation}
+
+\subsubsection{电动汽车充放电与未来出行硬约束}
+为确保车辆作为通勤工具的正常使用，集群车池的 SOE 与充放电功率必须满足：
+\begin{align}
+\underline{E}_{m,k} &\le E_{m,k} \le \overline{E}_{m,k} \\
+- \overline{p}_{m,k}^{ev,d} &\le p_{m,k}^{ev,c} - p_{m,k}^{ev,d} \le \overline{p}_{m,k}^{ev,c}
+\end{align}
+其中，$\underline{E}_{m,k}$ 为硬约束限制，表示当前留存车辆在下一次出行时所需的最低 SOE 要求；$\overline{E}_{m,k}$ 为电池物理容量上限。充放电功率上限 $\overline{p}_{m,k}^{ev,c}$ 和 $\overline{p}_{m,k}^{ev,d}$ 受限于当前停靠车辆总数及建筑充电桩（充电桩额定功率 $p_{m}^{pile\_c}, p_{m}^{pile\_d}$）的总容量限界。此外，充电与放电行为状态通过二进制变量限制：
+\begin{align}
+0 \le p_{m,k}^{ev,c} &\le z_{m,k}^{ev,c} \cdot \overline{p}_{m,k}^{ev,c} \\
+0 \le p_{m,k}^{ev,d} &\le z_{m,k}^{ev,d} \cdot \overline{p}_{m,k}^{ev,d} \\
+z_{m,k}^{ev,c} + z_{m,k}^{ev,d} &\le 1
+\end{align}
+其中，$z_{m,k}^{ev,c}, z_{m,k}^{ev,d} \in \{0,1\}$ 确保了同一栋建筑内的集群在同一时段不能同时处于净充电和净放电状态。
+
+\subsubsection{联络线与多建筑网络交互约束}
+整个多建筑微网与主电网之间的双向功率交换受制于输电线路的物理输电容量限制：
+\begin{align}
+\underline{p}^{G} \le \sum_{m=1}^{M} &\left( p_{m,k}^{buy} - p_{m,k}^{sell} \right) \le \overline{p}^{G} \\
+0 \le p_{m,k}^{buy} &\le z_{m,k}^{buy} \cdot P^{cap} \\
+0 \le p_{m,k}^{sell} &\le z_{m,k}^{sell} \cdot P^{cap} \\
+z_{m,k}^{buy} + z_{m,k}^{sell} &\le 1
+\end{align}
+其中，$\underline{p}^{G}$ 和 $\overline{p}^{G}$ 为总主输电网变压器/线路的功率上下限；$P^{cap}$ 为单栋建筑的容量上限；$z_{m,k}^{buy}, z_{m,k}^{sell} \in \{0, 1\}$ 是用来防止单个建筑同时发生购电和售电行为的二进制决策变量。
+
+\subsubsection{不确定性集约束}
+系统中的随机变量（EV迁移带来的电量变化 $\xi_{k}$ 和光伏出力 $p_{k}^{PV}$）被限制在基于历史轨迹边界构建的凸多面体不确定性集（Polyhedral Convex Sets）内：
+\begin{align}
+\xi_{k} = [\xi_{1,k}, \xi_{2,k}, \dots, \xi_{M,k}]^T &\in \Omega_{k} \\
+p_{k}^{PV} = [p_{1,k}^{PV}, p_{2,k}^{PV}, \dots, p_{M,k}^{PV}]^T &\in \Phi_{k}
+\end{align}
+
+\subsection{Centralized Stochastic Problem Formulation (集中式随机优化问题 P1)}
+综上所述，原中央控制器的全局集中式随机协同优化问题 $\mathbf{P1}$ 可表述为：
+\begin{align*}
+\mathbf{P1}: \quad &\min_{\mathbf{a}} \quad J \\
+\text{s.t.} \quad &\text{公式 (2) 至 (18)}
+\end{align*}
+其全局决策变量空间向量为：
+$$ \mathbf{a}_{m} = [p_{m,k}^{buy}, p_{m,k}^{sell}, p_{m,k}^{b}, T_{m,k}, p_{m,k}^{ev,c}, p_{m,k}^{ev,d}, z_{m,k}^{buy}, z_{m,k}^{sell}, z_{m,k}^{ev,c}, z_{m,k}^{ev,d}], \;\; \forall m \in M, \forall k \in K $$
+
+
+
+\section{Problem Formulation (问题建模3)}
+
+该模型旨在对网络化含氢多能微网（Networked HMMs Operation Planning, NHOP）的跨时间尺度协同进行长期优化规划。系统包含可再生能源（RES）、电解槽（ELZ）、燃料电池（FC）、吸收式制冷机（AC），以及包含季节性氢储能（SHS）、短期电池（BS）、短期氢储能（HS）、热水储能（HWS）和冷水储能（CWS）在内的多类型储能设施，在确保微网网络潮流及电、氢、热、冷多能平衡的前提下，最小化总运行成本 \cite{Sun2024}。
+
+\subsection{Objective Function (目标函数)}
+规划周期内的总运行成本 $\Phi_{opex}$ 最小化目标函数定义为各季节运行成本之和 [cite: 95]：
+\begin{equation}
+\min \quad \Phi_{opex} = \sum_{t=1}^{T} \Phi_{opex}^{t}
+\end{equation}
+其中，$T$ 为规划周期内的季节总数 [cite: 95]。每个季节 $t$ 的运行成本 $\Phi_{opex}^{t}$ 由购电成本、电池与氢能设备的折旧成本、可再生能源弃电惩罚以及各类负荷削减（失电/失热/失冷）惩罚组成 [cite: 95]：
+\begin{align}
+\Phi_{opex}^{t} = & \;\sigma \sum_{d \in D^{t}} \sum_{h \in H^{t,d}} \rho_{imp}^{t,d,h} p_{mv}^{t,d,h} \Delta_{h} \nonumber \\
+& + \sigma \sum_{d \in D^{t}} \sum_{h \in H^{t,d}} \left[ \sum_{i \in A} \frac{1}{2}\zeta_{bs} (p_{bs+,i}^{t,d,h} + p_{bs-,i}^{t,d,h}) \Delta_{h} + \sum_{i \in A} \left(\zeta_{elz} p_{elz,i}^{t,d,h} \Delta_{h} + \zeta_{fc} p_{fc,i}^{t,d,h} \Delta_{h} \right) \right] \nonumber \\
+& + \sigma \sum_{d \in D^{t}} \sum_{h \in H^{t,d}} \left[ \sum_{i \in A} \sum_{k \in \Omega_{res}} x_{ec} (\delta_{k,i}^{t,d,h} P_{k,i} - p_{k,i}^{t,d,h}) \Delta_{h} \right] \nonumber \\
+& + \sigma \sum_{d \in D^{t}} \sum_{h \in H^{t,d}} \left[ \sum_{i \in \mathcal{N}} \iota_{ee} (PD_{i}^{t,d,h} - pl_{i}^{t,d,h}) \Delta_{h} \right. \nonumber \\
+& \left. + \sum_{i \in A} \iota_{hs} (HD_{i}^{t,d,h} - hl_{i}^{t,d,h}) \Delta_{h} + \sum_{i \in A} \iota_{cs} (CD_{i}^{t,d,h} - cl_{i}^{t,d,h}) \Delta_{h} \right]
+\end{align}
+其中，$\sigma$ 为典型日到季节的标度因子 [cite: 27]；$\rho_{imp}^{t,d,h}$ 为购电电价 [cite: 95]；$p_{mv}^{t,d,h}$ 为主变电站有功功率 [cite: 25]；$\Delta_{h}$ 为时段时长 [cite: 27]；$\zeta_{bs}, \zeta_{elz}, \zeta_{fc}$ 分别为电池、电解槽和燃料电池的折旧成本系数 [cite: 25, 95]；$x_{ec}$ 为弃电惩罚因子 [cite: 25, 95]；$\delta_{k,i}^{t,d,h}$ 为 RES 资源出力系数 [cite: 27, 96]；$\iota_{ee}, \iota_{hs}, \iota_{cs}$ 分别为电、热、冷负荷削减惩罚系数 [cite: 25, 95]。
+
+\subsection{System Constraints (系统约束条件)}
+
+\subsubsection{可再生能源（RES）出力约束}
+微网内风电、光伏等可再生能源的出力受当地自然资源及逆变器无功容量限制 [cite: 100, 101]：
+\begin{align}
+0 \le p_{k,i}^{t,d,h} & \le \delta_{k,i}^{t,d,h} P_{k,i} \quad \forall k \in \Omega_{res}, \forall i \in A, \forall d, \forall h \\
+p_{k,i}^{t,d,h} \tan \varphi_{k}^{min} & \le q_{k,i}^{t,d,h} \le p_{k,i}^{t,d,h} \tan \varphi_{k}^{max} \quad \forall k \in \Omega_{res}, \forall i \in A, \forall d, \forall h
+\end{align}
+
+\subsubsection{短期储能电池（BS）运行约束}
+短期电池充电、放电功率，荷电状态（SOC）演化及日内周期平衡约束为 [cite: 103, 105, 106, 107]：
+\begin{align}
+0 \le p_{bs+,i}^{t,d,h} & \le P_{bs,i} z_{bs,i}^{t,d,h} \quad \forall i \in A, \forall d, \forall h \\
+0 \le p_{bs-,i}^{t,d,h} & \le P_{bs,i} (1 - z_{bs,i}^{t,d,h}) \quad \forall i \in A, \forall d, \forall h \\
+e_{bs,i}^{t,d,h+1} & = e_{bs,i}^{t,d,h} + (p_{bs+,i}^{t,d,h} \eta_{bs+} - p_{bs-,i}^{t,d,h}/\eta_{bs-}) \Delta_{h} \quad \forall i \in A, \forall d, \forall h \\
+(1 - \beta_{bs}^{max}) C_{bs,i} & \le e_{bs,i}^{t,d,h} \le C_{bs,i} \quad \forall i \in A, \forall d, \forall h \\
+\sum_{h=1}^{H} & (p_{bs+,i}^{t,d,h} \eta_{bs+} - p_{bs-,i}^{t,d,h}/\eta_{bs-}) \Delta_{h} = 0 \quad \forall i \in A, \forall d
+\end{align}
+其中，$z_{bs,i}^{t,d,h}$ 为二进制充电状态变量 [cite: 105]；$\eta_{bs+}, \eta_{bs-}$ 为充放电效率 [cite: 27]；$\beta_{bs}^{max}$ 为最大放电深度 [cite: 27]。
+
+\subsubsection{电解槽（ELZ）电氢转换约束}
+电解槽将电能转化为氢气，其转换方程及容量上限约束为 [cite: 109, 111]：
+\begin{align}
+g_{elz,i}^{t,d,h} & = \chi_{e-g} p_{elz,i}^{t,d,h} \quad \forall i \in A, \forall d, \forall h \\
+0 & \le p_{elz,i}^{t,d,h} \le P_{elz,i} \quad \forall i \in A, \forall d, \forall h
+\end{align}
+其中，$\chi_{e-g}$ 为电解槽制氢能效系数 [cite: 111]。
+
+\subsubsection{燃料电池（FC）与热回收装置（HR）热电联产约束}
+燃料电池消耗氢气生成电能与高阶余热，其有功、无功出力、余热回收及出力上限约束为 [cite: 112, 113, 114, 116]：
+\begin{align}
+p_{fc,i}^{t,d,h} & = \chi_{g-e} g_{fc,i}^{t,d,h} \quad \forall i \in A, \forall d, \forall h \\
+p_{fc,i}^{t,d,h} \tan \varphi_{fc}^{min} & \le q_{fc,i}^{t,d,h} \le p_{fc,i}^{t,d,h} \tan \varphi_{fc}^{max} \quad \forall i \in A, \forall d, \forall h \\
+m_{fc,i}^{t,d,h} & = \chi_{g-h} g_{fc,i}^{t,d,h} \quad \forall i \in A, \forall d, \forall h \\
+0 & \le p_{fc,i}^{t,d,h} \le P_{fc,i} \quad \forall i \in A, \forall d, \forall h
+\end{align}
+其中，$\chi_{g-e}, \chi_{g-h}$ 分别为燃料电池的发电及产热效率系数 [cite: 115]。
+
+\subsubsection{吸收式制冷机（AC）约束}
+吸收式制冷机将高阶余热转化为冷能 [cite: 119]：
+\begin{align}
+n_{ac,i}^{t,d,h} & = \chi_{h-c} m_{ac,i}^{t,d,h} \quad \forall i \in A, \forall d, \forall h \\
+0 & \le n_{ac,i}^{t,d,h} \le P_{ac,i} \quad \forall i \in A, \forall d, \forall h
+\end{align}
+其中，$\chi_{h-c}$ 为制冷系数（COP） [cite: 120]。
+
+\subsubsection{短期（日内）多能储能运行动力学约束}
+包括短期氢储能（HS）、热水储能（HWS）、冷水储能（CWS），其状态方程及边界条件形式相似。以短期氢储能（HS）为例 [cite: 121, 122]：
+\begin{align}
+g_{hs,i}^{t,d,h+1} & = (1 - \psi_{hs}) g_{hs,i}^{t,d,h} + (g_{hs+,i}^{t,d,h} \eta_{hs+} - g_{hs-,i}^{t,d,h}/\eta_{hs-}) \Delta_{h} \quad \forall i \in A, \forall d, \forall h \\
+0 \le g_{hs+,i}^{t,d,h} & \le C_{hs,i} z_{hs,i}^{t,d,h}, \quad 0 \le g_{hs-,i}^{t,d,h} \le C_{hs,i} (1 - z_{hs,i}^{t,d,h}) \quad \forall i \in A, \forall d, \forall h \\
+\sum_{h \in H^{t,d}} & (g_{hs+,i}^{t,d,h} \eta_{hs+} - g_{hs-,i}^{t,d,h}/\eta_{hs-}) = 0 \quad \forall i \in A, \forall d \\
+0 & \le g_{hs,i}^{t,d,h} \le C_{hs,i} \quad \forall i \in A, \forall d, \forall h
+\end{align}
+热水储能（HWS）与冷水储能（CWS）亦需分别满足对应的耗散率 $\psi$、充放效率 $\eta$、互斥状态位 $z$ 及容量 $C$ 的时序演化与日平衡约束 [cite: 121, 122]。
+
+\subsubsection{季节性氢储能（SHS）长周期运行约束}
+季节性氢储能用来平抑跨季可再生能源和多能负荷的长期失衡，其跨典型日、跨季度状态演化机理为 [cite: 117, 118]：
+\begin{align}
+g_{shs,i}^{t,d,h+1} & = (1 - \psi_{shs}) g_{shs,i}^{t,d,h} + (g_{shs+,i}^{t,d,h} \eta_{shs+} - g_{shs-,i}^{t,d,h}/\eta_{shs-}) \Delta_{h} \quad \forall i \in A, \forall d, \forall h \\
+g_{shs,i}^{t,d,1} & = g_{shs,i}^{t,d-1,H+1} \quad \forall i \in A, \forall d \\
+g_{shs,i}^{t,end,H+1} & = g_{shs,i}^{t,1,1} + \Pi (g_{shs,i}^{t,D,H+1} - g_{shs,i}^{t,1,1}) \quad \forall i \in A \\
+g_{shs,i}^{t+1,1,1} & = g_{shs,i}^{t,end,H+1} \quad \forall i \in A \\
+0 & \le g_{shs,i}^{t,d,h}, g_{shs,i}^{t,end,H+1} \le C_{shs,i} \quad \forall i \in A, \forall d, \forall h \\
+0 \le g_{shs+,i}^{t,d,h} & \le z_{shs,i}^{t} C_{shs,i}, \quad 0 \le g_{shs-,i}^{t,d,h} \le (1 - z_{shs,i}^{t}) C_{shs,i} \quad \forall i \in A, \forall d, \forall h
+\end{align}
+其中，等式 (24) 通过跨日边界衔接机制维持多典型日序列的连续性 [cite: 118]；等式 (25) 引入标度系数 $\Pi$ 来计算整个季节结束时的累积残余储能 [cite: 118]；等式 (26) 实现了季节 $t$ 到季节 $t+1$ 的状态跨季无缝耦合 [cite: 118]。
+
+\subsubsection{需求侧负荷削减约束}
+允许进行合理的负荷削减，实际被满足的电、热、冷负荷需满足对应实际需求的限界 [cite: 121, 122]：
+\begin{align}
+0 \le pl_{i}^{t,d,h} & \le PD_{i}^{t,d,h} \quad \forall i \in \mathcal{N}, \forall d, \forall h \\
+0 \le hl_{i}^{t,d,h} & \le HD_{i}^{t,d,h} \quad \forall i \in A, \forall d, \forall h \\
+0 \le cl_{i}^{t,d,h} & \le CD_{i}^{t,d,h} \quad \forall i \in A, \forall d, \forall h
+\end{align}
+
+\subsubsection{系统级网域能流平衡与配网耦合约束}
+对于每个 HMM 单元，必须满足其局部的有功/无功平衡、以及电/氢/热/冷四重系统级能量强耦合方程 [cite: 123, 125]：
+\begin{align}
+\text{【有功平衡】} & \sum_{k \in \Omega_{res}} p_{k,i}^{t,d,h} + (p_{bs-,i}^{t,d,h} - p_{bs+,i}^{t,d,h}) + p_{fc,i}^{t,d,h} + p_{lv,i}^{t,d,h} = p_{elz,i}^{t,d,h} + pl_{i}^{t,d,h} \\
+\text{【无功平衡】} & \sum_{k \in \Omega_{res}} q_{k,i}^{t,d,h} + q_{fc,i}^{t,d,h} + q_{lv,i}^{t,d,h} = ql_{i}^{t,d,h} \\
+\text{【氢能平衡】} & g_{elz,i}^{t,d,h} + (g_{hs-,i}^{t,d,h} - g_{hs+,i}^{t,d,h}) + (g_{shs-,i}^{t,d,h} - g_{shs+,i}^{t,d,h}) = g_{fc,i}^{t,d,h} \\
+\text{【热能平衡】} & m_{fc,i}^{t,d,h} + (m_{hws-,i}^{t,d,h} - m_{hws+,i}^{t,d,h}) = m_{ac,i}^{t,d,h} + hl_{i}^{t,d,h} \\
+\text{【冷能平衡】} & n_{ac,i}^{t,d,h} + (n_{cws-,i}^{t,d,h} - n_{cws+,i}^{t,d,h}) = cl_{i}^{t,d,h}
+\end{align
+各微网接入配电网节点，配网网络潮流（如 DistFlow 线性分支潮流模型）需约束各节点电压 magnitudes 范围、支路容量、以及低压/中压变压器容量限制 [cite: 25, 124]：
+\begin{align}
+0 & \le p_{lv,i}^{t,d,h^2} + q_{lv,i}^{t,d,h^2} \le S_{lv,i}^{max^2} \quad \forall i \in A \\
+U_{j}^{min^2} & \le v_{i}^{t,d,h} \le U_{j}^{max^2} \quad \forall i \in \mathcal{N}
+\end{align}
+
+\subsection{Multistage Stochastic Programming (多阶段随机规划模型 P1)}
+原确定性 NHOP 模型通过建立由季节节点和日内叶子节点组成的场景树（Scenario Tree），扩展为对冲跨季长期不确定性与日内细粒度波动的多阶段随机混合整数线性规划（MS-MILP）问题 $\mathbf{P1}$ [cite: 5, 67, 518]：
+\begin{align*}
+\mathbf{P1}: \quad &\min_{\mathbf{X}, \mathbf{Y}} \quad \mathbb{E} \left[ \sum_{t=1}^{T} \Phi_{opex}^{t}(\mathbf{X}_t, \mathbf{Y}_{t,d,h}) \right] \\
+\text{s.t.} \quad &\text{公式 (3) 至 (39)}
+\end{align*}
+其中，$\mathbf{X}_t$ 为跨季决策状态变量（如 $z_{shs}^{t}$ 以及跨季储能状态） [cite: 117]；$\mathbf{Y}_{t,d,h}$ 为日内紧耦合的亚时段控制决策空间向量 [cite: 25]。
+
+
+
+
+
+\end{document}

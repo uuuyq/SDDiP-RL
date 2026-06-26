@@ -689,4 +689,4 @@ if __name__ == "__main__":
     # main_norm()
     from bundle_norm_RL.script.logger import get_logger
     log = get_logger("../logs/level_bundle_norm.log")
-    load_config_and_solve(log, B_t=1)
+    load_config_and_solve(log)

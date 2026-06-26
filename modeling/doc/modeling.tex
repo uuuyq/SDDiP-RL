@@ -1,0 +1,218 @@
+%! Author = HK
+%! Date = 2026/6/26
+
+% Preamble
+% 将 article 修改为 ctexart 即可完美支持中文，建议使用 XeLaTeX 编译器编译
+\documentclass[11pt]{ctexart}
+
+% Packages
+\usepackage{amsmath}
+\usepackage{siunitx} % 修复 \unit{h} 找不到命令的问题
+\usepackage{enumitem} % 修复 itemsep 和 topsep 找不到属性的问题
+
+% Document
+\begin{document}
+
+
+\section{数学模型系统构建框架}
+
+\subsection{集合与参数索引 (Sets and Indices)}
+定义调度周期、时间步长及各设备/负荷的基本索引：
+\begin{align*}
+    t & \in \mathcal{T} = \{1, 2, \dots, T\} \quad (\text{优化周期时间步}) \\
+    \Delta t & \quad (\text{单位时间步长，如 1 \unit{h}})
+\end{align*}
+
+\subsection{目标函数 (Objective Function)}
+系统在整个调度周期 $T$ 内的总运行成本最小化目标函数定义为：
+\begin{equation}
+\min \quad C = \sum_{t=1}^{T} \left( C_{t}^{\text{grid}} + C_{t}^{\text{curt}} + C_{t}^{\text{shed}} + C_{t}^{\text{H2}} \right) \Delta t
+\end{equation}
+
+各项成本分量定义如下：
+
+\textbf{(a) 电网交互成本}（含 TOU 电价下的购电成本与售电收入）：
+\begin{equation}
+C_{t}^{\text{grid}} = c_{t}^{\text{buy}} P_{t}^{\text{grid,buy}} - c_{t}^{\text{sell}} P_{t}^{\text{grid,sell}}
+\end{equation}
+其中，$c_{t}^{\text{buy}}$ 和 $c_{t}^{\text{sell}}$ 分别为时段 $t$ 的购电和售电电价；$P_{t}^{\text{grid,buy}}$ 和 $P_{t}^{\text{grid,sell}}$ 分别为从电网购买和向电网出售的电功率。
+
+\textbf{(b) 可再生能源弃电惩罚}：
+\begin{equation}
+C_{t}^{\text{curt}} = \lambda^{\text{curt}} \left[ (\delta_{t}^{\text{WT}} P^{\text{WT,cap}} - P_{t}^{\text{WT}}) + (\delta_{t}^{\text{PV}} P^{\text{PV,cap}} - P_{t}^{\text{PV}}) \right]
+\end{equation}
+其中，$\lambda^{\text{curt}}$ 为弃电惩罚因子；$\delta_{t}^{\text{WT}}, \delta_{t}^{\text{PV}}$ 为风电和光伏的出力系数（标幺值）；$P^{\text{WT,cap}}, P^{\text{PV,cap}}$ 为风电和光伏的装机容量。
+
+\textbf{(c) 负荷削减惩罚}：
+\begin{equation}
+C_{t}^{\text{shed}} = \iota^{\text{elec}} (P_{t}^{\text{elec\_load}} - p_{t}^{\text{elec}}) + \iota^{\text{heat}} (Q_{t}^{\text{heat\_load}} - q_{t}^{\text{heat}}) + \iota^{\text{cool}} (Q_{t}^{\text{cool\_load}} - q_{t}^{\text{cool}})
+\end{equation}
+其中，$\iota^{\text{elec}}, \iota^{\text{heat}}, \iota^{\text{cool}}$ 分别为电、热、冷负荷削减惩罚系数；$P_{t}^{\text{elec\_load}}, Q_{t}^{\text{heat\_load}}, Q_{t}^{\text{cool\_load}}$ 为原始负荷需求；$p_{t}^{\text{elec}}, q_{t}^{\text{heat}}, q_{t}^{\text{cool}}$ 为实际被满足的负荷。
+
+\textbf{(d) 外部氢市场购氢成本}：
+\begin{equation}
+C_{t}^{\text{H2}} = c^{\text{H2}} M_{t}^{\text{market}}
+\end{equation}
+其中，$c^{\text{H2}}$ 为外部氢市场购氢单价；$M_{t}^{\text{market}}$ 为从市场购入的氢气质量流量。
+
+\subsection{系统约束条件 (System Constraints)}
+
+\subsubsection{电能子系统 (Electrical Power Module)}
+
+\textbf{电能母线功率平衡：}
+\begin{equation}
+P_{t}^{\text{WT}} + P_{t}^{\text{PV}} + P_{t}^{\text{grid,buy}} - P_{t}^{\text{grid,sell}} + P_{t}^{\text{fc,e}} + P_{t}^{\text{ess,dis}} = p_{t}^{\text{elec}} + P_{t}^{\text{ez}} + P_{t}^{\text{ess,ch}}
+\end{equation}
+其中，$P_{t}^{\text{WT}}, P_{t}^{\text{PV}}$ 为风电和光伏的实际消纳功率；$P_{t}^{\text{fc,e}}$ 为燃料电池发电功率；$P_{t}^{\text{ess,ch}}, P_{t}^{\text{ess,dis}}$ 为电池充放电功率；$P_{t}^{\text{ez}}$ 为电解槽耗电功率；$p_{t}^{\text{elec}}$ 为实际被满足的电负荷（含建筑电需求与电动汽车充电需求）。
+
+\textbf{可再生能源出力约束：}
+\begin{align}
+0 \le P_{t}^{\text{WT}} & \le \delta_{t}^{\text{WT}} P^{\text{WT,cap}} \\
+0 \le P_{t}^{\text{PV}} & \le \delta_{t}^{\text{PV}} P^{\text{PV,cap}}
+\end{align}
+
+\textbf{电网双向交互与容量约束：}
+\begin{align}
+0 \le P_{t}^{\text{grid,buy}} & \le z_{t}^{\text{buy}} P^{\text{grid,cap}} \\
+0 \le P_{t}^{\text{grid,sell}} & \le z_{t}^{\text{sell}} P^{\text{grid,cap}} \\
+z_{t}^{\text{buy}} + z_{t}^{\text{sell}} & \le 1
+\end{align}
+其中，$P^{\text{grid,cap}}$ 为变压器/联络线容量上限；$z_{t}^{\text{buy}}, z_{t}^{\text{sell}} \in \{0, 1\}$ 为二进制变量，防止同一时段同时购电和售电。
+
+\textbf{电池储能（BS）运行约束：}
+\begin{align}
+0 \le P_{t}^{\text{ess,ch}} & \le P^{\text{ess,cap}} z_{t}^{\text{ess}} \\
+0 \le P_{t}^{\text{ess,dis}} & \le P^{\text{ess,cap}} (1 - z_{t}^{\text{ess}}) \\
+E_{t}^{\text{ess}} & = E_{t-1}^{\text{ess}} + \left( P_{t}^{\text{ess,ch}} \eta^{\text{ess,ch}} - \frac{P_{t}^{\text{ess,dis}}}{\eta^{\text{ess,dis}}} \right) \Delta t \\
+(1 - \beta^{\text{ess}}) E^{\text{ess,cap}} & \le E_{t}^{\text{ess}} \le E^{\text{ess,cap}}
+\end{align}
+其中，$z_{t}^{\text{ess}} \in \{0, 1\}$ 为电池充电状态位（$1$ 为充电，$0$ 为放电），确保充放电不能同时进行；$P^{\text{ess,cap}}$ 为电池额定功率；$E^{\text{ess,cap}}$ 为电池额定容量；$\eta^{\text{ess,ch}}, \eta^{\text{ess,dis}}$ 为充放电效率；$\beta^{\text{ess}}$ 为最大放电深度。
+
+\subsubsection{氢能子系统 (Hydrogen Module)}
+
+\textbf{氢能母线平衡：}
+\begin{equation}
+M_{t}^{\text{ez}} + M_{t}^{\text{market}} + M_{t}^{\text{hs,dis}} = M_{t}^{\text{fc}} + M_{t}^{\text{h2\_load}} + M_{t}^{\text{hs,ch}}
+\end{equation}
+其中，$M_{t}^{\text{ez}}$ 为电解槽产氢速率；$M_{t}^{\text{market}}$ 为外部市场购氢速率；$M_{t}^{\text{hs,ch}}, M_{t}^{\text{hs,dis}}$ 为储氢罐充放速率；$M_{t}^{\text{fc}}$ 为燃料电池耗氢速率；$M_{t}^{\text{h2\_load}}$ 为加氢站车辆加氢需求。
+
+\textbf{电解槽（ELZ）电氢转换约束：}
+\begin{align}
+M_{t}^{\text{ez}} & = \chi^{\text{elz}} P_{t}^{\text{ez}} \\
+0 & \le P_{t}^{\text{ez}} \le P^{\text{elz,cap}}
+\end{align}
+其中，$\chi^{\text{elz}}$ 为电解槽制氢能效系数（kg/kWh）；$P^{\text{elz,cap}}$ 为电解槽额定功率。
+
+\textbf{外部氢市场供氢约束：}
+\begin{equation}
+0 \le M_{t}^{\text{market}} \le M^{\text{market,cap}}
+\end{equation}
+其中，$M^{\text{market,cap}}$ 为外部市场供氢的物理/合同容量上限。
+
+\textbf{储氢装置（HS）运行约束：}
+\begin{align}
+0 \le M_{t}^{\text{hs,ch}} & \le M^{\text{hs,cap}} z_{t}^{\text{hs}} \\
+0 \le M_{t}^{\text{hs,dis}} & \le M^{\text{hs,cap}} (1 - z_{t}^{\text{hs}}) \\
+S_{t}^{\text{hs}} & = (1 - \psi^{\text{hs}}) S_{t-1}^{\text{hs}} + \left( M_{t}^{\text{hs,ch}} \eta^{\text{hs,ch}} - \frac{M_{t}^{\text{hs,dis}}}{\eta^{\text{hs,dis}}} \right) \Delta t \\
+0 & \le S_{t}^{\text{hs}} \le S^{\text{hs,cap}}
+\end{align}
+其中，$z_{t}^{\text{hs}} \in \{0, 1\}$ 为储氢充放状态位；$M^{\text{hs,cap}}$ 为储氢最大充放速率；$S^{\text{hs,cap}}$ 为储氢罐容量；$\psi^{\text{hs}}$ 为氢气泄漏/耗散率；$\eta^{\text{hs,ch}}, \eta^{\text{hs,dis}}$ 为充放效率。
+
+\subsubsection{热能子系统 (Thermal Module)}
+
+\textbf{热能母线平衡：}
+\begin{equation}
+Q_{t}^{\text{fc,rec}} + Q_{t}^{\text{hws,dis}} = q_{t}^{\text{heat}} + Q_{t}^{\text{ac,in}} + Q_{t}^{\text{hws,ch}}
+\end{equation}
+其中，$Q_{t}^{\text{fc,rec}}$ 为燃料电池热回收功率；$Q_{t}^{\text{hws,ch}}, Q_{t}^{\text{hws,dis}}$ 为热水储能的充放热功率；$Q_{t}^{\text{ac,in}}$ 为吸收式制冷机消耗的热功率。
+
+\textbf{燃料电池（FC）热电联产约束：}
+\begin{align}
+P_{t}^{\text{fc,e}} & = \chi^{\text{fc,e}} M_{t}^{\text{fc}} \\
+Q_{t}^{\text{fc,th}} & = \chi^{\text{fc,th}} M_{t}^{\text{fc}} \\
+0 & \le P_{t}^{\text{fc,e}} \le P^{\text{fc,cap}}
+\end{align}
+其中，$\chi^{\text{fc,e}}$ 为燃料电池氢-电转换效率系数（kWh/kg）；$\chi^{\text{fc,th}}$ 为氢-热转换效率系数（kWh/kg）；$P^{\text{fc,cap}}$ 为燃料电池额定功率。
+
+\textbf{热回收约束：}
+\begin{equation}
+Q_{t}^{\text{fc,rec}} = \eta^{\text{rec}} Q_{t}^{\text{fc,th}}
+\end{equation}
+其中，$\eta^{\text{rec}}$ 为热回收效率。
+
+\textbf{热水储能（HWS）运行约束：}
+\begin{align}
+0 \le Q_{t}^{\text{hws,ch}} & \le Q^{\text{hws,cap}} z_{t}^{\text{hws}} \\
+0 \le Q_{t}^{\text{hws,dis}} & \le Q^{\text{hws,cap}} (1 - z_{t}^{\text{hws}}) \\
+H_{t}^{\text{hws}} & = (1 - \psi^{\text{hws}}) H_{t-1}^{\text{hws}} + \left( Q_{t}^{\text{hws,ch}} \eta^{\text{hws,ch}} - \frac{Q_{t}^{\text{hws,dis}}}{\eta^{\text{hws,dis}}} \right) \Delta t \\
+0 & \le H_{t}^{\text{hws}} \le H^{\text{hws,cap}}
+\end{align}
+其中，$z_{t}^{\text{hws}} \in \{0, 1\}$ 为热水储能充放状态位；$\psi^{\text{hws}}$ 为热损耗率；$H^{\text{hws,cap}}$ 为热水储能容量。
+
+\subsubsection{冷能子系统 (Cooling Module)}
+
+\textbf{冷能母线平衡：}
+\begin{equation}
+Q_{t}^{\text{ac,out}} + Q_{t}^{\text{cws,dis}} = q_{t}^{\text{cool}} + Q_{t}^{\text{cws,ch}}
+\end{equation}
+其中，$Q_{t}^{\text{ac,out}}$ 为吸收式制冷机输出冷功率；$Q_{t}^{\text{cws,ch}}, Q_{t}^{\text{cws,dis}}$ 为冷水储能的充放冷功率。
+
+\textbf{吸收式制冷机（AC）约束：}
+\begin{align}
+Q_{t}^{\text{ac,out}} & = COP^{\text{ac}} \cdot Q_{t}^{\text{ac,in}} \\
+0 & \le Q_{t}^{\text{ac,out}} \le Q^{\text{ac,cap}}
+\end{align}
+其中，$COP^{\text{ac}}$ 为吸收式制冷机制冷系数；$Q^{\text{ac,cap}}$ 为制冷机额定容量。
+
+\textbf{冷水储能（CWS）运行约束：}
+\begin{align}
+0 \le Q_{t}^{\text{cws,ch}} & \le Q^{\text{cws,cap}} z_{t}^{\text{cws}} \\
+0 \le Q_{t}^{\text{cws,dis}} & \le Q^{\text{cws,cap}} (1 - z_{t}^{\text{cws}}) \\
+C_{t}^{\text{cws}} & = (1 - \psi^{\text{cws}}) C_{t-1}^{\text{cws}} + \left( Q_{t}^{\text{cws,ch}} \eta^{\text{cws,ch}} - \frac{Q_{t}^{\text{cws,dis}}}{\eta^{\text{cws,dis}}} \right) \Delta t \\
+0 & \le C_{t}^{\text{cws}} \le C^{\text{cws,cap}}
+\end{align}
+其中，$z_{t}^{\text{cws}} \in \{0, 1\}$ 为冷水储能充放状态位；$\psi^{\text{cws}}$ 为冷损耗率；$C^{\text{cws,cap}}$ 为冷水储能容量。
+
+\subsubsection{负荷削减约束 (Load Curtailment)}
+
+\textbf{电负荷削减：}
+\begin{equation}
+0 \le p_{t}^{\text{elec}} \le P_{t}^{\text{elec\_load}}
+\end{equation}
+
+\textbf{热负荷削减：}
+\begin{equation}
+0 \le q_{t}^{\text{heat}} \le Q_{t}^{\text{heat\_load}}
+\end{equation}
+
+\textbf{冷负荷削减：}
+\begin{equation}
+0 \le q_{t}^{\text{cool}} \le Q_{t}^{\text{cool\_load}}
+\end{equation}
+
+\section{集中式优化问题 (Centralized Optimization Problem)}
+
+综上所述，多能微网系统的全局协同优化问题 $\mathbf{P}$ 可统一表述为：
+
+\begin{align*}
+\mathbf{P}: \quad &\min_{\mathbf{X}} \quad C \\
+\text{s.t.} \quad &\text{公式 (6) 至 (38)}
+\end{align*}
+
+其中，全局决策变量空间向量为：
+\begin{align*}
+\mathbf{X}_t = [ &P_{t}^{\text{grid,buy}}, P_{t}^{\text{grid,sell}}, z_{t}^{\text{buy}}, z_{t}^{\text{sell}}, \\
+                &P_{t}^{\text{WT}}, P_{t}^{\text{PV}}, \\
+                &P_{t}^{\text{ess,ch}}, P_{t}^{\text{ess,dis}}, z_{t}^{\text{ess}}, E_{t}^{\text{ess}}, \\
+                &P_{t}^{\text{ez}}, M_{t}^{\text{ez}}, M_{t}^{\text{market}}, \\
+                &M_{t}^{\text{hs,ch}}, M_{t}^{\text{hs,dis}}, z_{t}^{\text{hs}}, S_{t}^{\text{hs}}, \\
+                &P_{t}^{\text{fc,e}}, M_{t}^{\text{fc}}, Q_{t}^{\text{fc,th}}, Q_{t}^{\text{fc,rec}}, \\
+                &Q_{t}^{\text{hws,ch}}, Q_{t}^{\text{hws,dis}}, z_{t}^{\text{hws}}, H_{t}^{\text{hws}}, \\
+                &Q_{t}^{\text{ac,in}}, Q_{t}^{\text{ac,out}}, \\
+                &Q_{t}^{\text{cws,ch}}, Q_{t}^{\text{cws,dis}}, z_{t}^{\text{cws}}, C_{t}^{\text{cws}}, \\
+                &p_{t}^{\text{elec}}, q_{t}^{\text{heat}}, q_{t}^{\text{cool}} ], \quad \forall t \in \mathcal{T}
+\end{align*}
+
+该模型为混合整数线性规划（MILP），可通过商业求解器（如 Gurobi、CPLEX）或 SDDiP 等分解算法进行求解。
+
+\end{document}
