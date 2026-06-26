@@ -105,25 +105,9 @@ class OuterModel:
             )
         self.model.update()
 
-    def add_constrains_with_offset(self, coefficient: list, offset: float = 0.0):
+    def add_linf_norm_bound_constrains(self, B_t: float, weights: list = None):
         """
-        添加带常数偏移的切平面约束:
-            L <= coefficient[:-1]^T · π + π0 · coefficient[-1] + offset
-
-        正则化场景下 offset = σ · ||z_X_values - X_trial||
-
-        Args:
-            coefficient: 次梯度向量 [pi部分..., pi0部分]
-            offset: 常数偏移量
-        """
-        self.model.addConstr(
-            self.L <= gp.LinExpr(coefficient[:-1], self.pi) + self.pi0 * coefficient[-1] + offset
-        )
-        self.model.update()
-
-    def add_l1_norm_bound_constrains(self, B_t: float, weights: list = None):
-        """
-        L1 范数边界约束 (限制 π 的 L∞ 范数):
+        L∞ 范数边界约束 :
             |π_j| ≤ B_t · w_j · π_0, ∀j
 
         等价于: ||π||_∞ ≤ B_t · ||w||_∞ · π_0
@@ -147,9 +131,9 @@ class OuterModel:
             self.norm_bound_constrs.append(constr)
         self.model.update()
 
-    def add_linf_norm_bound_constrains(self, B_t: float, weights: list = None):
+    def add_l1_norm_bound_constrains(self, B_t: float, weights: list = None):
         """
-        L∞ 范数边界约束 (限制 π 的加权 L1 范数):
+        L1范数边界约束 :
             Σ_j w_j · |π_j| ≤ B_t · π_0
 
         等价于: ||π||_{w,1} ≤ B_t · π_0

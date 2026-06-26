@@ -8,11 +8,8 @@ Level Bundle 算法求解脚本
     3. Level 策略: 在 outer_model 中设定 level 下界，最小化与当前中心的距离
     4. 重复直到 LB 和 UB 的 gap 足够小
 
-正则化扩展 (通过参数控制是否开启):
-    1. 正则化策略: 在 inner objective 中添加 σ · ||z_X - X_trial|| 项
-       - L1 范数正则化: σ · Σ_j |z_X_j - X_trial_j|
-       - L∞ 范数正则化: σ · max_j |z_X_j - X_trial_j|
-    2. 范数边界约束: 在 outer model 中添加 |π_j| ≤ B_t · w_j · π_0 或 Σ w_j |π_j| ≤ B_t · π_0
+对偶边界约束扩展 (通过参数控制是否开启):
+    范数边界约束: 在 outer model 中添加 |π_j| ≤ B_t · w_j · π_0 或 Σ w_j |π_j| ≤ B_t · π_0
        - L1 范数边界: 限制 π 的 L∞ 范数
        - L∞ 范数边界: 限制 π 的加权 L1 范数
 
@@ -24,9 +21,7 @@ Level Bundle 算法求解脚本
     LB: 下界 (inner_obj - pi_hat * X_trial - pi0_hat * theta_trial 的最大值)
     UB: 上界 (outer_model 的目标函数值)
     level_factor: level 策略的参数，控制 level = UB - level_factor * (UB - LB)
-    sigma_t: 正则化系数 σ_t (sigma_t > 0 时启用正则化，= 0 时退化为基础算法)
     B_t: 对偶边界值 (B_t 非 None 时启用范数边界约束)
-    norm_type: 正则化范数类型 ("l1" 或 "linf")
     norm_bound_type: 范数边界约束类型 ("l1" 或 "linf")
     weights: 权重系数列表 (非二元化方式下默认全为 1)
 """
@@ -75,25 +70,18 @@ class InnerProblem:
     """
     Inner Problem: 给定乘子 (pi_hat, pi0_hat)，求解 Lagrangian 松弛子问题
 
-    基础模式:
         min_{x,z} pi_hat^T * z_X + pi0_hat * obj_term
-
-    正则化模式 (sigma > 0):
-        min_{x,z} pi_hat^T * z_X + pi0_hat * obj_term + sigma * ||z_X - X_trial||
 
     其中 z_X = (z_x, z_y, z_x_bs, z_soc) 为 copy 变量
     """
 
-    def __init__(self, logger, config, n, i_override=None,
-                 sigma=0.0, norm_type="l1"):
+    def __init__(self, logger, config, n, i_override=None):
         """
         Args:
             logger: 日志器
             config: LevelBundleConfig 对象
             n: realization 索引
             i_override: 可选，覆盖 config 中的 iteration
-            sigma: 正则化系数 σ_t，> 0 时启用正则化，= 0 时退化为基础算法
-            norm_type: 正则化范数类型 ("l1" 或 "linf")，仅 sigma > 0 时生效
         """
         self.logger = logger
         self.config = config
@@ -102,9 +90,6 @@ class InnerProblem:
         self.t = config.T
         self.n = n
         self.i = i_override if i_override is not None else config.iteration
-        # 正则化参数
-        self.sigma = sigma
-        self.norm_type = norm_type
         self.X_trial = config.X_trial
         # 构建 inner model
         self.uc_bw, self.model = self.init_model()
@@ -235,23 +220,12 @@ class InnerProblem:
         """
         给定乘子 (pi_hat, pi0_hat)，设置 inner objective 并求解
 
-        基础模式 (sigma=0) 返回:
+        返回:
             z_X_values, obj_term_value, inner_obj
-        正则化模式 (sigma>0) 返回:
-            z_X_values, obj_term_value, inner_obj, reg_offset
-
-        其中 reg_offset = σ · ||z_X_values - X_trial||，用于在 outer model 中添加带偏移的 cut:
-            L ≤ z_X^T · π + obj_term · π0 + σ · ||z_X_values - X_trial||
         """
-        if self.sigma > 0:
-            z_X, obj_term = self.uc_bw.add_inner_objective_with_regularization(
-                self.problem_params.cost_coeffs, pi_hat, pi0_hat,
-                sigma=self.sigma, X_trial=self.X_trial, norm_type=self.norm_type
-            )
-        else:
-            z_X, obj_term = self.uc_bw.add_inner_objective(
-                self.problem_params.cost_coeffs, pi_hat, pi0_hat
-            )
+        z_X, obj_term = self.uc_bw.add_inner_objective(
+            self.problem_params.cost_coeffs, pi_hat, pi0_hat
+        )
 
         self.model.optimize()
 
@@ -264,39 +238,13 @@ class InnerProblem:
             self.logger.warning(
                 f"Inner model status: {self.model.status}, not optimal"
             )
-            if self.sigma > 0:
-                return None, None, None, None
-            else:
-                return None, None, None
+            return None, None, None
 
         z_X_values = [z_X[i].x for i in range(len(z_X))]
         obj_term_value = obj_term.getValue()
         inner_obj = self.model.getObjective().getValue()
 
-        if self.sigma > 0:
-            reg_offset = self._compute_reg_offset(z_X_values)
-            return z_X_values, obj_term_value, inner_obj, reg_offset
-        else:
-            return z_X_values, obj_term_value, inner_obj
-
-    def _compute_reg_offset(self, z_X_values):
-        """
-        计算正则化项的值 σ · ||z_X_values - X_trial||
-
-        用于在 outer model 中添加带偏移的 cut:
-            L ≤ z_X^T · π + obj_term · π0 + σ · ||z_X_values - X_trial||
-        """
-        if self.sigma <= 0:
-            return 0.0
-
-        diff = np.array(z_X_values) - np.array(self.X_trial)
-
-        if self.norm_type == "l1":
-            return self.sigma * np.sum(np.abs(diff))
-        elif self.norm_type == "linf":
-            return self.sigma * np.max(np.abs(diff))
-        else:
-            raise ValueError(f"Unknown norm_type: {self.norm_type}")
+        return z_X_values, obj_term_value, inner_obj
 
 
 class OuterProblem:
@@ -305,7 +253,7 @@ class OuterProblem:
 
     最大化: L - pi^T * X_trial - pi0 * theta_trial
     约束:
-        L <= pi^T * subgradient_pi + pi0 * subgradient_pi0 [+ reg_offset]  (切平面)
+        L <= pi^T * subgradient_pi + pi0 * subgradient_pi0  (切平面)
         ||pi||_1 + pi0 <= 1  (归一化约束)
         |π_j| ≤ B_t · w_j · π_0  (L1 范数边界约束, 限制 L∞, B_t 非 None 时启用)
         或 Σ w_j |π_j| ≤ B_t · π_0  (L∞ 范数边界约束, 限制加权 L1, B_t 非 None 时启用)
@@ -355,19 +303,15 @@ class OuterProblem:
                 f"Unknown norm_bound_type: {self.norm_bound_type}, expected 'l1' or 'linf'"
             )
 
-    def add_cut(self, subgradient, reg_offset=0.0):
+    def add_cut(self, subgradient):
         """
         添加切平面约束
-        L <= pi^T * subgradient_pi + pi0 * subgradient_pi0 + reg_offset
+        L <= pi^T * subgradient_pi + pi0 * subgradient_pi0
 
         Args:
             subgradient: pi 部分的次梯度 + pi0 部分的次梯度
-            reg_offset: 正则化项的值 (σ · ||z_X_values - X_trial||)，> 0 时使用带偏移的切平面
         """
-        if reg_offset > 0:
-            self.outer_model.add_constrains_with_offset(subgradient, reg_offset)
-        else:
-            self.outer_model.add_constrains(subgradient)
+        self.outer_model.add_constrains(subgradient)
 
     def solve(self):
         """
@@ -405,8 +349,8 @@ class LevelBundleSolver:
     Level Bundle 算法求解器
 
     算法流程:
-        1. 初始化 pi_hat = 0, pi0_hat = 小正数
-        2. 求解 inner_model 得到次梯度 (sigma > 0 时带正则化)，添加到 outer_model
+        1. 初始化 pi_hat = 0, pi0_hat = 1
+        2. 求解 inner_model 得到次梯度，添加到 outer_model
         3. 求解 outer_model 得到 UB
         4. 计算 LB = inner_obj - pi_hat^T * X_trial - pi0_hat * theta_trial
         5. 判断收敛: UB - LB < gap_tol * UB
@@ -414,16 +358,13 @@ class LevelBundleSolver:
         7. 在 outer_model 中设定 level 下界，最小化与当前中心的距离
         8. 求解得到新的 (pi_hat, pi0_hat)，回到步骤 2
 
-    正则化参数 (通过构造器传入，均使用默认值时退化为基础算法):
-        sigma_t: 正则化系数，> 0 时在 inner objective 中添加 σ · ||z_X - X_trial||
+    对偶边界参数 (通过构造器传入，均使用默认值时退化为基础算法):
         B_t: 对偶边界值，非 None 时在 outer model 中添加范数边界约束
-        norm_type: 正则化范数类型 ("l1" 或 "linf")
         norm_bound_type: 范数边界约束类型 ("l1" 或 "linf")
         weights: 范数边界约束的权重系数列表
     """
 
     def __init__(self, logger, config, n, i_override=None,
-                 sigma=0.0, norm_type="l1",
                  B_t=None, norm_bound_type="l1", weights=None):
         """
         Args:
@@ -431,8 +372,6 @@ class LevelBundleSolver:
             config: LevelBundleConfig 对象
             n: realization 索引
             i_override: 可选，覆盖 config 中的 iteration
-            sigma: 正则化系数 σ_t (默认 0.0，即基础算法)
-            norm_type: 正则化范数类型 "l1" 或 "linf" (默认 "l1")
             B_t: 对偶边界值 (默认 None，即不添加范数边界约束)
             norm_bound_type: 范数边界约束类型 "l1" 或 "linf" (默认 "l1")
             weights: 权重系数列表 (默认 None，即全为 1)
@@ -441,12 +380,10 @@ class LevelBundleSolver:
         self.config = config
         self.n = n
         self.i = i_override if i_override is not None else config.iteration
-        self.sigma = sigma
 
-        # 初始化 inner problem (sigma > 0 时启用正则化)
+        # 初始化 inner problem
         self.inner_problem = InnerProblem(
             logger, config, n, i_override,
-            sigma=sigma, norm_type=norm_type,
         )
 
         # 初始化 outer problem (B_t 非 None 时启用范数边界约束)
@@ -474,11 +411,10 @@ class LevelBundleSolver:
         config = self.config
         X_trial = config.X_trial
         theta_trial = config.THETA_TRIAL
-        use_regularization = self.sigma > 0
 
         # 初始化乘子
         pi_hat = np.zeros(len(X_trial))
-        pi0_hat = 0.001 if not use_regularization else 0.1
+        pi0_hat = 1
 
         # 最优乘子
         pi_star = None
@@ -492,15 +428,9 @@ class LevelBundleSolver:
             # ============================
             # Step 1: 求解 inner model
             # ============================
-            if use_regularization:
-                z_X_values, obj_term_value, inner_obj, reg_offset = self.inner_problem.solve(
-                    pi_hat, pi0_hat
-                )
-            else:
-                z_X_values, obj_term_value, inner_obj = self.inner_problem.solve(
-                    pi_hat, pi0_hat
-                )
-                reg_offset = 0.0
+            z_X_values, obj_term_value, inner_obj = self.inner_problem.solve(
+                pi_hat, pi0_hat
+            )
 
             if z_X_values is None:
                 self.logger.warning(f"Iter {iter_idx}: Inner model failed, stopping")
@@ -513,7 +443,7 @@ class LevelBundleSolver:
             # ============================
             # Step 2: 添加切平面到 outer model
             # ============================
-            self.outer_problem.add_cut(subgradient, reg_offset=reg_offset)
+            self.outer_problem.add_cut(subgradient)
 
             # ============================
             # Step 3: 求解 outer model (最大化模式)
@@ -604,17 +534,10 @@ class LevelBundleSolver:
             self.outer_problem.recover()
 
             # 日志输出
-            if use_regularization:
-                self.logger.info(
-                    f"Iter {iter_idx}: LB={LB:.6f}, UB={UB:.6f}, "
-                    f"gap={UB - LB:.6e}, pi0_hat={pi0_hat:.6f}, "
-                    f"reg_offset={reg_offset:.6f}"
-                )
-            else:
-                self.logger.info(
-                    f"Iter {iter_idx}: LB={LB:.6f}, UB={UB:.6f}, "
-                    f"gap={UB - LB:.6e}, pi0_hat={pi0_hat:.6f}"
-                )
+            self.logger.info(
+                f"Iter {iter_idx}: LB={LB:.6f}, UB={UB:.6f}, "
+                f"gap={UB - LB:.6e}, pi0_hat={pi0_hat:.6f}"
+            )
 
             # 时间限制检查
             if time() - start_time >= config.time_limit:
@@ -628,100 +551,92 @@ class LevelBundleSolver:
         return results
 
 
-def main():
-    from bundle_norm_RL.script.config import get_default_level_bundle_config
-    from bundle_norm_RL.script.logger import get_logger
-
-    log = get_logger("./level_bundle_main.log")
-
-    config = get_default_level_bundle_config()
-    solver = LevelBundleSolver(log, config, n=0)
-
-    results = solver.solve()
-
-    log.info(f"Results: {results.toString()}")
-
-    # 如果收敛且 pi0_star 有效，计算最终的 Lagrangian cut
-    # (pi0_star 为 None 表示 gap 收敛但无法生成有效 cut)
-    if results.converged and results.pi0_star is not None and results.pi0_star > 1e-6:
-        pi_star = results.pi_star
-        pi0_star = results.pi0_star
-
-        # 重新求解 inner model 获取最终 cut
-        inner = InnerProblem(log, config, n=0)
-        inner.model.setParam("OutputFlag", 0)
-        z_X, obj_term = inner.uc_bw.add_inner_objective(
-            config.PROBLEM_PARAMS.cost_coeffs, pi_star, pi0_star
-        )
-        inner.model.optimize()
-
-        intercept = inner.model.getObjective().getValue()
-        pi = -pi_star / pi0_star
-        intercept = intercept / pi0_star
-
-        log.info(f"Lagrangian cut gradient (pi): {pi}")
-        log.info(f"Lagrangian cut intercept: {intercept}")
-
-
-def main_norm():
-    """
-    带正则化的 Level Bundle 主函数示例
-
-    正则化参数通过 LevelBundleSolver 的构造器传入:
-        sigma: 正则化系数 σ_t (默认 0.0，即基础算法)
-        norm_type: 正则化范数类型 "l1" 或 "linf" (默认 "l1")
-        B_t: 对偶边界值 (默认 None，即不添加范数边界约束)
-        norm_bound_type: 范数边界约束类型 "l1" 或 "linf" (默认 "l1")
-        weights: 权重系数列表 (默认 None，即全为 1)
-    """
-    from bundle_norm_RL.script.config import get_default_level_bundle_config
-    from bundle_norm_RL.script.logger import get_logger
-
-    log = get_logger("./level_bundle_norm_main.log")
-
-    config = get_default_level_bundle_config()
-    solver = LevelBundleSolver(
-        log, config, n=0,
-        sigma=1.0,          # 正则化系数
-        norm_type="l1",     # 正则化范数类型
-        B_t=1.0,            # 对偶边界值 (默认等于 sigma)
-        norm_bound_type="l1",  # 范数边界约束类型
-    )
-
-    results = solver.solve()
-
-    log.info(f"Results: {results.toString()}")
-
-    # 如果收敛且 pi0_star 有效，计算最终的 Lagrangian cut
-    # (pi0_star 为 None 表示 gap 收敛但无法生成有效 cut)
-    # 注意: 最终 Lagrangian cut 必须使用无正则化的 inner objective，
-    # 否则截距会包含正则化偏移项，导致 cut 不正确
-    if results.converged and results.pi0_star is not None and results.pi0_star > 1e-6:
-        pi_star = results.pi_star
-        pi0_star = results.pi0_star
-
-        # 重新求解 inner model 获取最终 cut (sigma=0)
-        inner = InnerProblem(log, config, n=0, sigma=0.0)
-        inner.model.setParam("OutputFlag", 0)
-        z_X, obj_term = inner.uc_bw.add_inner_objective(
-            config.PROBLEM_PARAMS.cost_coeffs, pi_star, pi0_star
-        )
-        inner.model.optimize()
-
-        intercept = inner.model.getObjective().getValue()
-        pi = -pi_star / pi0_star
-        intercept = intercept / pi0_star
-
-        log.info(f"Lagrangian cut gradient (pi): {pi}")
-        log.info(f"Lagrangian cut intercept: {intercept}")
+# def main():
+#     from bundle_norm_RL.script.config import get_default_level_bundle_config
+#     from bundle_norm_RL.script.logger import get_logger
+#
+#     log = get_logger("./level_bundle_main.log")
+#
+#     config = get_default_level_bundle_config()
+#     solver = LevelBundleSolver(log, config, n=0)
+#
+#     results = solver.solve()
+#
+#     log.info(f"Results: {results.toString()}")
+#
+#     # 如果收敛且 pi0_star 有效，计算最终的 Lagrangian cut
+#     # (pi0_star 为 None 表示 gap 收敛但无法生成有效 cut)
+#     if results.converged and results.pi0_star is not None and results.pi0_star > 1e-6:
+#         pi_star = results.pi_star
+#         pi0_star = results.pi0_star
+#
+#         # 重新求解 inner model 获取最终 cut
+#         inner = InnerProblem(log, config, n=0)
+#         inner.model.setParam("OutputFlag", 0)
+#         z_X, obj_term = inner.uc_bw.add_inner_objective(
+#             config.PROBLEM_PARAMS.cost_coeffs, pi_star, pi0_star
+#         )
+#         inner.model.optimize()
+#
+#         intercept = inner.model.getObjective().getValue()
+#         pi = -pi_star / pi0_star
+#         intercept = intercept / pi0_star
+#
+#         log.info(f"Lagrangian cut gradient (pi): {pi}")
+#         log.info(f"Lagrangian cut intercept: {intercept}")
+#
+#
+# def main_norm():
+#     """
+#     带对偶边界约束的 Level Bundle 主函数示例
+#
+#     对偶边界参数通过 LevelBundleSolver 的构造器传入:
+#         B_t: 对偶边界值 (默认 None，即不添加范数边界约束)
+#         norm_bound_type: 范数边界约束类型 "l1" 或 "linf" (默认 "l1")
+#         weights: 权重系数列表 (默认 None，即全为 1)
+#     """
+#     from bundle_norm_RL.script.config import get_default_level_bundle_config
+#     from bundle_norm_RL.script.logger import get_logger
+#
+#     log = get_logger("./level_bundle_norm_main.log")
+#
+#     config = get_default_level_bundle_config()
+#     solver = LevelBundleSolver(
+#         log, config, n=0,
+#         B_t=1.0,            # 对偶边界值
+#         norm_bound_type="l1",  # 范数边界约束类型
+#     )
+#
+#     results = solver.solve()
+#
+#     log.info(f"Results: {results.toString()}")
+#
+#     # 如果收敛且 pi0_star 有效，计算最终的 Lagrangian cut
+#     # (pi0_star 为 None 表示 gap 收敛但无法生成有效 cut)
+#     if results.converged and results.pi0_star is not None and results.pi0_star > 1e-6:
+#         pi_star = results.pi_star
+#         pi0_star = results.pi0_star
+#
+#         # 重新求解 inner model 获取最终 cut
+#         inner = InnerProblem(log, config, n=0)
+#         inner.model.setParam("OutputFlag", 0)
+#         z_X, obj_term = inner.uc_bw.add_inner_objective(
+#             config.PROBLEM_PARAMS.cost_coeffs, pi_star, pi0_star
+#         )
+#         inner.model.optimize()
+#
+#         intercept = inner.model.getObjective().getValue()
+#         pi = -pi_star / pi0_star
+#         intercept = intercept / pi0_star
+#
+#         log.info(f"Lagrangian cut gradient (pi): {pi}")
+#         log.info(f"Lagrangian cut intercept: {intercept}")
 
 
 def load_config_and_solve(
     log=None,
     configs_dir: str = r"D:\tools\workspace_pycharm\SDDiP-RL\bundle_norm_RL\configs",
-    # 正则化参数 (均使用默认值时退化为基础算法)
-    sigma: float = 0.0,
-    norm_type: str = "l1",
+    # 对偶边界参数 (均使用默认值时退化为基础算法)
     B_t: float = None,
     norm_bound_type: str = "l1",
     weights: list = None,
@@ -732,9 +647,7 @@ def load_config_and_solve(
     Args:
         log: 日志器
         configs_dir: config pkl 文件所在目录
-        sigma: 正则化系数 (默认 0.0，即基础算法)
-        norm_type: 正则化范数类型 ("l1" 或 "linf")
-        B_t: 对偶边界值 (None 则默认等于 sigma，sigma=0 时不添加范数边界约束)
+        B_t: 对偶边界值 (None 则不添加范数边界约束)
         norm_bound_type: 范数边界约束类型 ("l1" 或 "linf")
         weights: 权重系数列表
 
@@ -743,14 +656,12 @@ def load_config_and_solve(
     """
     from bundle_norm_RL.script.config import LevelBundleConfig
 
-    if B_t is None and sigma > 0:
-        B_t = sigma
-
-    count = 0
-    all = 0
-    for i in range(2, 4):
-        for t in range(2, 12):
-            for n in range(0, 1):
+    ratio_list = []
+    for i in range(1, 11):
+        count = 0
+        all = 0
+        for t in range(1, 24):
+            for n in range(0, 6):
 
                 pkl_path = f"{configs_dir}/config_{i}_{t}_{n}.pkl"
                 config = LevelBundleConfig.from_pkl(pkl_path)
@@ -760,7 +671,6 @@ def load_config_and_solve(
 
                 solver = LevelBundleSolver(
                     log, config, n=n,
-                    sigma=sigma, norm_type=norm_type,
                     B_t=B_t, norm_bound_type=norm_bound_type,
                     weights=weights,
                 )
@@ -770,7 +680,8 @@ def load_config_and_solve(
                 if results.converged:
                     count += 1
                 all += 1
-    print(f"ratio: {count}/{all}")
+        ratio_list.append(count / all)
+    print(f"ratio: {[f'{r:.5f}' for r in ratio_list]}")
 
 
 if __name__ == "__main__":
@@ -778,4 +689,4 @@ if __name__ == "__main__":
     # main_norm()
     from bundle_norm_RL.script.logger import get_logger
     log = get_logger("../logs/level_bundle_norm.log")
-    load_config_and_solve(log)
+    load_config_and_solve(log, B_t=1)
