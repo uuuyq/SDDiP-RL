@@ -47,8 +47,12 @@ class SolverResults:
         self.ub = None
         self.n_iterations = None
         self.solver_time = None
+        self.lb_history = []
+        self.ub_history = []
+        self.time_history = []
 
-    def set_values(self, pi_star, pi0_star, converged, lb, ub, n_iterations, solver_time):
+    def set_values(self, pi_star, pi0_star, converged, lb, ub, n_iterations, solver_time,
+                   lb_history=None, ub_history=None, time_history=None):
         self.pi_star = pi_star
         self.pi0_star = pi0_star
         self.converged = converged
@@ -56,6 +60,9 @@ class SolverResults:
         self.ub = ub
         self.n_iterations = n_iterations
         self.solver_time = solver_time
+        self.lb_history = lb_history or []
+        self.ub_history = ub_history or []
+        self.time_history = time_history or []
 
     def toString(self):
         pi0_str = f"{self.pi0_star:.6f}" if self.pi0_star is not None else "None"
@@ -423,8 +430,13 @@ class LevelBundleSolver:
         LB = float('-inf')
         UB = float('inf')
         subgradient_list = []
+        lb_history = []
+        ub_history = []
+        time_history = []
 
         for iter_idx in range(config.iteration_limit):
+            iter_start = time()
+
             # ============================
             # Step 1: 求解 inner model
             # ============================
@@ -465,6 +477,11 @@ class LevelBundleSolver:
 
             UB = outer_obj
 
+            # 记录历史
+            lb_history.append(LB)
+            ub_history.append(UB)
+            time_history.append(time() - iter_start)
+
             # ============================
             # Step 5: 判断收敛
             # ============================
@@ -476,7 +493,8 @@ class LevelBundleSolver:
                 if pi0_star > 1e-6 and LB / pi0_star >= config.pi0_tol * (abs(theta_trial) + 1):
                     elapsed = time() - start_time
                     results = SolverResults()
-                    results.set_values(pi_star, pi0_star, True, LB, UB, iter_idx + 1, elapsed)
+                    results.set_values(pi_star, pi0_star, True, LB, UB, iter_idx + 1, elapsed,
+                                       lb_history, ub_history, time_history)
                     return results
                 else:
                     # gap 已收敛但 pi0_star 过小或 LB/pi0_star 过小，
@@ -546,7 +564,8 @@ class LevelBundleSolver:
 
         elapsed = time() - start_time
         results = SolverResults()
-        results.set_values(pi_star, pi0_star, False, LB, UB, iter_idx + 1, elapsed)
+        results.set_values(pi_star, pi0_star, False, LB, UB, iter_idx + 1, elapsed,
+                           lb_history, ub_history, time_history)
 
         return results
 

@@ -33,97 +33,15 @@ from bundle_norm_RL.script.logger import get_logger
 
 def level_bundle_baseline(logger, config, n=0):
     """
-    运行 Level Bundle baseline，使用 LevelBundleSolver 并记录迭代历史
+    运行 Level Bundle baseline，返回最终结果和迭代历史
 
     Returns:
-        lb_history, time_history, ub_history, f_best_history
+        final_lb, final_ub, solve_time, lb_history, ub_history, time_history
     """
-    from bundle_norm_RL.script.level_bundle_problem import InnerProblem, OuterProblem
-
-    inner = InnerProblem(logger, config, n)
-    outer = OuterProblem(
-        logger,
-        dim_pi=config.N_VARS,
-        X_trial=config.X_trial,
-        theta_trial=float(config.THETA_TRIAL),
-    )
-
-    X_trial = np.array(config.X_trial, dtype=np.float32)
-    theta_trial = float(config.THETA_TRIAL)
-
-    pi_hat = np.zeros(len(X_trial))
-    pi0_hat = 1
-
-    LB = float('-inf')
-    UB = float('inf')
-
-    lb_history = []
-    time_history = []
-    ub_history = []
-
-    start_time = time.time()
-
-    for iter_idx in range(config.iteration_limit):
-        t0 = time.time()
-
-        # 每次求解 inner 前重新创建 model，避免 add_inner_objective 累积变量
-        inner = InnerProblem(logger, config, n)
-        z_X_values, obj_term_value, inner_obj = inner.solve(pi_hat, pi0_hat)
-        if z_X_values is None:
-            break
-
-        subgradient = z_X_values + [obj_term_value]
-        outer.add_cut(subgradient)
-
-        pi_dummy, pi0_dummy, outer_obj = outer.solve()
-        if outer_obj is None:
-            break
-
-        gap = inner_obj - sum(pi_hat[i] * X_trial[i] for i in range(len(X_trial))) - pi0_hat * theta_trial
-        if gap > LB:
-            LB = gap
-
-        UB = outer_obj
-
-        elapsed = time.time() - t0
-        lb_history.append(LB)
-        time_history.append(elapsed)
-        ub_history.append(UB)
-
-        logger.info(f"Baseline iter {iter_idx}: LB={LB:.6f}, UB={UB:.6f}, gap={UB-LB:.6e}")
-
-        if UB - LB < config.gap_tol * abs(UB) or UB - LB < 1e-6:
-            break
-
-        level = UB - config.level_factor * (UB - LB)
-        outer.set_level(level, pi_hat, pi0_hat)
-        outer.outer_model.model.params.Method = 2
-        outer.outer_model.model.update()
-        outer.outer_model.model.optimize()
-
-        if outer.outer_model.model.status != 2:
-            outer.outer_model.model.params.Method = 1
-            outer.outer_model.model.update()
-            outer.outer_model.model.optimize()
-            if outer.outer_model.model.status != 2:
-                outer.outer_model.model.params.Method = 0
-                outer.outer_model.model.update()
-                outer.outer_model.model.optimize()
-                if outer.outer_model.model.status != 2:
-                    outer.recover()
-                    pi_hat = np.array(pi_dummy)
-                    pi0_hat = pi0_dummy
-                    continue
-
-        pi_hat = np.array([outer.outer_model.pi[i].x for i in range(config.N_VARS)])
-        pi0_hat = outer.outer_model.pi0.x
-        outer.recover()
-
-        if time.time() - start_time >= config.time_limit:
-            break
-
-    f_best_history = list(lb_history)  # f_best = LB
-    return lb_history, time_history, ub_history, f_best_history
+    solver = LevelBundleSolver(logger, config, n=n)
+    results = solver.solve()
+    return (results.lb, results.ub, results.solver_time,
+            results.lb_history, results.ub_history, results.time_history)
 
 
 def level_bundle_rl(env, model, logger, deterministic=True, K=20):
@@ -382,31 +300,30 @@ def level_bundle_rl_warmstart(env, model, logger, deterministic=True, K=20,
 # 结果分析
 # ============================================================
 
-def compute_optimality_gap(lb_history, ub_history):
+def compute_opt_gap(lb_history, ub_history):
     """
-    计算优化 gap: (UB - LB) / |UB|
+    计算归一化优化 gap: (UB - LB) / (UB_0 - LB_0)
 
-    这是 Level Bundle 方法本身的标准 gap 度量。
-    gap → 0 表示收敛。
+    用初始 gap 归一化，使所有 config 的 gap 从 1.0 开始收敛到 0。
+    适用于 LB/UB 为正或负的情况，且不同尺度的 config 可以公平平均。
 
     Args:
         lb_history: 每步的最优 LB
         ub_history: 每步的 UB
 
     Returns:
-        gap_history: 每步的优化 gap
+        gap_history: 每步的归一化优化 gap
     """
-    gap_history = []
-    for lb, ub in zip(lb_history, ub_history):
-        if abs(ub) < 1e-12:
-            gap_history.append(0.0)
-        else:
-            gap_history.append((ub - lb) / abs(ub))
-    return gap_history
+    if len(lb_history) == 0 or len(ub_history) == 0:
+        return []
+    initial_gap = ub_history[0] - lb_history[0]
+    if abs(initial_gap) < 1e-12:
+        return [0.0] * len(lb_history)
+    return [(ub - lb) / initial_gap for lb, ub in zip(lb_history, ub_history)]
 
 
 def compute_average_results(all_results):
-    """对所有 config 的结果求均值"""
+    """对所有 config 的 baseline/RL/RL Warmstart 的 gap 求均值"""
     max_steps = 0
     for result in all_results:
         for method in ["baseline", "rl", "rl_warmstart"]:
@@ -453,9 +370,9 @@ def compute_average_results(all_results):
 
 def plot_results(avg_results, save_dir, experiment_name=None):
     """绘制收敛对比图"""
-    all_gaps = (avg_results["baseline"]["gap"] +
-                avg_results["rl"]["gap"] +
-                avg_results["rl_warmstart"]["gap"])
+    all_gaps = (avg_results["baseline"]["gap"]
+                + avg_results["rl"]["gap"]
+                + avg_results["rl_warmstart"]["gap"])
     if all_gaps:
         y_min = min(0, min(all_gaps))
         y_max = max(all_gaps) * 1.1
@@ -471,7 +388,7 @@ def plot_results(avg_results, save_dir, experiment_name=None):
     plt.plot(avg_results["rl_warmstart"]["gap"], marker='^', color='#4CAF50',
              label='RL Warmstart', linewidth=2)
     plt.xlabel('Iteration Step')
-    plt.ylabel('Optimality Gap (UB-LB)/|UB|')
+    plt.ylabel('Optimization Gap: (UB - LB) / |UB|')
     plt.title(f'Convergence vs Iteration ({experiment_name or ""})')
     plt.grid(True, alpha=0.5)
     plt.legend()
@@ -493,7 +410,7 @@ def plot_results(avg_results, save_dir, experiment_name=None):
     plt.plot(rl_warmstart_cum_time, avg_results["rl_warmstart"]["gap"], marker='^',
              color='#4CAF50', label='RL Warmstart', linewidth=2)
     plt.xlabel('Cumulative Time (s)')
-    plt.ylabel('Optimality Gap (UB-LB)/|UB|')
+    plt.ylabel('Optimization Gap: (UB - LB) / |UB|')
     plt.title(f'Convergence vs Time ({experiment_name or ""})')
     plt.grid(True, alpha=0.5)
     plt.legend()
@@ -573,30 +490,6 @@ def load_latest_model(train_experiment_name, logger,
     return model
 
 
-# ============================================================
-# Config 收集
-# ============================================================
-
-def collect_configs(i=1, t=5):
-    """收集指定 i, t 的所有 config"""
-    configs = []
-    config_info = []
-
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    base_dir = os.path.dirname(current_dir)  # bundle_norm_RL
-    config_dir = Path(os.path.join(base_dir, "configs"))
-
-    for n in range(6):
-        config_path = config_dir / f"config_{i}_{t}_{n}.pkl"
-        if config_path.exists():
-            config = LevelBundleConfig.from_pkl(config_path)
-            configs.append(config)
-            config_info.append({"i": i, "t": t, "n": n})
-            print(f"Loaded config_{i}_{t}_{n}.pkl")
-        else:
-            print(f"Config file not found: {config_path}")
-
-    return configs, config_info
 
 
 # ============================================================
@@ -612,24 +505,25 @@ def save_results_to_json(all_results, save_dir):
         data = {
             "config_info": result["config_info"],
             "baseline": {
-                "lb_history": [float(x) for x in result["baseline"].get("lb_history", [])],
+                "final_lb": float(result["baseline"].get("final_lb", 0)),
+                "final_ub": float(result["baseline"].get("final_ub", 0)),
+                "total_time": float(result["baseline"].get("total_time", 0)),
                 "time_history": [float(x) for x in result["baseline"].get("time", [])],
-                "ub_history": [float(x) for x in result["baseline"].get("ub", [])],
                 "gap": [float(x) for x in result["baseline"].get("gap", [])],
             },
             "rl": {
                 "lb_history": [float(x) for x in result["rl"].get("lb_history", [])],
+                "ub_history": [float(x) for x in result["rl"].get("ub_history", [])],
                 "reward_history": [float(x) for x in result["rl"].get("reward_history", [])],
                 "time_history": [float(x) for x in result["rl"].get("time", [])],
-                "ub_history": [float(x) for x in result["rl"].get("ub", [])],
                 "gap": [float(x) for x in result["rl"].get("gap", [])],
                 "switch_step": result["rl"].get("switch_step"),
             },
             "rl_warmstart": {
                 "lb_history": [float(x) for x in result["rl_warmstart"].get("lb_history", [])],
+                "ub_history": [float(x) for x in result["rl_warmstart"].get("ub_history", [])],
                 "reward_history": [float(x) for x in result["rl_warmstart"].get("reward_history", [])],
                 "time_history": [float(x) for x in result["rl_warmstart"].get("time", [])],
-                "ub_history": [float(x) for x in result["rl_warmstart"].get("ub", [])],
                 "gap": [float(x) for x in result["rl_warmstart"].get("gap", [])],
                 "switch_step": result["rl_warmstart"].get("switch_step"),
             },
@@ -637,7 +531,7 @@ def save_results_to_json(all_results, save_dir):
         }
         save_data.append(data)
 
-    with open(results_file, 'a', encoding='utf-8') as f:
+    with open(results_file, 'w', encoding='utf-8') as f:
         for data in save_data:
             json.dump(data, f)
             f.write('\n')
@@ -651,7 +545,7 @@ def save_results_to_json(all_results, save_dir):
 
 def run_test_for_configs(configs, config_info_list, experiment_name, logger, model,
                          K=20, warmstart_threshold=1e-4, patience=3):
-    """对一组 config 运行测试，计算优化 gap"""
+    """对一组 config 运行测试"""
     all_results = []
 
     for idx, (config, config_info) in enumerate(zip(configs, config_info_list)):
@@ -660,52 +554,55 @@ def run_test_for_configs(configs, config_info_list, experiment_name, logger, mod
 
         # 1. Baseline
         logger.info("Running Baseline...")
-        baseline_lb, baseline_time, baseline_ub, _ = level_bundle_baseline(
+        baseline_lb, baseline_ub, baseline_time, baseline_lb_hist, baseline_ub_hist, baseline_time_hist = level_bundle_baseline(
             logger, config, n=config_info['n']
         )
-        baseline_gap = compute_optimality_gap(baseline_lb, baseline_ub)
+        logger.info(f"Baseline: LB={baseline_lb:.6f}, UB={baseline_ub:.6f}, time={baseline_time:.4f}s")
+        baseline_gap = compute_opt_gap(baseline_lb_hist, baseline_ub_hist)
 
         # 2. RL
         logger.info("Running RL...")
-        rl_env = LevelBundleEnv.create_env(logger, config, K=K, verbose=True, use_outer=False)
+        rl_env = LevelBundleEnv.create_env(logger, config, K=K, verbose=True, use_outer=True)
         rl_lb, rl_reward, rl_time, rl_ub, _ = level_bundle_rl(
             rl_env, model, logger, deterministic=True, K=K
         )
-        rl_gap = compute_optimality_gap(rl_lb, rl_ub)
+        rl_gap = compute_opt_gap(rl_lb, rl_ub)
         rl_env.close()
 
         # 3. RL Warmstart
         logger.info("Running RL Warmstart...")
-        ws_env = LevelBundleEnv.create_env(logger, config, K=K, verbose=True, use_outer=False)
+        ws_env = LevelBundleEnv.create_env(logger, config, K=K, verbose=True, use_outer=True)
         ws_lb, ws_reward, ws_time, ws_ub, _, ws_switch_step = level_bundle_rl_warmstart(
             ws_env, model, logger, deterministic=True, K=K,
             warmstart_threshold=warmstart_threshold, patience=patience,
         )
-        ws_gap = compute_optimality_gap(ws_lb, ws_ub)
+        ws_gap = compute_opt_gap(ws_lb, ws_ub)
         ws_env.close()
 
         # 4. 保存结果
         result = {
             "config_info": config_info,
             "baseline": {
-                "lb_history": baseline_lb,
-                "time": baseline_time,
-                "ub": baseline_ub,
+                "final_lb": baseline_lb,
+                "final_ub": baseline_ub,
+                "total_time": baseline_time,
+                "time": baseline_time_hist,
+                "ub_history": baseline_ub_hist,
                 "gap": baseline_gap,
             },
             "rl": {
                 "lb_history": rl_lb,
+                "ub_history": rl_ub,
                 "reward_history": rl_reward,
                 "time": rl_time,
-                "ub": rl_ub,
                 "gap": rl_gap,
                 "switch_step": None,
             },
             "rl_warmstart": {
                 "lb_history": ws_lb,
+                "ub_history": ws_ub,
                 "reward_history": ws_reward,
                 "time": ws_time,
-                "ub": ws_ub,
                 "gap": ws_gap,
                 "switch_step": ws_switch_step,
             },
@@ -760,8 +657,8 @@ def main(experiment_name, train_experiment_name=None, i=1, t=5, K=20,
     )
 
     # 收集 configs
-    logger.info(f"Collecting configs for i={i}, t={t}...")
-    configs, config_info_list = collect_configs(i=i, t=t)
+    logger.info(f"Collecting configs ...")
+    configs, config_info_list = collect_configs()
     logger.info(f"Loaded {len(configs)} configs")
 
     if not configs:
@@ -790,12 +687,38 @@ def main(experiment_name, train_experiment_name=None, i=1, t=5, K=20,
     logger.info("All tests completed!")
 
 
+
+# ============================================================
+# Config 收集
+# ============================================================
+
+def collect_configs():
+    """收集指定 i, t 的所有 config"""
+    configs = []
+    config_info = []
+
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = os.path.dirname(current_dir)  # bundle_norm_RL
+    config_dir = Path(os.path.join(base_dir, "configs"))
+    # for i in range(1, 10):
+    i = 1
+    for t in range(1, 24):
+        for n in range(6):
+            config_path = config_dir / f"config_{i}_{t}_{n}.pkl"
+            if config_path.exists():
+                config = LevelBundleConfig.from_pkl(config_path)
+                configs.append(config)
+                config_info.append({"i": i, "t": t, "n": n})
+                print(f"Loaded config_{i}_{t}_{n}.pkl")
+            else:
+                print(f"Config file not found: {config_path}")
+
+    return configs, config_info
+
 if __name__ == "__main__":
     experiment_name = "exp_12"
     main(
         experiment_name=experiment_name,
         train_experiment_name=experiment_name,
-        i=1,
-        t=5,
         K=20,
     )
