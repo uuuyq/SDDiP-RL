@@ -1,0 +1,59 @@
+%! Author = HK
+%! Date = 2026/6/30
+
+% Preamble
+% 将 article 修改为 ctexart 即可完美支持中文，建议使用 XeLaTeX 编译器编译
+\documentclass[11pt]{ctexart}
+
+% Packages
+\usepackage{amsmath}
+\usepackage{siunitx} % 修复 \unit{h} 找不到命令的问题
+\usepackage{enumitem} % 修复 itemsep 和 topsep 找不到属性的问题
+
+% Document
+\begin{document}
+
+\section*{文献中电动汽车与不确定性建模总结}
+
+\subsection{1. 电动汽车 (EV) 时空与能量建模}
+文献通过微观与宏观结合的方式对电动汽车进行建模。在微观层面，单辆车的身处位置 $D_{n,k}^{ev}$ 遵循马尔可夫链演化。当其开始新行程时，行程距离 $d_{n,k}^{ev}$ 满足截断幂指数分布，其消耗的 SOE 需求量表示为：
+\begin{equation}
+E_{n,k}^{ev,need} = \mu_{0} \cdot d_{n,k}^{ev}
+\end{equation}
+
+在宏观聚合层面，停靠于建筑 $m$ 的 EV 充当整体分布式储能系统（ESS），其时段 $k$ 的荷电状态（SOE）动力学演化方程为：
+\begin{equation}
+E_{m,k+1} = E_{m,k} + \left( \eta^+ p_{m,k}^{ev,c} - \frac{1}{\eta^-} p_{m,k}^{ev,d} \right) \tau - \xi_{m,k}
+\end{equation}
+其中，$\xi_{m,k}$ 为时段 $k$ 内由于车辆驶离建筑 $m$ 而带走的随机能量损失，是系统核心的随机构成。
+
+同时，各建筑的 EV 数量演化满足空间守恒：
+\begin{equation}
+N_{m,k} = N_{m,k-1} + N_{m,k}^{I} - N_{m,k}^{O}
+\end{equation}
+
+\subsection{2. 基于多面体凸集的不确定性分布建模}
+为了摆脱对精确概率分布信息的依赖，文献利用多面体凸集（Polyhedral Convex Set）刻画光伏出力 $p_{k}^{PV}$ 与车辆带走能量 $\xi_{k}$ 组成的联合不确定性向量 $\bm{\varphi}_{k} = [p_{k}^{PV}, \xi_{k}]$。考虑多建筑时空流动的强耦合特性，该集合定义为：
+\begin{equation}
+\bm{\varphi}_{k} \in \Omega_k \times \Phi_k
+\end{equation}
+其具体的时空交叉约束边界可表示为：
+\begin{equation}
+\underline{\xi}_{m,k} \le \xi_{m,k} \le \overline{\xi}_{m,k}
+\end{equation}
+\begin{equation}
+\sum_{m=1}^{M} \varphi_{m,k} \in [\underline{Q}_k, \overline{Q}_k]
+\end{equation}
+其中 $[\underline{Q}_k, \overline{Q}_k]$ 为全微网系统的时空能量流转守恒容量上下界。
+
+\subsection{3. 顶点不确定性向全场景可行性 (ASF) 的转化}
+基于多面体几何定理，任何实际发生的不确定性实现值 $\bm{\varphi}_{k}$，均可以被精确地表示为该凸集有限顶点 $\bm{\varphi}_{k}^{s}$ 的凸组合：
+\begin{equation}
+\bm{\varphi}_{k} = \sum_{s \in SVS} \beta_k^s \cdot \bm{\varphi}_{k}^{s}, \quad \text{其中 } \beta_k^s \ge 0, \; \sum_{s \in SVS} \beta_k^s = 1
+\end{equation}
+文献据此构建了特定的选择性顶点场景（Selected Vertex Scenarios, SVS），通过在这些有限的极值演化路径顶点上施加新推导的非预见性约束（NCs），从而在根本上保障了系统在任意未知连续分布的现实情景下均具备全场景可行性（ASF）。
+
+
+
+
+\end{document}

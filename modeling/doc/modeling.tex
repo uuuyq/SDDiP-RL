@@ -45,9 +45,9 @@ C_{t}^{\text{curt}} = \lambda^{\text{curt}} \left[ (\delta_{t}^{\text{WT}} P^{\t
 
 \textbf{(c) 负荷削减惩罚}：
 \begin{equation}
-C_{t}^{\text{shed}} = \iota^{\text{elec}} (P_{t}^{\text{elec\_load}} - p_{t}^{\text{elec}}) + \iota^{\text{heat}} (Q_{t}^{\text{heat\_load}} - q_{t}^{\text{heat}}) + \iota^{\text{cool}} (Q_{t}^{\text{cool\_load}} - q_{t}^{\text{cool}})
+C_{t}^{\text{shed}} = \iota^{\text{elec}} (P_{t}^{\text{elec\_load}} - p_{t}^{\text{elec}}) + \iota^{\text{heat}} (Q_{t}^{\text{heat\_load}} - q_{t}^{\text{heat}}) + \iota^{\text{cool}} (Q_{t}^{\text{cool\_load}} - q_{t}^{\text{cool}}) + \iota^{\text{h2}} (M_{t}^{\text{h2\_load}} - m_{t}^{\text{h2}})
 \end{equation}
-其中，$\iota^{\text{elec}}, \iota^{\text{heat}}, \iota^{\text{cool}}$ 分别为电、热、冷负荷削减惩罚系数；$P_{t}^{\text{elec\_load}}, Q_{t}^{\text{heat\_load}}, Q_{t}^{\text{cool\_load}}$ 为原始负荷需求；$p_{t}^{\text{elec}}, q_{t}^{\text{heat}}, q_{t}^{\text{cool}}$ 为实际被满足的负荷。
+其中，$\iota^{\text{elec}}, \iota^{\text{heat}}, \iota^{\text{cool}}, \iota^{\text{h2}}$ 分别为电、热、冷、氢负荷削减惩罚系数；$P_{t}^{\text{elec\_load}}, Q_{t}^{\text{heat\_load}}, Q_{t}^{\text{cool\_load}}, M_{t}^{\text{h2\_load}}$ 为原始负荷需求；$p_{t}^{\text{elec}}, q_{t}^{\text{heat}}, q_{t}^{\text{cool}}, m_{t}^{\text{h2}}$ 为实际被满足的负荷。
 
 \textbf{(d) 外部氢市场购氢成本}：
 \begin{equation}
@@ -61,9 +61,9 @@ C_{t}^{\text{H2}} = c^{\text{H2}} M_{t}^{\text{market}}
 
 \textbf{电能母线功率平衡：}
 \begin{equation}
-P_{t}^{\text{WT}} + P_{t}^{\text{PV}} + P_{t}^{\text{grid,buy}} - P_{t}^{\text{grid,sell}} + P_{t}^{\text{fc,e}} + P_{t}^{\text{ess,dis}} = p_{t}^{\text{elec}} + P_{t}^{\text{ez}} + P_{t}^{\text{ess,ch}}
+P_{t}^{\text{WT}} + P_{t}^{\text{PV}} + P_{t}^{\text{grid,buy}} - P_{t}^{\text{grid,sell}} + P_{t}^{\text{fc,e}} + P_{t}^{\text{ess,dis}} + P_{t}^{\text{EV,dis}} = p_{t}^{\text{elec}} + P_{t}^{\text{ez}} + P_{t}^{\text{ess,ch}} + P_{t}^{\text{EV,ch}}
 \end{equation}
-其中，$P_{t}^{\text{WT}}, P_{t}^{\text{PV}}$ 为风电和光伏的实际消纳功率；$P_{t}^{\text{fc,e}}$ 为燃料电池发电功率；$P_{t}^{\text{ess,ch}}, P_{t}^{\text{ess,dis}}$ 为电池充放电功率；$P_{t}^{\text{ez}}$ 为电解槽耗电功率；$p_{t}^{\text{elec}}$ 为实际被满足的电负荷（含建筑电需求与电动汽车充电需求）。
+其中，$P_{t}^{\text{WT}}, P_{t}^{\text{PV}}$ 为风电和光伏的实际消纳功率；$P_{t}^{\text{fc,e}}$ 为燃料电池发电功率；$P_{t}^{\text{ess,ch}}, P_{t}^{\text{ess,dis}}$ 为电池充放电功率；$P_{t}^{\text{EV,ch}}, P_{t}^{\text{EV,dis}}$ 为EV聚合充放电功率；$P_{t}^{\text{ez}}$ 为电解槽耗电功率；$p_{t}^{\text{elec}}$ 为实际被满足的建筑电负荷。
 
 \textbf{可再生能源出力约束：}
 \begin{align}
@@ -88,13 +88,71 @@ E_{t}^{\text{ess}} & = E_{t-1}^{\text{ess}} + \left( P_{t}^{\text{ess,ch}} \eta^
 \end{align}
 其中，$z_{t}^{\text{ess}} \in \{0, 1\}$ 为电池充电状态位（$1$ 为充电，$0$ 为放电），确保充放电不能同时进行；$P^{\text{ess,cap}}$ 为电池额定功率；$E^{\text{ess,cap}}$ 为电池额定容量；$\eta^{\text{ess,ch}}, \eta^{\text{ess,dis}}$ 为充放电效率；$\beta^{\text{ess}}$ 为最大放电深度。
 
+\textbf{电池储能日内净平衡约束：}
+\begin{equation}
+\sum_{t=1}^{T} \left( P_{t}^{\text{ess,ch}} \eta^{\text{ess,ch}} - \frac{P_{t}^{\text{ess,dis}}}{\eta^{\text{ess,dis}}} \right) \Delta t = 0
+\end{equation}
+该约束保证电池储能在调度周期（典型日）内净充放电量为零，防止储能无限制跨日转移能量。
+
+\subsubsection{电动汽车聚合移动储能 (EV Aggregated Mobile Storage Module)}
+
+将站内所有电动汽车聚合为移动储能单元，从运营商视角调度其"可用灵活性"而非单辆车的全部SoC。该建模方式参考了文献{[DCMB-RES-EV]}中EV聚合储能的思想，将EV视为整体储能资源，通过聚合信息（站内EV数量、总SOE等）进行统一调度。
+
+\textbf{EV灵活性能量状态定义：}
+\begin{equation}
+E_{t}^{\text{EV,flex}} = E_{t}^{\text{EV}} - E_{t}^{\text{reserve}}
+\end{equation}
+其中，$E_{t}^{\text{EV}}$ 为当前站内EV总能量（kWh）；$E_{t}^{\text{reserve}}$ 为满足近期离站车辆出行需求而必须保留的能量（kWh）；$E_{t}^{\text{EV,flex}}$ 为运营商可调度的灵活性能量。
+
+\textbf{EV灵活性能量状态动态：}
+\begin{equation}
+E_{t+1}^{\text{EV,flex}} = E_{t}^{\text{EV,flex}} + E_{t}^{\text{arr}} - E_{t}^{\text{dep}} + \left( \eta^{\text{EV,ch}} P_{t}^{\text{EV,ch}} - \frac{P_{t}^{\text{EV,dis}}}{\eta^{\text{EV,dis}}} \right) \Delta t
+\end{equation}
+其中：
+\begin{itemize}[leftmargin=2em, itemsep=2pt, topsep=2pt]
+    \item $E_{t}^{\text{arr}}$：新到车辆带来的可调节能量（kWh），为\textbf{随机变量}，由EV到达时间分布和到达SoC分布决定；
+    \item $E_{t}^{\text{dep}}$：离站车辆带走的可调节能量（kWh），为\textbf{随机变量}，由EV离站时间分布和离站SoC需求决定；
+    \item $P_{t}^{\text{EV,ch}}, P_{t}^{\text{EV,dis}}$：EV聚合充放电功率（kW），为决策变量；
+    \item $\eta^{\text{EV,ch}}, \eta^{\text{EV,dis}}$：EV充放电效率。
+\end{itemize}
+
+$E_{t}^{\text{arr}}$ 和 $E_{t}^{\text{dep}}$ 的随机性来源：参考文献{[HFCO-HVAC-EV]}，EV到达/离开时间服从正态分布（如上班时间 $\mathcal{N}(8{:}00, (1\text{h})^2)$，下班时间 $\mathcal{N}(18{:}00, (1\text{h})^2)$），通过蒙特卡洛采样生成场景树中的随机实现。
+
+\textbf{EV聚合充放电功率约束：}
+\begin{align}
+0 \le P_{t}^{\text{EV,ch}} & \le P^{\text{EV,ch,cap}} z_{t}^{\text{EV}} \\
+0 \le P_{t}^{\text{EV,dis}} & \le P^{\text{EV,dis,cap}} (1 - z_{t}^{\text{EV}}) \\
+z_{t}^{\text{EV}} & \in \{0, 1\}
+\end{align}
+其中，$P^{\text{EV,ch,cap}}, P^{\text{EV,dis,cap}}$ 为EV聚合最大充放电功率（由站内充电桩总容量和当前站内EV数量决定）；$z_{t}^{\text{EV}}$ 为充放电互斥二值变量。
+
+\textbf{EV灵活性能量上下限约束：}
+\begin{equation}
+0 \le E_{t}^{\text{EV,flex}} \le E^{\text{EV,flex,cap}}
+\end{equation}
+其中，$E^{\text{EV,flex,cap}}$ 为EV聚合灵活性能量上限（由站内EV总电池容量和预留能量决定）。
+
+\textbf{EV灵活性能量日内净平衡约束：}
+\begin{equation}
+\sum_{t=1}^{T} \left( E_{t}^{\text{arr}} - E_{t}^{\text{dep}} + \eta^{\text{EV,ch}} P_{t}^{\text{EV,ch}} - \frac{P_{t}^{\text{EV,dis}}}{\eta^{\text{EV,dis}}} \right) \Delta t = 0
+\end{equation}
+该约束保证EV灵活性能量在调度周期内收支平衡。
+
+\textbf{该建模方式的优点：}
+\begin{enumerate}[leftmargin=2em, itemsep=2pt, topsep=2pt]
+    \item Bellman状态维数极低（$E_{t}^{\text{EV,flex}}$ 为标量），非常适合SDDiP算法；
+    \item 自然体现随机性，$E_{t}^{\text{arr}}$ 和 $E_{t}^{\text{dep}}$ 可作为场景树随机变量；
+    \item 运营商视角合理，调度的是"可用灵活性"，不是每辆车的全部SoC；
+    \item 与固定储能模型统一，可直接纳入综合能源站电能母线平衡。
+\end{enumerate}
+
 \subsubsection{氢能子系统 (Hydrogen Module)}
 
 \textbf{氢能母线平衡：}
 \begin{equation}
-M_{t}^{\text{ez}} + M_{t}^{\text{market}} + M_{t}^{\text{hs,dis}} = M_{t}^{\text{fc}} + M_{t}^{\text{h2\_load}} + M_{t}^{\text{hs,ch}}
+M_{t}^{\text{ez}} + M_{t}^{\text{market}} + M_{t}^{\text{hs,dis}} = m_{t}^{\text{h2}} + M_{t}^{\text{fc}} + M_{t}^{\text{hs,ch}}
 \end{equation}
-其中，$M_{t}^{\text{ez}}$ 为电解槽产氢速率；$M_{t}^{\text{market}}$ 为外部市场购氢速率；$M_{t}^{\text{hs,ch}}, M_{t}^{\text{hs,dis}}$ 为储氢罐充放速率；$M_{t}^{\text{fc}}$ 为燃料电池耗氢速率；$M_{t}^{\text{h2\_load}}$ 为加氢站车辆加氢需求。
+其中，$M_{t}^{\text{ez}}$ 为电解槽产氢速率；$M_{t}^{\text{market}}$ 为外部市场购氢速率；$M_{t}^{\text{hs,ch}}, M_{t}^{\text{hs,dis}}$ 为储氢罐充放速率；$M_{t}^{\text{fc}}$ 为燃料电池耗氢速率；$m_{t}^{\text{h2}}$ 为实际被满足的加氢需求。
 
 \textbf{电解槽（ELZ）电氢转换约束：}
 \begin{align}
@@ -117,6 +175,11 @@ S_{t}^{\text{hs}} & = (1 - \psi^{\text{hs}}) S_{t-1}^{\text{hs}} + \left( M_{t}^
 0 & \le S_{t}^{\text{hs}} \le S^{\text{hs,cap}}
 \end{align}
 其中，$z_{t}^{\text{hs}} \in \{0, 1\}$ 为储氢充放状态位；$M^{\text{hs,cap}}$ 为储氢最大充放速率；$S^{\text{hs,cap}}$ 为储氢罐容量；$\psi^{\text{hs}}$ 为氢气泄漏/耗散率；$\eta^{\text{hs,ch}}, \eta^{\text{hs,dis}}$ 为充放效率。
+
+\textbf{储氢装置日内净平衡约束：}
+\begin{equation}
+\sum_{t=1}^{T} \left( M_{t}^{\text{hs,ch}} \eta^{\text{hs,ch}} - \frac{M_{t}^{\text{hs,dis}}}{\eta^{\text{hs,dis}}} \right) \Delta t = 0
+\end{equation}
 
 \subsubsection{热能子系统 (Thermal Module)}
 
@@ -149,6 +212,11 @@ H_{t}^{\text{hws}} & = (1 - \psi^{\text{hws}}) H_{t-1}^{\text{hws}} + \left( Q_{
 \end{align}
 其中，$z_{t}^{\text{hws}} \in \{0, 1\}$ 为热水储能充放状态位；$\psi^{\text{hws}}$ 为热损耗率；$H^{\text{hws,cap}}$ 为热水储能容量。
 
+\textbf{热水储能日内净平衡约束：}
+\begin{equation}
+\sum_{t=1}^{T} \left( Q_{t}^{\text{hws,ch}} \eta^{\text{hws,ch}} - \frac{Q_{t}^{\text{hws,dis}}}{\eta^{\text{hws,dis}}} \right) \Delta t = 0
+\end{equation}
+
 \subsubsection{冷能子系统 (Cooling Module)}
 
 \textbf{冷能母线平衡：}
@@ -173,6 +241,44 @@ C_{t}^{\text{cws}} & = (1 - \psi^{\text{cws}}) C_{t-1}^{\text{cws}} + \left( Q_{
 \end{align}
 其中，$z_{t}^{\text{cws}} \in \{0, 1\}$ 为冷水储能充放状态位；$\psi^{\text{cws}}$ 为冷损耗率；$C^{\text{cws,cap}}$ 为冷水储能容量。
 
+\textbf{冷水储能日内净平衡约束：}
+\begin{equation}
+\sum_{t=1}^{T} \left( Q_{t}^{\text{cws,ch}} \eta^{\text{cws,ch}} - \frac{Q_{t}^{\text{cws,dis}}}{\eta^{\text{cws,dis}}} \right) \Delta t = 0
+\end{equation}
+
+\subsubsection{负荷需求与不确定性建模 (Load Demand and Uncertainty Modeling)}
+
+\textbf{建筑电负荷}：采用历史基准值加随机偏差建模：
+\begin{equation}
+P_{t}^{\text{elec\_load}} = P_{t}^{\text{elec\_base}} + \tilde{\varepsilon}_{t}^{\text{elec}}, \quad \tilde{\varepsilon}_{t}^{\text{elec}} \sim \mathcal{N}(0, (\sigma_{t}^{\text{elec}})^{2})
+\end{equation}
+其中，$P_{t}^{\text{elec\_base}}$ 为典型日基准电负荷曲线（由历史数据获取）；$\tilde{\varepsilon}_{t}^{\text{elec}}$ 为零均值正态随机偏差，标准差 $\sigma_{t}^{\text{elec}}$ 由历史负荷波动统计确定。
+
+\textbf{建筑热负荷}：采用历史基准值加随机偏差建模：
+\begin{equation}
+Q_{t}^{\text{heat\_load}} = Q_{t}^{\text{heat\_base}} + \tilde{\varepsilon}_{t}^{\text{heat}}, \quad \tilde{\varepsilon}_{t}^{\text{heat}} \sim \mathcal{N}(0, (\sigma_{t}^{\text{heat}})^{2})
+\end{equation}
+其中，$Q_{t}^{\text{heat\_base}}$ 为典型日基准热负荷曲线；$\tilde{\varepsilon}_{t}^{\text{heat}}$ 为零均值正态随机偏差。
+
+\textbf{建筑冷负荷}：采用历史基准值加随机偏差建模：
+\begin{equation}
+Q_{t}^{\text{cool\_load}} = Q_{t}^{\text{cool\_base}} + \tilde{\varepsilon}_{t}^{\text{cool}}, \quad \tilde{\varepsilon}_{t}^{\text{cool}} \sim \mathcal{N}(0, (\sigma_{t}^{\text{cool}})^{2})
+\end{equation}
+其中，$Q_{t}^{\text{cool\_base}}$ 为典型日基准冷负荷曲线；$\tilde{\varepsilon}_{t}^{\text{cool}}$ 为零均值正态随机偏差。
+
+\textbf{加氢需求}：采用时段正态分布随机量建模：
+\begin{equation}
+M_{t}^{\text{h2\_load}} = \mu_{t}^{\text{h2}} + \tilde{\varepsilon}_{t}^{\text{h2}}, \quad \tilde{\varepsilon}_{t}^{\text{h2}} \sim \mathcal{N}(0, (\sigma_{t}^{\text{h2}})^{2}), \quad M_{t}^{\text{h2\_load}} \ge 0
+\end{equation}
+其中，$\mu_{t}^{\text{h2}}$ 为时段 $t$ 的平均加氢需求（由历史加氢站运营数据统计获取）；$\tilde{\varepsilon}_{t}^{\text{h2}}$ 为零均值正态随机偏差，截断至非负。
+
+\textbf{EV到达/离站能量}：作为场景树随机变量：
+\begin{align}
+E_{t}^{\text{arr}} & = \tilde{E}_{t}^{\text{arr}}, \quad \tilde{E}_{t}^{\text{arr}} \ge 0 \\
+E_{t}^{\text{dep}} & = \tilde{E}_{t}^{\text{dep}}, \quad \tilde{E}_{t}^{\text{dep}} \ge 0
+\end{align}
+其中，$\tilde{E}_{t}^{\text{arr}}$ 和 $\tilde{E}_{t}^{\text{dep}}$ 的分布由EV到达/离开时间分布（参考文献[HFCO-HAC-EV]的正态分布假设）和单车SoC/能量需求分布通过蒙特卡洛采样生成。
+
 \subsubsection{负荷削减约束 (Load Curtailment)}
 
 \textbf{电负荷削减：}
@@ -190,13 +296,19 @@ C_{t}^{\text{cws}} & = (1 - \psi^{\text{cws}}) C_{t-1}^{\text{cws}} + \left( Q_{
 0 \le q_{t}^{\text{cool}} \le Q_{t}^{\text{cool\_load}}
 \end{equation}
 
+\textbf{加氢需求削减：}
+\begin{equation}
+0 \le m_{t}^{\text{h2}} \le M_{t}^{\text{h2\_load}}
+\end{equation}
+加氢需求削减惩罚系数 $\iota^{\text{h2}}$ 应设置较高，以优先保障加氢站核心服务。
+
 \section{集中式优化问题 (Centralized Optimization Problem)}
 
-综上所述，多能微网系统的全局协同优化问题 $\mathbf{P}$ 可统一表述为：
+综上所述，加能站多能微网系统的全局协同优化问题 $\mathbf{P}$ 可统一表述为：
 
 \begin{align*}
 \mathbf{P}: \quad &\min_{\mathbf{X}} \quad C \\
-\text{s.t.} \quad &\text{公式 (6) 至 (38)}
+\text{s.t.} \quad &\text{公式 (1) 至 (47)}
 \end{align*}
 
 其中，全局决策变量空间向量为：
@@ -204,15 +316,331 @@ C_{t}^{\text{cws}} & = (1 - \psi^{\text{cws}}) C_{t-1}^{\text{cws}} + \left( Q_{
 \mathbf{X}_t = [ &P_{t}^{\text{grid,buy}}, P_{t}^{\text{grid,sell}}, z_{t}^{\text{buy}}, z_{t}^{\text{sell}}, \\
                 &P_{t}^{\text{WT}}, P_{t}^{\text{PV}}, \\
                 &P_{t}^{\text{ess,ch}}, P_{t}^{\text{ess,dis}}, z_{t}^{\text{ess}}, E_{t}^{\text{ess}}, \\
+                &P_{t}^{\text{EV,ch}}, P_{t}^{\text{EV,dis}}, z_{t}^{\text{EV}}, E_{t}^{\text{EV,flex}}, \\
                 &P_{t}^{\text{ez}}, M_{t}^{\text{ez}}, M_{t}^{\text{market}}, \\
                 &M_{t}^{\text{hs,ch}}, M_{t}^{\text{hs,dis}}, z_{t}^{\text{hs}}, S_{t}^{\text{hs}}, \\
                 &P_{t}^{\text{fc,e}}, M_{t}^{\text{fc}}, Q_{t}^{\text{fc,th}}, Q_{t}^{\text{fc,rec}}, \\
                 &Q_{t}^{\text{hws,ch}}, Q_{t}^{\text{hws,dis}}, z_{t}^{\text{hws}}, H_{t}^{\text{hws}}, \\
                 &Q_{t}^{\text{ac,in}}, Q_{t}^{\text{ac,out}}, \\
                 &Q_{t}^{\text{cws,ch}}, Q_{t}^{\text{cws,dis}}, z_{t}^{\text{cws}}, C_{t}^{\text{cws}}, \\
-                &p_{t}^{\text{elec}}, q_{t}^{\text{heat}}, q_{t}^{\text{cool}} ], \quad \forall t \in \mathcal{T}
+                &p_{t}^{\text{elec}}, q_{t}^{\text{heat}}, q_{t}^{\text{cool}}, m_{t}^{\text{h2}} ], \quad \forall t \in \mathcal{T}
 \end{align*}
 
-该模型为混合整数线性规划（MILP），可通过商业求解器（如 Gurobi、CPLEX）或 SDDiP 等分解算法进行求解。
+系统状态变量为：
+\begin{equation}
+\mathbf{x}_t = \left( E_{t}^{\text{ess}}, \; S_{t}^{\text{hs}}, \; E_{t}^{\text{EV,flex}} \right)
+\end{equation}
+其中，$E_{t}^{\text{ess}}$ 为电池储能SoC，$S_{t}^{\text{hs}}$ 为储氢罐SoC，$E_{t}^{\text{EV,flex}}$ 为EV聚合灵活性能量。三者均为标量，Bellman状态维数极低，适合SDDiP分解算法。
+
+随机变量向量为：
+\begin{equation}
+\boldsymbol{\xi}_t = \left( \tilde{\varepsilon}_{t}^{\text{elec}}, \; \tilde{\varepsilon}_{t}^{\text{heat}}, \; \tilde{\varepsilon}_{t}^{\text{cool}}, \; \tilde{\varepsilon}_{t}^{\text{h2}}, \; \tilde{E}_{t}^{\text{arr}}, \; \tilde{E}_{t}^{\text{dep}} \right)
+\end{equation}
+
+该模型为混合整数线性规划（MILP），可通过商业求解器（如 Gurobi、CPLEX）或 SDDiP 等分解算法进行求解。在SDDiP框架下，随机变量 $\boldsymbol{\xi}_t$ 通过场景树离散化，状态变量 $\mathbf{x}_t$ 需进行二值化处理以满足SDDiP的状态变量整数性要求。
+
+\section{配置参数与数据来源 (Configuration Parameters and Data Sources)}
+
+本节汇总模型中涉及的配置参数及其参考数值来源。参数数据主要取自三篇参考文献：文献{[SOP-HMM]}（季节性氢能微电网多阶段随机规划）、文献{[HFCO-HVAC-EV]}（建筑HVAC与EV分层协调优化）、文献{[DCMB-RES-EV]}（多建筑可再生能源与EV分散协调）。以下参数值可作为算例仿真基准，实际应用中需根据具体加能站规模调整。
+
+\subsection{时间调度参数}
+
+\begin{table}[htbp]
+\centering
+\caption{时间调度参数}
+\begin{tabular}{lcl}
+\hline
+参数 & 参考值 & 来源 \\
+\hline
+调度周期 $T$ & 24 h & 典型日调度 \\
+时间步长 $\Delta t$ & 1 h & {[SOP-HMM]}, {[DCMB-RES-EV]} \\
+& 0.5 h & {[HFCO-HVAC-EV]}（48阶段） \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{可再生能源参数}
+
+\begin{table}[htbp]
+\centering
+\caption{可再生能源容量配置参数}
+\begin{tabular}{lcll}
+\hline
+参数 & 符号 & 参考值 & 来源 \\
+\hline
+光伏装机容量 & $P^{\text{PV,cap}}$ & 3000--5000 kW & {[SOP-HMM]} Table 1 \\
+风电装机容量 & $P^{\text{WT,cap}}$ & 3500--5000 kW & {[SOP-HMM]} Table 1 \\
+弃电惩罚系数 & $\lambda^{\text{curt}}$ & 20 \$/kWh & {[SOP-HMM]} Table 2, $\varpi_{ec}$ \\
+\hline
+\end{tabular}
+\end{table}
+
+\textbf{说明}：{[SOP-HMM]} Table 1 给出了三个氢能微电网（HMM1--HMM3）的PV/WT容量配置，范围为 PV 3000--5000 kW、WT 3500--5000 kW。弃电惩罚系数 $\varpi_{ec}=20$ \$/kWh 来源于 {[SOP-HMM]} Table 2，引文为 Zhou et al., IEEE Trans. Smart Grid, 2023。
+
+\subsection{电网交互参数}
+
+\begin{table}[htbp]
+\centering
+\caption{电网交互与电价参数}
+\begin{tabular}{lcll}
+\hline
+参数 & 符号 & 参考值 & 来源 \\
+\hline
+联络线容量 & $P^{\text{grid,cap}}$ & 依站点规模设定 & - \\
+购电电价 & $c_{t}^{\text{buy}}$ & 见分时电价表 & {[SOP-HMM]} Table 3; \\
+ & & & {[HFCO-HVAC-EV]} {[28]}; \\
+ & & & {[DCMB-RES-EV]} {[46]} \\
+售电电价 & $c_{t}^{\text{sell}}$ & 0.3 CNY/kWh & {[HFCO-HVAC-EV]} {[31]}{[32]} \\
+\hline
+\end{tabular}
+\end{table}
+
+\textbf{分时电价}（TOU）：三篇文献均采用北京地区分时电价。以下为 {[SOP-HMM]} Table 3 的8时段电价（单位：\$/kWh）：
+
+\begin{table}[htbp]
+\centering
+\caption{分时电价（TOU）参数——{[SOP-HMM]} Table 3}
+\begin{tabular}{ccccccccc}
+\hline
+时段 & 1--8h & 9--10h & 11--14h & 15--17h & 18h & 19--22h & 23h & 24h \\
+\hline
+$\varpi_{imp}$ & 0.0431 & 0.1135 & 0.1875 & 0.1135 & 0.1875 & 0.2058 & 0.1875 & 0.1140 \\
+\hline
+\end{tabular}
+\end{table}
+
+文献{[HFCO-HVAC-EV]}和{[DCMB-RES-EV]}中采用的北京分时电价来源于北京发改委网站 {[28]}{[46]}（http://fgw.beijing.gov.cn/），具体峰谷平时段与上述类似。售电价格 0.3 CNY/kWh 来源于国家发改委 {[31]} 和北京电网收购价 {[32]}。
+
+\subsection{电池储能（BS）参数}
+
+\begin{table}[htbp]
+\centering
+\caption{电池储能参数}
+\begin{tabular}{lcll}
+\hline
+参数 & 符号 & 参考值 & 来源 \\
+\hline
+额定功率 & $P^{\text{ess,cap}}$ & 1200--2000 kW & {[SOP-HMM]} Table 1 \\
+额定容量 & $E^{\text{ess,cap}}$ & 3000--4000 kWh & {[SOP-HMM]} Table 1 \\
+充电效率 & $\eta^{\text{ess,ch}}$ & $\approx$0.95 & {[SOP-HMM]} 式(7), {[31]} \\
+放电效率 & $\eta^{\text{ess,dis}}$ & $\approx$0.95 & {[SOP-HMM]} 式(9), {[31]} \\
+最大放电深度 & $\beta^{\text{ess}}$ & $\approx$0.2 (SoC下限80\%) & {[SOP-HMM]} 式(8) \\
+退化成本系数 & $\zeta_{bs}$ & 0.001 \$/kWh & {[SOP-HMM]} Table 2, {[31]} \\
+\hline
+\end{tabular}
+\end{table}
+
+\textbf{说明}：充放电效率和最大放电深度的具体数值 {[SOP-HMM]} 中未直接给出，但模型中定义了相应符号（$\eta^{+}_{bs}, \eta^{-}_{bs}, \beta^{max}_{bs}$），数值来源于其参考文献 {[31]}（Zhou et al., IEEE Trans. Smart Grid, 2023）。锂电BS典型充放电效率为0.95，DoD约80\%。
+
+\subsection{电解槽（ELZ）参数}
+
+\begin{table}[htbp]
+\centering
+\caption{电解槽参数}
+\begin{tabular}{lcll}
+\hline
+参数 & 符号 & 参考值 & 来源 \\
+\hline
+额定功率 & $P^{\text{elz,cap}}$ & 2000 kW & {[SOP-HMM]} Table 1 \\
+电-氢转换系数 & $\chi^{\text{elz}}$ & 0.022 kg/kWh & {[SOP-HMM]} Table 2 \\
+退化成本系数 & $\zeta_{elz}$ & 0.001 \$/kWh & {[SOP-HMM]} Table 2 \\
+\hline
+\end{tabular}
+\end{table}
+
+\textbf{说明}：$\chi^{\text{elz}}=0.022$ kg/kWh 对应电解槽效率约 $\frac{0.022 \times 33.33}{1} \approx 73.3\%$（氢低热值 33.33 kWh/kg），属于PEM电解槽典型范围。该参数及退化成本系数均来源于 {[SOP-HMM]} Table 2，引文 {[31]}。
+
+\subsection{燃料电池（FC）参数}
+
+\begin{table}[htbp]
+\centering
+\caption{燃料电池参数}
+\begin{tabular}{lcll}
+\hline
+参数 & 符号 & 参考值 & 来源 \\
+\hline
+额定功率 & $P^{\text{fc,cap}}$ & 1000 kW & {[SOP-HMM]} Table 1 \\
+氢-电转换系数 & $\chi^{\text{fc,e}}$ & 9.09 kWh/kg & {[SOP-HMM]} Table 2 \\
+氢-热转换系数 & $\chi^{\text{fc,th}}$ & 19.91 kWh/kg & {[SOP-HMM]} Table 2 \\
+热回收效率 & $\eta^{\text{rec}}$ & $\approx$0.9 & {[SOP-HMM]} 模型设定 \\
+PEMFC发电效率 & - & 35\%--39\% & {[SOP-HMM]} 引文 {[10]} \\
+PEMFC热效率 & - & 55\% & {[SOP-HMM]} 引文 {[10]} \\
+退化成本系数 & $\zeta_{fc}$ & 0.001 \$/kWh & {[SOP-HMM]} Table 2 \\
+\hline
+\end{tabular}
+\end{table}
+
+\textbf{说明}：$\chi^{\text{fc,e}}=9.09$ kWh/kg 对应FC电效率约 $9.09/33.33 \approx 27.3\%$；$\chi^{\text{fc,th}}=19.91$ kWh/kg 对应热效率约 $19.91/33.33 \approx 59.7\%$；FC总效率约 87.0\%。PEMFC效率参数引文 {[10]} 为 Staffell, Appl. Energy 147, 2015。
+
+\subsection{储氢装置（HS）参数}
+
+\begin{table}[htbp]
+\centering
+\caption{储氢装置参数}
+\begin{tabular}{lcll}
+\hline
+参数 & 符号 & 参考值 & 来源 \\
+\hline
+储氢罐容量 & $S^{\text{hs,cap}}$ & 100--200 kg & {[SOP-HMM]} Table 1 \\
+最大充放速率 & $M^{\text{hs,cap}}$ & 依容量比例设定 & - \\
+充氢效率 & $\eta^{\text{hs,ch}}$ & $\approx$0.95 & {[SOP-HMM]} 式(18), {[31]} \\
+放氢效率 & $\eta^{\text{hs,dis}}$ & $\approx$0.95 & {[SOP-HMM]} 式(21), {[31]} \\
+氢气泄漏率 & $\psi^{\text{hs}}$ & $\approx$0.001 & {[SOP-HMM]} 式(18) \\
+\hline
+\end{tabular}
+\end{table}
+
+\textbf{说明}：{[SOP-HMM]} Table 1 给出短期储氢罐容量范围为 100--200 kg（HMM1: 200 kg, HMM2: 150 kg, HMM3: 100 kg），此外还有季节性储氢罐（SHS）容量 4000--8000 kg。充放效率和泄漏率的具体数值参见 {[SOP-HMM]} 引文 {[31]}。
+
+\subsection{热水储能（HWS）与冷水储能（CWS）参数}
+
+\begin{table}[htbp]
+\centering
+\caption{热水储能与冷水储能参数}
+\begin{tabular}{lcll}
+\hline
+参数 & 符号 & 参考值 & 来源 \\
+\hline
+热水储能容量 & $H^{\text{hws,cap}}$ & 1000--1500 kWh & {[SOP-HMM]} Table 1 \\
+冷水储能容量 & $C^{\text{cws,cap}}$ & 600--1200 kWh & {[SOP-HMM]} Table 1 \\
+热水充/放效率 & $\eta^{\text{hws,ch}}/\eta^{\text{hws,dis}}$ & $\approx$0.95 & {[SOP-HMM]} {[31]} \\
+冷水充/放效率 & $\eta^{\text{cws,ch}}/\eta^{\text{cws,dis}}$ & $\approx$0.95 & {[SOP-HMM]} {[31]} \\
+热水损耗率 & $\psi^{\text{hws}}$ & $\approx$0.01 & {[SOP-HMM]} 式(23) \\
+冷水损耗率 & $\psi^{\text{cws}}$ & $\approx$0.01 & {[SOP-HMM]} 式(26) \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{吸收式制冷机（AC）参数}
+
+\begin{table}[htbp]
+\centering
+\caption{吸收式制冷机参数}
+\begin{tabular}{lcll}
+\hline
+参数 & 符号 & 参考值 & 来源 \\
+\hline
+额定容量 & $Q^{\text{ac,cap}}$ & 800--1000 kWh & {[SOP-HMM]} Table 1 \\
+制冷系数 & $COP^{\text{ac}}$ & 0.94 & {[SOP-HMM]} Table 2 \\
+\hline
+\end{tabular}
+\end{table}
+
+\textbf{说明}：$COP^{\text{ac}}=\chi_{h-c}=0.94$ 来源于 {[SOP-HMM]} Table 2，引文 {[31]}。该值为吸收式制冷机的典型COP范围（0.6--1.2）内，属于双效吸收式制冷机。
+
+\subsection{EV聚合移动储能参数}
+
+\begin{table}[htbp]
+\centering
+\caption{EV聚合移动储能参数}
+\begin{tabular}{lcll}
+\hline
+参数 & 符号 & 参考值 & 来源 \\
+\hline
+单车电池容量 & $E^{\text{EV,cap}}_{i}$ & 50 kWh & {[HFCO-HVAC-EV]} \\
+单车额定充/放功率 & $P^{\text{EV}}_{i}$ & 20 kW & {[HFCO-HVAC-EV]} \\
+EV品牌参考 & - & Nissan Leaf & {[DCMB-RES-EV]} {[45]} \\
+充电效率 & $\eta^{\text{EV,ch}}$ & $\approx$0.92 & {[DCMB-RES-EV]} Table II, {[45]} \\
+放电效率 & $\eta^{\text{EV,dis}}$ & $\approx$0.92 & {[DCMB-RES-EV]} Table II, {[45]} \\
+单位时段行驶能耗 & $f$ & 5 kWh/时段 & {[HFCO-HVAC-EV]} \\
+上班出发时间 & - & $\mathcal{N}(8{:}00, (1\text{h})^{2})$ & {[HFCO-HVAC-EV]} {[35]}; \\
+ & & & {[DCMB-RES-EV]} {[44]} \\
+下班返回时间 & - & $\mathcal{N}(18{:}00, (1\text{h})^{2})$ & {[HFCO-HVAC-EV]} {[35]}; \\
+ & & & {[DCMB-RES-EV]} {[44]} \\
+\hline
+\end{tabular}
+\end{table}
+
+\textbf{说明}：
+\begin{itemize}[leftmargin=2em, itemsep=2pt, topsep=2pt]
+    \item {[HFCO-HVAC-EV]} 中EV电池容量 50 kWh、额定功率 20 kW 为案例设定值；行驶能耗 5 kWh/时段基于每时段0.5h的行驶时间。
+    \item {[DCMB-RES-EV]} 中EV参数取自Nissan Leaf官方规格 {[45]}（https://ev-database.org/car/1106/Nissan-Leaf），充放电效率约0.92。
+    \item EV到达/离开时间分布来源于北京交通发展年报：{[HFCO-HVAC-EV]} 引用 {[35]}（2015年北京交通年报），{[DCMB-RES-EV]} 引用 {[44]}（北京交通年报），两者均给出上班/下班时间的正态分布参数。
+\end{itemize}
+
+\subsection{负荷削减惩罚参数}
+
+\begin{table}[htbp]
+\centering
+\caption{负荷削减惩罚系数}
+\begin{tabular}{lcll}
+\hline
+参数 & 符号 & 参考值 & 来源 \\
+\hline
+电负荷削减惩罚 & $\iota^{\text{elec}}$ & 20 \$/kWh & {[SOP-HMM]} Table 2 \\
+热负荷削减惩罚 & $\iota^{\text{heat}}$ & 20 \$/kWh & {[SOP-HMM]} Table 2 \\
+冷负荷削减惩罚 & $\iota^{\text{cool}}$ & 20 \$/kWh & {[SOP-HMM]} Table 2 \\
+氢负荷削减惩罚 & $\iota^{\text{h2}}$ & $\ge$20 \$/kWh & 加能站核心服务约束 \\
+\hline
+\end{tabular}
+\end{table}
+
+\textbf{说明}：{[SOP-HMM]} Table 2 中电/热/冷负荷削减惩罚系数 $\iota_{es}=\iota_{hs}=\iota_{cs}=20$ \$/kWh，引文 {[31]}。加氢站中加氢需求为核心服务，$\iota^{\text{h2}}$ 应设置不低于电负荷削减惩罚值，以优先保障氢燃料供给。
+
+\subsection{氢市场参数}
+
+\begin{table}[htbp]
+\centering
+\caption{外部氢市场参数}
+\begin{tabular}{lcll}
+\hline
+参数 & 符号 & 参考值 & 来源 \\
+\hline
+外部购氢单价 & $c^{\text{H2}}$ & 依市场行情 & - \\
+外部供氢上限 & $M^{\text{market,cap}}$ & 依合同容量 & - \\
+\hline
+\end{tabular}
+\end{table}
+
+\textbf{说明}：氢市场价格波动较大，国内外价格差异显著。国内加氢站氢价约 30--80 CNY/kg，可参考当地氢能产业政策及市场报价设定。
+
+\subsection{不确定性建模参数}
+
+\begin{table}[htbp]
+\centering
+\caption{负荷不确定性建模参数}
+\begin{tabular}{lcll}
+\hline
+参数 & 符号 & 参考值 & 来源 \\
+\hline
+电负荷噪声标准差 & $\sigma_{t}^{\text{elec}}$ & 基准值5\%--10\% & 历史数据统计 \\
+热负荷噪声标准差 & $\sigma_{t}^{\text{heat}}$ & 基准值5\%--10\% & 历史数据统计 \\
+冷负荷噪声标准差 & $\sigma_{t}^{\text{cool}}$ & 基准值5\%--10\% & 历史数据统计 \\
+加氢需求均值 & $\mu_{t}^{\text{h2}}$ & 依站点运营数据 & 历史加氢记录 \\
+加氢需求噪声标准差 & $\sigma_{t}^{\text{h2}}$ & 均值10\%--20\% & 历史加氢记录 \\
+\hline
+\end{tabular}
+\end{table}
+
+\textbf{说明}：负荷基准曲线的获取方式：{[HFCO-HVAC-EV]} 中建筑电负荷由 EnergyPlus 模拟获取 {[34]}；太阳辐射和气温数据来源于 DeST 软件 {[29]} 和美国能源部 PVWatts {[47]}；{[DCMB-RES-EV]} 中建筑负荷灵活性参数来源于历史数据拟合 {[39]}{[41]}。{[SOP-HMM]} 中RES出力与电力需求数据来自中国北方实际电网运行数据，热/冷负荷使用 EnergyPlus 模拟 {[32]}。
+
+\subsection{数据来源文献索引}
+
+\begin{table}[htbp]
+\centering
+\caption{主要数据来源文献索引}
+\begin{tabular}{cp{12cm}}
+\hline
+编号 & 文献 \\
+\hline
+{[SOP-HMM]} & Sun et al., ``Seasonal Operation Planning of Hydrogen-Enabled Multi-Energy Microgrids through Multistage Stochastic Programming,'' J. Energy Storage, 2024 \\
+{[SOP-HMM]-10} & Staffell, ``Zero carbon infinite COP heat from fuel cell CHP,'' Appl. Energy 147, 2015 \\
+{[SOP-HMM]-31} & Zhou et al., ``Multi-stage adaptive stochastic-robust scheduling method with affine decision policies for hydrogen-based multi-energy microgrid,'' IEEE Trans. Smart Grid, 2023 \\
+{[SOP-HMM]-32} & EnergyPlus 建筑能耗模拟软件 \\
+{[HFCO-HVAC-EV]} & Zhao et al., ``A Hierarchical Framework-Based Coordinated Optimization of Building HVAC Systems and EVs,'' IEEE Trans. Autom. Sci. Eng., 2025 \\
+{[HFCO-HVAC-EV]-28} & 北京发改委分时电价政策 \\
+{[HFCO-HVAC-EV]-31} & 国家发改委售电价格政策 \\
+{[HFCO-HVAC-EV]-32} & 北京电网收购电价 \\
+{[HFCO-HVAC-EV]-33} & Lu, Zhang, ``Centralized coordination of thermostatically controlled appliances,'' IEEE Trans. Smart Grid, 2013 \\
+{[HFCO-HVAC-EV]-34} & Liu et al., EnergyPlus 建筑电气设备负荷模拟, IEEE Trans. Autom. Sci. Eng. \\
+{[HFCO-HVAC-EV]-35} & 2015年北京交通发展年报 \\
+{[DCMB-RES-EV]} & Liu et al., ``Decentralized Coordination of Multiple Buildings With Renewable Energy Resource and Electric Vehicles,'' IEEE Trans. Autom. Sci. Eng., 2025 \\
+{[DCMB-RES-EV]-44} & 北京交通发展年报 \\
+{[DCMB-RES-EV]-45} & Nissan Leaf 官方规格, https://ev-database.org \\
+{[DCMB-RES-EV]-46} & 北京发改委分时电价政策 \\
+{[DCMB-RES-EV]-47} & NREL PVWatts 太阳辐射数据 \\
+\hline
+\end{tabular}
+\end{table}
 
 \end{document}

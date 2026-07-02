@@ -73,7 +73,7 @@ def train_interleaved(
     return model
 
 
-def create_config_list(config_dir: Path, i=1, t=5):
+def create_config_list(config_dir: Path, i=2, t=1):
     """从指定目录加载配置文件"""
     configs = []
     for n in range(1):
@@ -114,7 +114,7 @@ def main(experiment_name, config_path=None):
     train_cfg = config['training']
 
     config_dir = project_root / "configs"
-    train_configs = create_config_list(config_dir, i=1, t=5)
+    train_configs = create_config_list(config_dir, i=2, t=2)
     logger.info(f"加载了 {len(train_configs)} 个配置")
 
     if not train_configs:
@@ -153,5 +153,5 @@ def main(experiment_name, config_path=None):
 
 
 if __name__ == "__main__":
-    experiment_name = "exp_12"
+    experiment_name = "exp_16"
     main(experiment_name=experiment_name)

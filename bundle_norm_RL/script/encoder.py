@@ -9,7 +9,8 @@ Encoder for Level Bundle RL
 通过 encoder_type 参数切换，默认 "deepset"。
 
 输入:
-├── subgradient_history: (B, K, N_VARS+1) - 次梯度集合
+├── subgradient_history: (B, K, 2*(N_VARS+1)) - 次梯度集合 + 生成乘子
+│   每行 = [subgradient_pi(N_VARS), subgradient_pi0(1), gen_pi(N_VARS), gen_pi0(1)]
 ├── valid_mask: (B, K) - 有效掩码
 ├── pi: (B, N_VARS) - 当前乘子
 ├── pi0: (B, 1) - 当前 pi0

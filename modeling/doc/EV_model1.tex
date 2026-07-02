@@ -1,0 +1,106 @@
+%! Author = HK
+%! Date = 2026/6/30
+
+% Preamble
+% 将 article 修改为 ctexart 即可完美支持中文，建议使用 XeLaTeX 编译器编译
+\documentclass[11pt]{ctexart}
+
+% Packages
+\usepackage{amsmath}
+\usepackage{siunitx} % 修复 \unit{h} 找不到命令的问题
+\usepackage{enumitem} % 修复 itemsep 和 topsep 找不到属性的问题
+
+% Document
+\begin{document}
+
+\section*{电动汽车 (EV) 协同优化建模细节总结}
+
+在多建筑能源系统中，电动汽车具备高度的负荷灵活性。其核心建模包含以下四个关键维度：时间与空间位置表征、电池荷电状态 (SoC) 动态演化、充放电动作约束以及由充电设施容量引起的空间耦合。
+
+\subsection*{1. 空间位置与停泊状态表征}
+电动汽车的移动性使其在空间上与特定的建筑发生解耦或耦合。
+\begin{itemize}
+    \item 引入二位参数 $L_{k,i,n} \in \{0,1\}$ 表示电动汽车 $i$ 在时间阶段 $k$ 的空间位置：
+    \begin{equation}
+        L_{k,i,n} =
+        \begin{cases}
+        1, & \text{若 EV } i \text{ 在时段 } k \text{ 停泊在建筑 } n \\
+        0, & \text{其他情况}
+        \end{cases}
+    \end{equation}
+    \item 定义变量 $z_{k,i}^{EV} \in \{0,1\}$ 为 EV $i$ 在时段 $k$ 的整体停泊状态（是否处于任何建筑内）：
+    \begin{equation}
+        z_{k,i}^{EV} = \sum_{n=1}^{N} L_{k,i,n}
+    \end{equation}
+    当 $\sum_{n=1}^{N} L_{k,i,n} = 0$（即 $z_{k,i}^{EV} = 0$）时，表明该电动汽车当前正处于道路行驶（Trip）状态。
+\end{itemize}
+
+\subsection*{2. 电池荷电状态 (SoC) 动态演化模型}
+电动汽车电池的荷电状态不仅受当前建筑内充放电行为的影响，还受到行驶过程中能量消耗的限制。
+\begin{itemize}
+    \item **SoC 状态转移方程**：
+    \begin{equation}
+        S_{k+1,i} = S_{k,i} + \frac{(a_{k,i}^{V,c} - a_{k,i}^{V,d}) P_{i}^{V} \Delta k}{E_{i}^{V,cap}} - (1 - z_{k,i}^{EV}) \times \frac{f_{k,i}(\Delta k)}{E_{i}^{V,cap}}
+    \end{equation}
+    其中：
+    \begin{itemize}
+        \item $S_{k,i} \in [0,1]$ 为时段 $k$ 的荷电状态百分比。
+        \item $a_{k,i}^{V,c}, a_{k,i}^{V,d} \in \{0,1\}$ 分别为充电和放电的二值决策变量。
+        \item $P_{i}^{V}$ 为电动汽车 $i$ 的恒定额定充放电功率 (kW)。
+        \item $E_{i}^{V,cap}$ 为电动汽车 $i$ 的电池额定容量 (kWh)。
+        \item $\Delta k$ 为单步时间阶段的跨度 (h)。
+        \item $f_{k,i}(\Delta k)$ 为电动汽车在行驶状态下，单个时间步长所消耗的电能。
+    \end{itemize}
+    该方程右侧第二项代表在建筑内停泊时的充放电净电量变化，第三项则表征在旅途中行驶引起的电量退化。
+
+    \item **电池寿命及物理容量边界约束**：
+    \begin{equation}
+        \underline{S} \le S_{k,i} \le 1
+    \end{equation}
+    其中 $\underline{S}$ 是为了保护电池寿命而设定的放电深度下限。
+\end{itemize}
+
+\subsection*{3. 充放电行为与出行状态约束}
+电动汽车的充放电行为须严格服从其物理位置：
+\begin{itemize}
+    \item **互斥与位置约束**：
+    \begin{equation}
+        a_{k,i}^{V,c} + a_{k,i}^{V,d} \le z_{k,i}^{EV}
+    \end{equation}
+    该约束包含双重物理逻辑：
+    1) 当电动汽车在路上行驶（$z_{k,i}^{EV} = 0$）时，$a_{k,i}^{V,c}$ 和 $a_{k,i}^{V,d}$ 必须强行置 0，即无法进行充放电。
+    2) 当电动汽车停泊在建筑内（$z_{k,i}^{EV} = 1$）时，充放电行为互斥，不可同时进行。
+\end{itemize}
+
+\subsection*{4. 充电设施容量与多建筑空间耦合}
+多辆电动汽车共享同一建筑内部的充电桩基础设施，从而形成了系统层面的网络空间耦合。
+\begin{itemize}
+    \item **建筑 $n$ 内总充放电功率计算**：
+    \begin{equation}
+        P_{k,n}^{EV} = \sum_{i=1}^{I} L_{k,i,n} (a_{k,i}^{V,c} - a_{k,i}^{V,d}) P_{i}^{V}
+    \end{equation}
+    上式通过空间截断矩阵 $L_{k,i,n}$，使得 $P_{k,n}^{EV}$ 仅对当前时段实际停靠在建筑 $n$ 内的电动汽车集合进行负荷叠加。
+
+    \item **充电设施容量上限约束**：
+    \begin{equation}
+        -P_{n}^{EV,cap} \le P_{k,n}^{EV} \le P_{n}^{EV,cap}
+    \end{equation}
+    其中 $P_{n}^{EV,cap}$ 为建筑 $n$ 的充电设施最大变压器容许功率边界，限制了所有电动汽车并网充放电（V2G）的总规模。
+\end{itemize}
+
+\subsection*{5. 功率平衡大系统耦合关系}
+电动汽车最终通过其充放电总负荷 $P_{k,n}^{EV}$，进入建筑大系统的功率平衡方程，从而与 HVAC 系统等其他柔性负荷产生直接的竞争和协同：
+\begin{equation}
+    P_{k,n}^{p} - P_{k,n}^{s} + P_{k,n}^{PV} = P_{k,n}^{e} + P_{k,n}^{EV} + \sum_{j \in J_n^B} a_{k,j}^{R}
+\end{equation}
+其中 $P_{k,n}^{p}, P_{k,n}^{s}$ 为向电网购售电功率，$P_{k,n}^{PV}$ 为光伏出力，$P_{k,n}^{e}$ 为基础电负荷，$a_{k,j}^{R}$ 为各房间 HVAC 消耗功率。
+
+\subsection*{数据来源以及分布建模}
+数据有：北京分时电价、光电功率、室外温度（夏季日）、售电价格设为c_s^k = 0.3元/kWh
+三种类型建筑屋顶光伏安装面积分别为50 m²、50 m²与100 m²（见表I：五种案例的电动汽车数量及建筑参数）
+EnergyPlus[34]模拟建筑单位面积其他用电设备的需求曲线
+
+固定了设置住宅楼、办公楼、商业楼三种建筑：
+假设住宅楼房间在0:00-9:00与18:00-24:00有人使用，办公楼房间使用时间为9:00-18:00，商业楼房间使用时间为10:00-22:00。Occupants 均匀分布于住宅楼居住并在办公楼工作。基于2015年北京交通报告[35]，上下班时间服从正态分布，可描述为N(8:00, (1h)²) 与 N(18:00, (1h)²)。不同建筑间的出行时间假设服从正态分布N(1h, (0.5h)²)。假设 occupants 清晨从住宅楼驾车前往办公楼，日终返回住宅楼，其中半数在下班后前往商业楼购物或娱乐，其余人员直接回家。电动汽车出行链采用蒙特卡洛方法根据上述模式模拟，并假设其可预知。电动汽车的能耗率、电池容量及额定充放电功率分别设为f_{k,i}(1t)=5kWh、E^{V,cap}_i=50kWh 与 P^V_i=20kW。
+
+\end{document}

@@ -77,7 +77,7 @@ def level_bundle_rl(env, model, logger, deterministic=True, K=20):
             ub_history.append(env.LB)
 
     f_best_history.append(env.LB)
-    lb_history.append(env.LB)
+    lb_history.append(env.current_dual)
 
     for step in range(K):
         t0 = time.time()
@@ -90,13 +90,16 @@ def level_bundle_rl(env, model, logger, deterministic=True, K=20):
             outer.add_cut(env.subgradient_list[step + 1].tolist())
             _, _, ub = outer.solve()
             if ub is not None:
+                # UB 单调不增：取 min(当前ub, 历史最小ub)
+                ub = min(ub, ub_history[-1]) if ub_history else ub
                 ub_history.append(ub)
             else:
                 ub_history.append(ub_history[-1] if ub_history else env.LB)
         else:
             ub_history.append(ub_history[-1] if ub_history else env.LB)
 
-        lb_history.append(env.LB)
+        # 使用当前迭代计算出的 dual 值（不保证单调，但更直观）
+        lb_history.append(env.current_dual)
         reward_history.append(reward)
         time_history.append(elapsed)
         f_best_history.append(env.LB)
@@ -157,7 +160,7 @@ def level_bundle_rl_warmstart(env, model, logger, deterministic=True, K=20,
             ub_history.append(env.LB)
 
     f_best_history.append(env.LB)
-    lb_history.append(env.LB)
+    lb_history.append(env.current_dual)
 
     # ===== RL 阶段 =====
     for step in range(K):
@@ -171,13 +174,16 @@ def level_bundle_rl_warmstart(env, model, logger, deterministic=True, K=20,
             outer.add_cut(env.subgradient_list[step + 1].tolist())
             _, _, ub = outer.solve()
             if ub is not None:
+                # UB 单调不增
+                ub = min(ub, ub_history[-1]) if ub_history else ub
                 ub_history.append(ub)
             else:
                 ub_history.append(ub_history[-1] if ub_history else env.LB)
         else:
             ub_history.append(ub_history[-1] if ub_history else env.LB)
 
-        lb_history.append(env.LB)
+        # 使用当前迭代计算出的 dual 值（不保证单调，但更直观）
+        lb_history.append(env.current_dual)
         reward_history.append(reward)
         time_history.append(elapsed)
         f_best_history.append(env.LB)
@@ -254,8 +260,11 @@ def level_bundle_rl_warmstart(env, model, logger, deterministic=True, K=20,
             ub = outer_obj
 
             elapsed = time.time() - t0
-            lb_history.append(env.LB)
+            # 使用当前迭代计算出的 dual 值（不保证单调，但更直观）
+            lb_history.append(dual)
             time_history.append(elapsed)
+            # UB 单调不增
+            ub = min(ub, ub_history[-1]) if ub_history else ub
             ub_history.append(ub)
             f_best_history.append(env.LB)
 
@@ -323,9 +332,37 @@ def compute_opt_gap(lb_history, ub_history):
 
 
 def compute_average_results(all_results):
-    """对所有 config 的 baseline/RL/RL Warmstart 的 gap 求均值"""
+    """
+    对所有 config 的 baseline/RL/RL Warmstart 的 gap 求均值
+
+    排除首次迭代就收敛的 config（baseline gap_history 长度 <= 1），
+    这类 config 的 gap 始终为 0，会拉低均值曲线。
+    """
+
+    # 识别首次迭代就收敛的 config：baseline 只有 0 或 1 个数据点
+    valid_indices = []
+    for idx, result in enumerate(all_results):
+        baseline_gap = result.get("baseline", {}).get("gap", [])
+        if len(baseline_gap) > 1:
+            valid_indices.append(idx)
+        else:
+            config_info = result.get("config_info", {})
+            print(f"排除首次迭代即收敛的 config: i={config_info.get('i')}, "
+                  f"t={config_info.get('t')}, n={config_info.get('n')}, "
+                  f"baseline_gap_len={len(baseline_gap)}")
+
+    if not valid_indices:
+        print("警告：所有 config 均首次迭代即收敛，无有效数据")
+        return {
+            "baseline": {"gap": [], "time": []},
+            "rl": {"gap": [], "time": []},
+            "rl_warmstart": {"gap": [], "time": []},
+        }
+
+    filtered_results = [all_results[i] for i in valid_indices]
+
     max_steps = 0
-    for result in all_results:
+    for result in filtered_results:
         for method in ["baseline", "rl", "rl_warmstart"]:
             if "gap" in result[method]:
                 max_steps = max(max_steps, len(result[method]["gap"]))
@@ -342,25 +379,23 @@ def compute_average_results(all_results):
             time_sum = 0.0
             count = 0
 
-            for result in all_results:
+            for result in filtered_results:
                 if method in result:
                     gap_list = result[method].get("gap", [])
                     time_list = result[method].get("time", [])
 
                     if step < len(gap_list):
                         gap_sum += gap_list[step]
-                    elif len(gap_list) > 0:
-                        gap_sum += gap_list[-1]
+                        count += 1
 
                     if step < len(time_list):
                         time_sum += time_list[step]
-
-                    count += 1
 
             if count > 0:
                 avg_results[method]["gap"].append(gap_sum / count)
                 avg_results[method]["time"].append(time_sum / count)
 
+    print(f"参与均值计算的 config 数: {len(filtered_results)}/{len(all_results)}")
     return avg_results
 
 
@@ -701,8 +736,8 @@ def collect_configs():
     base_dir = os.path.dirname(current_dir)  # bundle_norm_RL
     config_dir = Path(os.path.join(base_dir, "configs"))
     # for i in range(1, 10):
-    i = 1
-    for t in range(1, 24):
+    i = 2
+    for t in range(1, 5):
         for n in range(6):
             config_path = config_dir / f"config_{i}_{t}_{n}.pkl"
             if config_path.exists():
@@ -716,7 +751,7 @@ def collect_configs():
     return configs, config_info
 
 if __name__ == "__main__":
-    experiment_name = "exp_12"
+    experiment_name = "exp_16"
     main(
         experiment_name=experiment_name,
         train_experiment_name=experiment_name,

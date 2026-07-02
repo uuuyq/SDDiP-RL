@@ -421,7 +421,7 @@ class LevelBundleSolver:
 
         # 初始化乘子
         pi_hat = np.zeros(len(X_trial))
-        pi0_hat = 1
+        pi0_hat = 0.1
 
         # 最优乘子
         pi_star = None
@@ -676,31 +676,33 @@ def load_config_and_solve(
     from bundle_norm_RL.script.config import LevelBundleConfig
 
     ratio_list = []
-    for i in range(1, 11):
-        count = 0
-        all = 0
-        for t in range(1, 24):
-            for n in range(0, 6):
+    # for i in range(2, 3):
+    #     count = 0
+    #     all = 0
+    #     for t in range(1, 24):
+    #         for n in range(0, 6):
+    i = 2
+    t = 2
+    n = 0
+    pkl_path = f"{configs_dir}/config_{i}_{t}_{n}.pkl"
+    config = LevelBundleConfig.from_pkl(pkl_path)
 
-                pkl_path = f"{configs_dir}/config_{i}_{t}_{n}.pkl"
-                config = LevelBundleConfig.from_pkl(pkl_path)
+    log.info(f"Loaded config from {pkl_path}")
+    log.info(config.toString())
 
-                log.info(f"Loaded config from {pkl_path}")
-                log.info(config.toString())
+    solver = LevelBundleSolver(
+        log, config, n=n,
+        B_t=B_t, norm_bound_type=norm_bound_type,
+        weights=weights,
+    )
+    results = solver.solve()
 
-                solver = LevelBundleSolver(
-                    log, config, n=n,
-                    B_t=B_t, norm_bound_type=norm_bound_type,
-                    weights=weights,
-                )
-                results = solver.solve()
-
-                log.info(f"Results: {results.toString()}")
-                if results.converged:
-                    count += 1
-                all += 1
-        ratio_list.append(count / all)
-    print(f"ratio: {[f'{r:.5f}' for r in ratio_list]}")
+    log.info(f"Results: {results.toString()}")
+    # if results.converged:
+    #     count += 1
+    # all += 1
+    # ratio_list.append(count / all)
+    # print(f"ratio: {[f'{r:.5f}' for r in ratio_list]}")
 
 
 if __name__ == "__main__":

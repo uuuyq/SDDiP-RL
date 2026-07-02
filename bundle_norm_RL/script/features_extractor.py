@@ -19,7 +19,8 @@ class LevelBundleFeaturesExtractor(BaseFeaturesExtractor):
     Level Bundle Features Extractor
 
     observation_space 结构:
-        - subgradient_history: (K, N_VARS+1)
+        - subgradient_history: (K, 2*(N_VARS+1))
+          每行 = [subgradient_pi(N_VARS), subgradient_pi0(1), gen_pi(N_VARS), gen_pi0(1)]
         - valid_mask: (K,)
         - pi: (N_VARS,)
         - pi0: (1,)
@@ -49,7 +50,7 @@ class LevelBundleFeaturesExtractor(BaseFeaturesExtractor):
 
         sg_shape = observation_space["subgradient_history"].shape
         self.K = sg_shape[0]
-        self.state_dim = sg_shape[1]  # N_VARS + 1
+        self.state_dim = sg_shape[1]  # 2 * (N_VARS + 1)，包含次梯度和生成乘子
         self.n_vars = observation_space["pi"].shape[0]
         self.trial_point_dim = observation_space["trial_point"].shape[0]
         self.realization_dim = observation_space["realization"].shape[0]
