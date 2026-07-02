@@ -1,0 +1,292 @@
+%! Author = HK
+%! Date = 2026/7/2
+
+% Preamble
+% 将 article 修改为 ctexart 即可完美支持中文，建议使用 XeLaTeX 编译器编译
+\documentclass[11pt]{ctexart}
+
+% Packages
+\usepackage{amsmath}
+\usepackage{siunitx} % 修复 \unit{h} 找不到命令的问题
+\usepackage{enumitem} % 修复 itemsep 和 topsep 找不到属性的问题
+
+
+% Document
+\begin{document}
+\paragraph{Master Problem 的增量重参数化}
+
+在经典 Level Bundle 方法中，外层主问题直接以对偶变量
+$(\pi,\pi_0)$ 为优化变量。由于 proximal 项本质上限制的是
+当前试探点相对于稳定中心（Serious Center）的偏移，因此更自然的做法是将优化变量重新参数化为增量形式。
+
+定义统一的对偶变量
+\begin{equation}
+\lambda
+=
+\begin{bmatrix}
+\pi\\
+\pi_0
+\end{bmatrix},
+\qquad
+\bar{\lambda}
+=
+\begin{bmatrix}
+\bar{\pi}\\
+\bar{\pi}_0
+\end{bmatrix},
+\end{equation}
+其中 $\bar{\lambda}$ 表示当前稳定中心。
+
+定义增量变量
+\begin{equation}
+d
+=
+\lambda-\bar{\lambda}
+=
+\begin{bmatrix}
+d_{\pi}\\
+d_{\pi_0}
+\end{bmatrix},
+\end{equation}
+即
+\begin{equation}
+\pi=\bar{\pi}+d_{\pi},
+\qquad
+\pi_0=\bar{\pi}_0+d_{\pi_0}.
+\end{equation}
+
+于是，Master Problem 可重新写为
+\begin{equation}
+\begin{aligned}
+\max_{d,L}
+\quad
+&
+L
+-
+\frac{\rho}{2}\|d\|^2
+\\
+\text{s.t.}\quad
+&
+L
+\le
+\omega(\lambda^i)
++
+(g^i)^\top
+(\bar{\lambda}+d-\lambda^i),
+\qquad
+\forall i\in I_t,
+\end{aligned}
+\end{equation}
+其中
+\begin{equation}
+g^i=
+\begin{bmatrix}
+g_{\pi}^i\\
+g_{\pi_0}^i
+\end{bmatrix}
+=
+\begin{bmatrix}
+z^i-x\\
+f^i+\theta^i-\theta
+\end{bmatrix}
+\end{equation}
+表示第 $i$ 个 bundle cut 对应的次梯度。
+
+进一步整理 cut 约束，可定义常数项
+\begin{equation}
+\beta_i
+=
+(g^i)^\top
+(\bar{\lambda}-\lambda^i)
++
+\omega(\lambda^i),
+\end{equation}
+于是 Master Problem 可进一步写成
+\begin{equation}
+\label{eq:increment_master}
+\begin{aligned}
+\max_{d,L}
+\quad
+&
+L
+-
+\frac{\rho}{2}\|d\|^2
+\\
+\text{s.t.}\quad
+&
+L
+\le
+(g^i)^\top d+\beta_i,
+\qquad
+\forall i\in I_t.
+\end{aligned}
+\end{equation}
+
+可以看到，经过变量替换之后，Master Problem 的优化变量完全变为增量
+$d$，而原始对偶变量仅通过
+\begin{equation}
+\lambda=\bar{\lambda}+d
+\end{equation}
+恢复得到。由于 proximal 项仅作用于增量，因此该重参数化保持了原问题的数学等价性，同时更加符合 Bundle 方法"在当前稳定中心附近寻找局部修正"的算法思想。
+
+\paragraph{KKT 条件}
+
+对于增量形式的 Master Problem \eqref{eq:increment_master}，
+为每一个 cut 约束引入拉格朗日乘子
+\[
+\mu_i \ge 0,
+\qquad
+i\in I_t,
+\]
+则对应的拉格朗日函数为
+\begin{equation}
+\mathcal L(d,L,\mu)
+=
+L
+-
+\frac{\rho}{2}\|d\|^2
++
+\sum_{i\in I_t}
+\mu_i
+\left(
+(g^i)^\top d
++\beta_i
+-
+L
+\right).
+\end{equation}
+
+\paragraph{一阶最优性条件}
+
+分别对 $d$ 与 $L$ 求偏导，可得
+
+\begin{align}
+\nabla_d \mathcal L
+&=
+-\rho d
++
+\sum_{i\in I_t}
+\mu_i g^i
+=0,
+\label{eq:kkt_d}
+\\
+\nabla_L \mathcal L
+&=
+1-
+\sum_{i\in I_t}
+\mu_i
+=0.
+\label{eq:kkt_L}
+\end{align}
+
+由此得到
+
+\begin{equation}
+\sum_{i\in I_t}\mu_i=1,
+\end{equation}
+
+以及
+
+\begin{equation}
+\boxed{
+d^\star
+=
+\frac{1}{\rho}
+\sum_{i\in I_t}
+\mu_i g^i .
+}
+\label{eq:d_star}
+\end{equation}
+
+由于
+\[
+g^i=
+\begin{bmatrix}
+g_\pi^i\\
+g_{\pi_0}^i
+\end{bmatrix},
+\]
+因此增量可以进一步写成
+
+\begin{equation}
+d^\star
+=
+\begin{bmatrix}
+d_\pi^\star\\
+d_{\pi_0}^\star
+\end{bmatrix}
+=
+\frac1\rho
+\sum_{i\in I_t}
+\mu_i
+\begin{bmatrix}
+g_\pi^i\\
+g_{\pi_0}^i
+\end{bmatrix},
+\end{equation}
+
+即
+
+\begin{align}
+d_\pi^\star
+&=
+\frac1\rho
+\sum_{i\in I_t}
+\mu_i g_\pi^i,
+\\
+d_{\pi_0}^\star
+&=
+\frac1\rho
+\sum_{i\in I_t}
+\mu_i g_{\pi_0}^i.
+\end{align}
+
+最后恢复原始对偶变量
+
+\begin{equation}
+\lambda_{t+1}
+=
+\bar{\lambda}
++
+d^\star,
+\end{equation}
+
+即
+
+\begin{align}
+\pi_{t+1}
+&=
+\bar{\pi}
++
+d_\pi^\star,
+\\
+\pi_{0,t+1}
+&=
+\bar{\pi}_0
++
+d_{\pi_0}^\star.
+\end{align}
+
+\paragraph{互补松弛条件}
+
+对于每一个 bundle cut，有
+
+\begin{equation}
+\mu_i
+\left(
+L
+-
+(g^i)^\top d
+-
+\beta_i
+\right)
+=
+0,
+\qquad
+\forall i\in I_t.
+\end{equation}
+
+该条件表明，仅有在最优解处处于活跃状态（active）的 bundle cuts 才具有非零的拉格朗日乘子，其余 cuts 对最终增量方向没有贡献。
+
+
+\end{document}
