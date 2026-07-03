@@ -1,32 +1,30 @@
 """
-Custom Actor-Critic Policy for Level Bundle RL
+Custom Actor-Critic Policy for Incremental Level Bundle RL
 
-直接输出 (pi_raw, pi0_raw)，环境侧做归一化。
+与 script/policy_network.py 的区别:
+    - 使用 IncrementalLevelBundleFeaturesExtractor
+    - 动作含义为增量 d = (d_pi, d_pi0)，而非绝对乘子
 
 网络结构:
     FeaturesExtractor → [seq_emb; global_emb] (B, 2H)
         ├── ActorHead → action_mean (B, N_VARS+1)
-        └── ValueHead → V(s) (B, 1) — 更深的网络 + LayerNorm
+        └── ValueHead → V(s) (B, 1)
 
     cut_aware 模式:
         FeaturesExtractor → [seq_emb; global_emb] (B, 2H)
         + candidate_actions (B, K, N_VARS+1) + attention_weights (B, K)
-        ├── CutAwareActorHead → action_mean = Σ αᵢ · candidate_πᵢ + residual (B, N_VARS+1)
+        ├── CutAwareActorHead → action_mean = Σ αᵢ · candidate_dᵢ + residual (B, N_VARS+1)
         └── ValueHead → V(s) (B, 1)
-
-关键设计:
-    - 重写 _build() 以跳过 SB3 内置的 action_net/value_net/mlp_extractor
-    - 自定义 ActorHead/ValueHead 做正交初始化（actor 最后一层 gain=0.01）
-    - 确保 SB3 内置模块不产生幽灵参数影响优化器
 """
 
 import torch
 import torch.nn as nn
+import numpy as np
 from stable_baselines3.common.policies import ActorCriticPolicy
 from gymnasium import spaces
 from typing import Dict, Tuple
 
-from bundle_norm_RL.script.features_extractor import LevelBundleFeaturesExtractor
+from bundle_norm_RL.script1.features_extractor import IncrementalLevelBundleFeaturesExtractor
 
 
 def _orthogonal_init(module, gain=1.0):
@@ -38,10 +36,7 @@ def _orthogonal_init(module, gain=1.0):
 
 
 class ActorHead(nn.Module):
-    """
-    Actor Head: 输出 action_mean (B, N_VARS+1)
-    3 层 MLP，足够容量控制 14 维连续动作
-    """
+    """Actor Head: 输出 action_mean (B, N_VARS+1)"""
     def __init__(self, input_dim: int, action_dim: int, hidden_dim: int = 64):
         super().__init__()
         self.net = nn.Sequential(
@@ -51,7 +46,6 @@ class ActorHead(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim, action_dim),
         )
-        # 正交初始化: 隐藏层 gain=sqrt(2)，最后一层 gain=0.01（与 SB3 一致）
         self.net[:-1].apply(lambda m: _orthogonal_init(m, gain=np.sqrt(2)))
         _orthogonal_init(self.net[-1], gain=0.01)
 
@@ -61,31 +55,16 @@ class ActorHead(nn.Module):
 
 class CutAwareActorHead(nn.Module):
     """
-    Cut-Aware Actor Head: 基于 KKT 凸组合的 action_mean 计算
+    Cut-Aware Actor Head: 基于 KKT 凸组合的 action_mean 计算（增量版本）
 
-    理论依据:
-        Level Bundle 的 outer problem KKT 条件表明新乘子是历史 cut 次梯度的凸组合。
-        CutAwareEncoder 已经为每个 cut 解码了一个"候选乘子增量" candidate_actions，
-        并计算了凸组合权重 attention_weights。
+    action_mean = Σᵢ αᵢ · candidate_dᵢ + MLP_residual([seq_emb; global_emb])
 
-    计算方式:
-        action_mean = Σᵢ αᵢ · candidate_πᵢ + MLP_residual([seq_emb; global_emb])
-
-    其中:
-        - Σᵢ αᵢ · candidate_πᵢ: 凸组合部分，直接从 cut 几何推导
-        - MLP_residual: 残差修正项，弥补凸组合的理论假设与实际差异
-          (如归一化约束、level 策略等未在凸组合中体现的因素)
-
-    Args:
-        input_dim: 拼接特征维度 (2 * hidden_dim)
-        action_dim: 动作维度 (N_VARS + 1)
-        hidden_dim: 隐藏层维度
+    其中 candidate_dᵢ 是每个 cut 的候选增量
     """
     def __init__(self, input_dim: int, action_dim: int, hidden_dim: int = 64):
         super().__init__()
         self.action_dim = action_dim
 
-        # 残差修正网络: 从全局特征中学习凸组合无法捕捉的修正量
         self.residual_net = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.ReLU(),
@@ -93,7 +72,6 @@ class CutAwareActorHead(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim, action_dim),
         )
-        # 正交初始化: 最后一层 gain=0.01，初始时残差很小，主要依赖凸组合
         self.residual_net[:-1].apply(lambda m: _orthogonal_init(m, gain=np.sqrt(2)))
         _orthogonal_init(self.residual_net[-1], gain=0.01)
 
@@ -103,30 +81,13 @@ class CutAwareActorHead(nn.Module):
         candidate_actions: torch.Tensor,
         attention_weights: torch.Tensor,
     ) -> torch.Tensor:
-        """
-        Args:
-            h: 拼接特征 (B, 2*hidden_dim)
-            candidate_actions: 每个 cut 的候选乘子增量 (B, K, N_VARS+1)
-            attention_weights: 凸组合权重 (B, K), Σαᵢ=1
-
-        Returns:
-            action_mean: (B, N_VARS+1)
-        """
-        # 凸组合: Σᵢ αᵢ · candidate_πᵢ
         convex_comb = torch.einsum('bk,bkd->bd', attention_weights, candidate_actions)
-
-        # 残差修正
         residual = self.residual_net(h)
-
         return convex_comb + residual
 
 
 class ValueHead(nn.Module):
-    """
-    Value Head: 输出 V(s)，比 Actor 更深以增加容量
-
-    Critic 需要更强的拟合能力，因为 V(s) 需要预测累积回报
-    """
+    """Value Head: 输出 V(s)"""
     def __init__(self, input_dim: int, hidden_dim: int = 64):
         super().__init__()
         self.net = nn.Sequential(
@@ -138,7 +99,6 @@ class ValueHead(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim, 1),
         )
-        # 正交初始化: 隐藏层 gain=sqrt(2)，最后一层 gain=1（与 SB3 value_net 一致）
         for i in range(0, len(self.net) - 1, 3):
             _orthogonal_init(self.net[i], gain=np.sqrt(2))
         _orthogonal_init(self.net[-1], gain=1.0)
@@ -147,21 +107,12 @@ class ValueHead(nn.Module):
         return self.net(h)
 
 
-import numpy as np
-
-
-class LevelBundleActorCriticPolicy(ActorCriticPolicy):
+class IncrementalLevelBundleActorCriticPolicy(ActorCriticPolicy):
     """
-    自定义 Actor-Critic 策略
+    自定义 Actor-Critic 策略（增量版本）
 
     继承 SB3 的 ActorCriticPolicy，复用 action_dist 和 log_std，
     重写 _build/forward/evaluate_actions/predict_values/_predict。
-
-    关键: 重写 _build() 以跳过 SB3 内置的 mlp_extractor/action_net/value_net，
-    只使用自定义的 ActorHead/ValueHead，避免幽灵参数影响优化器。
-
-    cut_aware 模式:
-        使用 CutAwareActorHead 替代 ActorHead，action_mean 通过凸组合 + 残差计算。
     """
 
     def __init__(
@@ -169,7 +120,7 @@ class LevelBundleActorCriticPolicy(ActorCriticPolicy):
         observation_space: spaces.Dict,
         action_space,
         lr_schedule,
-        features_extractor_class=LevelBundleFeaturesExtractor,
+        features_extractor_class=IncrementalLevelBundleFeaturesExtractor,
         features_extractor_kwargs=None,
         **kwargs,
     ):
@@ -179,7 +130,6 @@ class LevelBundleActorCriticPolicy(ActorCriticPolicy):
         if "net_arch" not in kwargs:
             kwargs["net_arch"] = []
 
-        # 记录 encoder_type 供 _build 使用
         self._encoder_type = features_extractor_kwargs.get("encoder_type", "deepset")
 
         super().__init__(
@@ -192,17 +142,11 @@ class LevelBundleActorCriticPolicy(ActorCriticPolicy):
         )
 
     def _build(self, lr_schedule):
-        """
-        重写 _build: 跳过 SB3 内置的 mlp_extractor/action_net/value_net，
-        只创建自定义的 ActorHead/ValueHead，并正确设置 log_std。
-        """
-        # 不调用 super()._build()，完全自定义
-
+        """重写 _build: 跳过 SB3 内置的 mlp_extractor/action_net/value_net"""
         hidden_dim = self.features_extractor.hidden_dim
         combined_dim = 2 * hidden_dim
         action_dim = self.action_space.shape[0]
 
-        # 根据 encoder_type 选择 ActorHead
         if self._encoder_type == "cut_aware":
             self.actor_head = CutAwareActorHead(combined_dim, action_dim, hidden_dim)
         else:
@@ -210,15 +154,11 @@ class LevelBundleActorCriticPolicy(ActorCriticPolicy):
 
         self.value_head = ValueHead(combined_dim, hidden_dim)
 
-        # log_std: 可学习参数，初始化为较小值
-        # log_std=-3 → std≈0.05，14 维空间中避免 KL 过大
         self.log_std = nn.Parameter(
             torch.ones(action_dim) * -3.0,
             requires_grad=True,
         )
 
-        # 创建占位模块以满足 SB3 内部对 mlp_extractor/action_net/value_net 的引用
-        # 这些模块不会被 forward 使用，但 SB3 的某些代码可能访问它们的属性
         from stable_baselines3.common.torch_layers import MlpExtractor
 
         self.mlp_extractor = MlpExtractor(
@@ -230,12 +170,9 @@ class LevelBundleActorCriticPolicy(ActorCriticPolicy):
         self.action_net = nn.Linear(combined_dim, action_dim)
         self.value_net = nn.Linear(combined_dim, 1)
 
-        # 设置 latent_dim 供 SB3 内部使用
         self.mlp_extractor.latent_dim_pi = combined_dim
         self.mlp_extractor.latent_dim_vf = combined_dim
 
-        # 优化器只包含真正使用的参数
-        # 排除占位的 mlp_extractor/action_net/value_net
         active_params = list(self.actor_head.parameters()) + \
                         list(self.value_head.parameters()) + \
                         list(self.features_extractor.parameters()) + \
@@ -248,16 +185,13 @@ class LevelBundleActorCriticPolicy(ActorCriticPolicy):
         )
 
     def _encode(self, obs: Dict[str, torch.Tensor]) -> torch.Tensor:
-        """获取 combined embedding (B, 2H)，同时触发 features_extractor 的缓存"""
         return self.features_extractor(obs)
 
     def _compute_action_mean(self, h: torch.Tensor) -> torch.Tensor:
-        """计算 action_mean，cut_aware 模式使用凸组合 + 残差"""
         if self._encoder_type == "cut_aware":
             candidate_actions = self.features_extractor.candidate_actions
             attention_weights = self.features_extractor.attention_weights
             if candidate_actions is None or attention_weights is None:
-                # fallback: 如果缓存为空（不应该发生），退化为标准 ActorHead
                 return ActorHead(h.shape[-1], self.action_space.shape[0], h.shape[-1] // 2).to(h.device)(h)
             return self.actor_head(h, candidate_actions, attention_weights)
         else:

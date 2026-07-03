@@ -1,40 +1,46 @@
 """
-Level Bundle RL Environment
+Incremental Level Bundle RL Environment
 
-使用 RL 直接预测乘子 (pi, pi0)，替代 Level Bundle 中的 outer problem QP 求解。
+使用 RL 预测增量 d = (d_pi, d_pi0)，替代 Level Bundle 增量形式中的 Level QP 求解。
+
+与 script/env.py 的区别:
+    - Action: 预测增量 d = (d_pi, d_pi0)，而非绝对乘子 (pi, pi0)
+    - 需要维护稳定中心 (pi_bar, pi0_bar) 和 Serious Step 逻辑
+    - 使用 IncrementalOuterProblem 替代 OuterProblem
+    - 状态包含稳定中心信息
 
 State:
     - subgradient_history: 最近 K 轮的次梯度 + 生成该次梯度时的乘子 (K, 2*(N_VARS+1))
       每行 = [subgradient_pi(N_VARS), subgradient_pi0(1), gen_pi(N_VARS), gen_pi0(1)]
     - valid_mask: 有效次梯度掩码 (K,)
+    - pi_bar: 当前稳定中心 pi (N_VARS,)
+    - pi0_bar: 当前稳定中心 pi0 (1,)
     - pi: 当前乘子 pi (N_VARS,)
     - pi0: 当前乘子 pi0 (1,)
-    - lb_ub_norm: [LB_norm, UB_norm, gap_norm] (3,) 归一化后，避免 NaN
+    - lb_ub_norm: [LB_norm, UB_norm, gap_norm] (3,)
     - trial_point: 展平的 trial point (trial_point_dim,)
     - realization: 场景特征 (realization_dim,)
 
 Action:
     - action: (N_VARS+1,) ∈ [-1, 1]
-      SB3 SquashedDiagGaussian 内置 tanh + log_prob 校正
-      pi 直接用 action ∈ [-1, 1]
-      pi0 = (action + 1) / 2 ∈ [0, 1]，保证非负
+      d_pi = action[:N_VARS] * scale_d  (缩放到合适范围)
+      d_pi0 = action[N_VARS] * scale_d_pi0
 
 Reward:
     - dual / scale，scale = |LB_init| + 1
-    - 让 PPO 优势函数自行处理"这步比预期好/差"的判断
-    - 叠加迭代惩罚 (-0.05) 和收敛奖励
+    - 迭代惩罚 (-0.05) 和收敛奖励
 
 UB 计算:
-    - 训练时 (use_outer=True): 使用 OuterProblem 求解真实 UB
-    - 测试时 (use_outer=False): 不计算 UB，UB 设为 LB（仅看 LB 收敛）
+    - 训练时 (use_outer=True): 使用 IncrementalOuterProblem 求解真实 UB
+    - 测试时 (use_outer=False): 不计算 UB，UB 设为 LB
 """
 
 import gymnasium as gym
 import numpy as np
-from bundle_norm_RL.script.level_bundle_problem import InnerProblem, OuterProblem
+from bundle_norm_RL.script1.level_bundle_problem import InnerProblem, IncrementalOuterProblem
 
 
-class LevelBundleEnv(gym.Env):
+class IncrementalLevelBundleEnv(gym.Env):
 
     def __init__(self, logger, config, n, K=20, verbose=False, use_outer=True):
         """
@@ -44,7 +50,7 @@ class LevelBundleEnv(gym.Env):
             n: realization 索引
             K: 次梯度历史长度
             verbose: 是否输出详细日志
-            use_outer: 是否使用 OuterProblem 计算 UB（训练时 True，测试时 False）
+            use_outer: 是否使用 IncrementalOuterProblem 计算 UB（训练时 True，测试时 False）
         """
         super().__init__()
 
@@ -65,11 +71,15 @@ class LevelBundleEnv(gym.Env):
         # outer problem（仅训练时使用）
         self.outer_problem = None
         if self.use_outer:
-            self.outer_problem = OuterProblem(
+            self.outer_problem = IncrementalOuterProblem(
                 logger,
                 dim_pi=config.N_VARS,
                 X_trial=config.X_trial,
                 theta_trial=float(config.THETA_TRIAL),
+                rho=config.rho,
+                B_t=config.B_t,
+                norm_bound_type=config.norm_bound_type,
+                weights=config.weights,
             )
 
         # trial point
@@ -82,6 +92,10 @@ class LevelBundleEnv(gym.Env):
         self.re = np.array(self.problem_params.re[self.stage][self.n], dtype=np.float32)
         self.realization_dim = len(self.p_d) + len(self.re)
 
+        # 增量缩放因子 (根据 analyze_increments 的统计确定)
+        self.scale_d = 0.1       # d_pi 缩放因子
+        self.scale_d_pi0 = 0.05  # d_pi0 缩放因子
+
         # 状态空间
         # subgradient_history 每行 = [subgradient(N_VARS+1), gen_pi(N_VARS), gen_pi0(1)]
         self.CUT_DIM = 2 * (self.N_VARS + 1)
@@ -93,6 +107,13 @@ class LevelBundleEnv(gym.Env):
             ),
             "valid_mask": gym.spaces.Box(
                 low=0, high=1, shape=(self.K,), dtype=np.float32
+            ),
+            "pi_bar": gym.spaces.Box(
+                low=-np.inf, high=np.inf,
+                shape=(self.N_VARS,), dtype=np.float32
+            ),
+            "pi0_bar": gym.spaces.Box(
+                low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32
             ),
             "pi": gym.spaces.Box(
                 low=-np.inf, high=np.inf,
@@ -115,8 +136,8 @@ class LevelBundleEnv(gym.Env):
         })
 
         # 动作空间: [-1, 1]，SB3 使用 SquashedDiagGaussian（内置 tanh + log_prob 校正）
-        # pi 直接用 action（SB3 的 tanh squash 已映射到 [-1,1]）
-        # pi0 = (action + 1) / 2 ∈ [0, 1]，保证非负
+        # d_pi = action[:N_VARS] * scale_d
+        # d_pi0 = action[N_VARS] * scale_d_pi0
         self.action_space = gym.spaces.Box(
             low=-1.0, high=1.0,
             shape=(self.N_VARS + 1,), dtype=np.float32
@@ -127,8 +148,12 @@ class LevelBundleEnv(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
+        # 初始化乘子和稳定中心
         self.pi = np.zeros(self.N_VARS, dtype=np.float32)
         self.pi0 = 0.1
+        self.pi_bar = np.zeros(self.N_VARS, dtype=np.float32)
+        self.pi0_bar = 0.1
+
         self.LB = 0.0
         self.UB = 0.0
         self.current_dual = 0.0
@@ -140,11 +165,15 @@ class LevelBundleEnv(gym.Env):
 
         # 重建 outer problem（每次 reset 清空旧的 cuts）
         if self.use_outer:
-            self.outer_problem = OuterProblem(
+            self.outer_problem = IncrementalOuterProblem(
                 self.logger,
                 dim_pi=self.config.N_VARS,
                 X_trial=self.config.X_trial,
                 theta_trial=float(self.config.THETA_TRIAL),
+                rho=self.config.rho,
+                B_t=self.config.B_t,
+                norm_bound_type=self.config.norm_bound_type,
+                weights=self.config.weights,
             )
 
         # 初始求解
@@ -172,7 +201,9 @@ class LevelBundleEnv(gym.Env):
         self.pi0_history.append(self.pi0)
 
         if self.use_outer:
-            self.outer_problem.add_cut(subgradient.tolist())
+            lambda_i = np.concatenate([self.pi, [self.pi0]])
+            omega_i = inner_obj - self.pi @ self.X_trial - self.pi0 * self.theta_trial
+            self.outer_problem.add_cut(subgradient.tolist(), lambda_i, omega_i)
             _, _, self.UB = self.outer_problem.solve()
             if self.UB is None:
                 self.UB = self.LB * 1.1  # fallback
@@ -183,15 +214,22 @@ class LevelBundleEnv(gym.Env):
 
     def step(self, action):
         """
-        Action: raw (pi_raw[N_VARS], pi0_raw[1])
-        后处理: pi = tanh(raw_pi), pi0 = softplus(raw_pi0)
+        Action: raw action (N_VARS+1,) ∈ [-1, 1]
+        后处理: d_pi = action[:N_VARS] * scale_d
+                 d_pi0 = action[N_VARS] * scale_d_pi0
+        新乘子: pi = pi_bar + d_pi, pi0 = pi0_bar + d_pi0
         """
         action = np.asarray(action, dtype=np.float32).copy()
 
-        # pi 直接用 action（SB3 SquashedDiagGaussian 已将高斯映射到 [-1,1]）
-        pi = action[:self.N_VARS]
-        # pi0 = (action + 1) / 2 ∈ [0, 1]，保证非负
-        pi0 = (action[self.N_VARS] + 1.0) / 2.0 + 1e-6
+        # 解码增量
+        d_pi = action[:self.N_VARS] * self.scale_d
+        d_pi0 = action[self.N_VARS] * self.scale_d_pi0
+
+        # 恢复乘子: λ = λ̄ + d
+        pi = self.pi_bar + d_pi
+        pi0 = self.pi0_bar + d_pi0
+        # 保证 pi0 非负
+        pi0 = max(pi0, 1e-6)
 
         self.pi = pi
         self.pi0 = pi0
@@ -205,10 +243,10 @@ class LevelBundleEnv(gym.Env):
             # 计算 dual 值: inner_obj - pi^T * X_trial - pi0 * theta_trial
             dual = inner_obj - pi @ self.X_trial - pi0 * self.theta_trial
 
-            # reward = dual / scale，让优势函数自行判断"比预期好/差"
-            reward = dual - self.LB / self.scale
+            # reward = dual / scale
+            reward = dual / self.scale
 
-            # 更新当前迭代的实际 dual 值（用于绘图，不保证单调）
+            # 更新当前迭代的实际 dual 值
             self.current_dual = dual
 
             # 更新历史最优 LB
@@ -224,34 +262,45 @@ class LevelBundleEnv(gym.Env):
 
             # 更新 UB：通过 outer problem 求解
             if self.use_outer:
-                self.outer_problem.add_cut(subgradient.tolist())
+                lambda_i = np.concatenate([pi, [pi0]])
+                omega_i = dual  # inner_obj - pi^T * X_trial - pi0 * theta_trial
+                self.outer_problem.add_cut(subgradient.tolist(), lambda_i, omega_i)
                 _, _, new_UB = self.outer_problem.solve()
                 if new_UB is not None:
                     self.UB = new_UB
-            # 测试时不更新 UB
+
+            # Serious step: 当 dual 有显著提升时，更新稳定中心
+            if dual > self.LB - 1e-8 * max(1.0, abs(self.LB)):
+                # 只要当前 dual 不比 LB 差太多，就考虑更新稳定中心
+                if dual > self.LB + 1e-8 * max(1.0, abs(self.LB)):
+                    self.pi_bar = pi.copy()
+                    self.pi0_bar = pi0
+                    if self.use_outer:
+                        self.outer_problem.set_stability_center(pi.copy(), pi0)
 
         self.t += 1
 
-        # 迭代惩罚: 每步扣一个小的常数，鼓励尽快收敛
+        # 迭代惩罚
         reward -= 0.05
 
-        # 终止条件: 达到最大迭代次数 或 gap 收敛
+        # 终止条件
         max_iter_reached = self.t >= self.K
         gap_converged = False
         if self.use_outer and self.UB is not None:
             gap = self.UB - self.LB
             if gap < self.config.gap_tol * abs(self.UB) or gap < 1e-6:
                 gap_converged = True
-                # 收敛奖励: 剩余步数越多奖励越大，鼓励尽早收敛
                 remaining_steps = self.K - self.t
                 reward += remaining_steps * 0.1
         terminated = max_iter_reached or gap_converged
 
         if self.verbose:
             pi_str = " ".join(f"{p:.6f}" for p in pi)
+            d_pi_str = " ".join(f"{d:.6f}" for d in d_pi)
             self.logger.debug(
-                f"[LevelBundleEnv Step {self.t}] "
+                f"[IncrementalEnv Step {self.t}] "
                 f"pi0={pi0:.6f}, pi={pi_str}, "
+                f"d_pi0={d_pi0:.6f}, d_pi={d_pi_str}, "
                 f"LB={self.LB:.4f}, UB={self.UB:.4f}, reward={reward:.6f}"
             )
 
@@ -260,7 +309,6 @@ class LevelBundleEnv(gym.Env):
     def _get_state(self):
         """构建当前状态"""
         # 次梯度历史 + 生成乘子历史，取最近 K 个
-        # 每行 = [subgradient(N_VARS+1), gen_pi(N_VARS), gen_pi0(1)]
         history = np.zeros((self.K, self.CUT_DIM), dtype=np.float32)
         valid_mask = np.zeros(self.K, dtype=np.float32)
 
@@ -269,15 +317,12 @@ class LevelBundleEnv(gym.Env):
         active_pi0 = self.pi0_history[-self.K:]
         start = self.K - len(active)
         for i in range(len(active)):
-            # 次梯度部分
             history[start + i, :self.N_VARS + 1] = active[i]
-            # 生成该 cut 时的 pi
             history[start + i, self.N_VARS + 1:2 * self.N_VARS + 1] = active_pi[i]
-            # 生成该 cut 时的 pi0
             history[start + i, -1] = active_pi0[i]
             valid_mask[start + i] = 1.0
 
-        # 归一化 LB/UB/gap，避免 NaN 和极端值
+        # 归一化 LB/UB/gap
         lb_norm = (self.LB - self.LB_init) / self.scale
         ub_norm = (self.UB - self.LB_init) / self.scale if self.use_outer else lb_norm
         gap_norm = (self.UB - self.LB) / self.scale if self.use_outer else 0.0
@@ -288,6 +333,8 @@ class LevelBundleEnv(gym.Env):
         return {
             "subgradient_history": history,
             "valid_mask": valid_mask,
+            "pi_bar": self.pi_bar.astype(np.float32),
+            "pi0_bar": np.array([self.pi0_bar], dtype=np.float32),
             "pi": self.pi.astype(np.float32),
             "pi0": np.array([self.pi0], dtype=np.float32),
             "lb_ub_norm": lb_ub_norm,

@@ -1,0 +1,565 @@
+%! Author = HK
+%! Date = 2026/7/3
+
+% Preamble
+% 将 article 修改为 ctexart 即可完美支持中文，建议使用 XeLaTeX 编译器编译
+\documentclass[11pt]{ctexart}
+
+% Packages
+\usepackage{amsmath}
+\usepackage{siunitx} % 修复 \unit{h} 找不到命令的问题
+\usepackage{enumitem} % 修复 itemsep 和 topsep 找不到属性的问题
+
+% Document
+\begin{document}
+
+\section{多阶段问题定义、状态解耦与 Epigraph 近似}
+
+\subsection{原始多阶段随机规划值函数}
+在第 $t$ 阶段，给定前一阶段状态变量 $x_{t-1}$ 和当前场景的随机向量 $\xi_t$，最优值函数 $Q_t(x_{t-1}, \xi_t)$ 定义为：
+\begin{equation}
+Q_{t}(x_{t-1}, \xi_{t}) := \min_{x_{t}, y_{t}} \left\{ f_{t}(x_{t}, y_{t}) + \sum_{k \in K} p_{k} Q_{t+1}(x_{t}, \xi_{t+1}^{k}) : (x_{t}, y_{t}) \in \Phi_{n}(x_{t-1}, \xi_{t}) \right\}
+\end{equation}
+其中 $\Phi_{n}(x_{t-1}, \xi_{t})$ 表示在给定入状态 $x_{t-1}$ 和随机实现 $\xi_t$ 下的可行域，$K$ 为下一阶段的场景集合，$p_k$ 为场景 $k$ 的概率。
+
+\subsection{引入状态解耦变量 $z_t$}
+为了消除前后阶段状态变量的直接耦合，引入复制变量 $z_{t} = x_{t-1}$。未来阶段的期望值函数通过上方图（Epigraph）集合来约束逼近，问题可调整为如下等价形式：
+\begin{align}
+Q_{t}(x_{t-1}, \xi_{t}) = \min_{x_{t}, y_{t}, \theta_{t+1}^{k}} \quad & f_{t}(x_{t}, y_{t}) + \sum_{k \in K} p_{k} \theta_{t+1}^{k} \\
+\text{s.t.} \quad & (x_{t}, y_{t}) \in \Phi_{n}(z_{t}, \xi_{t}) \\
+& z_{t} = x_{t-1} \\
+& \theta_{t+1}^{k} \ge Q_{t+1}(x_{t}, \xi_{t+1}^{k}), \quad \forall k \in K \\
+& z_{t} \in X_{t-1}, \quad x_{t} \in X_{t}
+\end{align}
+注意：$z_t$ 松弛为连续变量
+
+\subsection{值函数的 Cut 逼近近似}
+在迭代过程中，通过对未来所有场景依据概率 $p_k$ 取期望值，构造出与具体场景 $k$ 无关的统一状态逼近函数 $\psi_{t+1}^{i}(x_t)$。具体地，设前 $i$ 次迭代中已生成 $i$ 条仿射割平面，第 $j$ 条割对应的仿射函数定义为：
+\begin{equation}
+\lambda_{j}(x_t) := \theta^{j} + (\pi^{j})^\top x_t
+\end{equation}
+其中 $\theta^{j}$ 为割的截距，$\pi^{j}$ 为割的斜率向量（对偶乘子）。值函数的逼近取所有历史割的上包络：
+\begin{equation}
+\psi_{t+1}^{i}(x_t) = \max \left\{ \lambda_{1}(x_t), \lambda_{2}(x_t), \dots, \lambda_{i}(x_t) \right\}
+\end{equation}
+在第 $i+1$ 次迭代的前向过程中，用 $\psi_{t+1}^{i}(x_t)$ 替代真实的期望值函数，第 $t$ 阶段的近似子模型表述为：
+\begin{align}
+\mathcal{Q}_{t}^{i+1}(x_{t-1}, \xi_t) = \min_{x_t, y_t, \theta_{t+1}} \quad & f_{t}(x_{t}, y_{t}) + \theta_{t+1} \\
+\text{s.t.} \quad & (x_{t}, y_{t}) \in \Phi_{n}(z_{t}, \xi_{t}) \\
+& z_{t} = x_{t-1}^{i} \\
+& \theta_{t+1} \ge \psi_{t+1}^{i}(x_{t}) \\
+& z_{t} \in Z_{t-1}, \quad x_{t} \in X_{t}
+\end{align}
+
+\subsection{Epigraph 可行性判定子问题}
+为了检验当前前向探索点 $(x_{t-1}^i, \theta_t^i)$ 是否满足包络约束，我们需要求解一个可行性判定子问题。若该点不满足当前的近似上方图，则通过下式寻找违解程度：
+\begin{align}
+\min_{x_t, y_t, z_t, \theta_{t+1}} \quad & 0 \\
+\text{s.t.} \quad & f_t(x_t, y_t) + \theta_{t+1} \le \theta_{t} \\
+& \theta_{t+1} \ge \psi_{t+1}^{i}(x_t) \\
+& (x_{t}, y_{t}) \in \Phi_{n}(z_{t}, \xi_{t}) \\
+& z_{t} = x_{t-1} \\
+& z_{t} \in Z_{t-1}, \quad x_{t} \in X_{t}
+\end{align}
+
+\section{拉格朗日松弛与对偶问题的外层 Bundle 求解}
+
+\subsection{可行性问题的拉格朗日松弛与对偶割（Lagrangian Cut）的推导}
+对状态解耦约束 $z_t = x_{t-1}$（引入乘子 $\pi$）以及状态下界约束 $f_t(x_t, y_t) + \theta_{t+1} - \theta_t \le 0$（引入乘子 $\pi_0 \ge 0$）实施拉格朗日松弛。
+外层拉格朗日对偶问题的目标为：
+\begin{equation}
+\max_{\pi, \pi_0 \ge 0} \quad \omega_t^{i+1}(\pi, \pi_0) - \pi^\top x_{t-1}^i - \pi_0 \theta_t^i
+\end{equation}
+其中，由于约束条件中的松弛系数同时作用于 $f_t$ 和 $\theta_{t+1}$，内层拉格朗日松弛子问题严格修正为：
+\begin{align}
+\omega_t^{i+1}(\pi, \pi_0) = \min_{x_t, y_t, z_t, \theta_{t+1}} \quad & \pi_0 f_t(x_t, y_t) + \pi^\top z_t + \pi_0 \theta_{t+1} \\
+\text{s.t.} \quad & (x_{t}, y_{t}) \in \Phi_{n}(z_{t}, \xi_{t}) \\
+& \theta_{t+1} \ge \psi_{t+1}^{i}(x_{t}) \\
+& z_{t} \in Z_{t-1}, \quad x_{t} \in X_{t}
+\end{align}
+
+若当前点 $(x_{t-1}^i, \theta_t^i)$ 违背了可行性，根据对偶理论，其外层对偶问题的最优目标值严格大于 0：
+\begin{equation}
+\omega_t^{i+1}(\pi, \pi_0) - \pi^\top x_{t-1}^i - \pi_0 \theta_t^i > 0
+\end{equation}
+由此可构造出原问题的拉格朗日可行性割：
+\begin{equation}
+\pi^\top x_{t-1} + \pi_0 \theta_t \ge \omega_t^{i+1}(\pi, \pi_0)
+\end{equation}
+当选取 $\pi_0 > 0$ 时，经过归一化移项后，可以转化为关于 $\theta_t$ 的经典下界仿射割形式：
+\begin{equation}
+\theta_t \ge \frac{\omega_t^{i+1}(\pi, \pi_0)}{\pi_0} - \left(\frac{\pi}{\pi_0}\right)^\top x_{t-1}
+\end{equation}
+
+\subsection{ 基于 Bundle 方法的对偶迭代求解}
+\subsubsection{对偶乘子初始化}
+\textbf{$\pi_0$ 统一初始化}：
+    控制值函数基础权重的对偶乘子 $\pi_0$ 均统一初始化为常数 $1.0$：
+    \begin{equation}
+    \pi_0^{(0)} = 1.0
+    \end{equation}
+\begin{itemize}
+    \item \textbf{ZeroDuals（零向量初始化）}：
+    直接将状态解耦对偶乘子 $\pi$ 初始化为全零向量：
+    \begin{equation}
+    \pi^{(0)} = \mathbf{0}
+    \end{equation}
+
+    \item \textbf{LPDuals（LP 松弛对偶初始化）}：
+    该策略通过求解当前第 $t$ 阶段近似子模型的线性规划（LP）松弛问题来获取初始乘子。定义其连续松弛子模型为（即将原问题中的整数变量、非线性域等全部进行线性或凸松弛）：
+    \begin{align}
+    \min_{x_t, y_t, z_t, \theta_{t+1}} \quad & f_{t}(x_{t}, y_{t}) + \theta_{t+1} \\
+    \text{s.t.} \quad & (x_{t}, y_{t}) \in \text{R-cl}\left(\Phi_{n}(z_{t}, \xi_{t})\right) \\
+    & z_{t} = x_{t-1}^i \quad \left( \lambda \right) \\
+    & \theta_{t+1} \ge \psi_{t+1}^{i}(x_{t}) \\
+    & z_{t} \in \text{co}(Z_{t-1}), \quad x_{t} \in \text{co}(X_{t})
+    \end{align}
+    其中 $\text{R-cl}(\cdot)$ 和 $\text{co}(\cdot)$ 分别表示可行域与变量集合的连续/凸松弛约束。令该线性规划问题中状态解耦约束 $z_{t} = x_{t-1}^i$ 对应的最优对偶乘子（Shadow Price）为 $\lambda^*$。则 $\pi$ 的初始值赋值为：
+    \begin{equation}
+    \pi^{(0)} = \lambda^*
+    \end{equation}
+
+\end{itemize}
+
+\subsubsection{Bundle算法}
+外层对偶采用 Bundle（束方法）架构。在给定的内部循环中，将当前的中心乘子记为 $(\hat{\pi}, \hat{\pi}_0)$，代入内层松弛模型进行评估：
+\begin{align}
+\omega_t^{i+1}(\hat{\pi}, \hat{\pi}_0) = \min_{x_t, y_t, z_t, \theta_{t+1}} \quad & \hat{\pi}_0 f_t(x_t, y_t) + \hat{\pi}^\top z_t + \hat{\pi}_0 \theta_{t+1} \\
+\text{s.t.} \quad & (x_{t}, y_{t}) \in \Phi_{n}(z_{t}, \xi_{t}) \\
+& \theta_{t+1} \ge \psi_{t+1}^{i}(x_{t}) \\
+& z_{t} \in Z_{t-1}, \quad x_{t} \in X_{t}
+\end{align}
+设求解上述内层模型获得的最优原问题决策解为 $(\tilde{x}_t, \tilde{y}_t, \tilde{z}_t, \tilde{\theta}_{t+1})$。
+
+\paragraph{次梯度（Subgradient）计算：}
+根据对偶函数的微分性质，$\omega_t^{i+1}$ 在当前乘子中心 $(\hat{\pi}, \hat{\pi}_0)$ 处的偏导数（次梯度）完全由原变量的最优解确定：
+\begin{equation}
+\frac{\partial \omega_t^{i+1}(\hat{\pi}, \hat{\pi}_0)}{\partial \pi} = \tilde{z}_t, \quad \frac{\partial \omega_t^{i+1}(\hat{\pi}, \hat{\pi}_0)}{\partial \pi_0} = f_t(\tilde{x}_t, \tilde{y}_t) + \tilde{\theta}_{t+1}
+\end{equation}
+
+
+\subsubsection{ 对偶值函数的线性割（Cut）更新表达式}
+利用计算得到的次梯度，对偶值函数 $\omega_t^{i+1}(\pi, \pi_0)$ 的一阶泰勒支撑面（即对偶 Cut）表示为：
+\begin{align}
+\omega_t^{i+1}(\pi, \pi_0) &\le \omega_t^{i+1}(\hat{\pi}, \hat{\pi}_0) + \left(\frac{\partial \omega_t^{i+1}}{\partial \pi}\right)^\top (\pi - \hat{\pi}) + \frac{\partial \omega_t^{i+1}}{\partial \pi_0} (\pi_0 - \hat{\pi}_0) \nonumber \\
+&= \omega_t^{i+1}(\hat{\pi}, \hat{\pi}_0) + \tilde{z}_t^\top (\pi - \hat{\pi}) + [f_t(\tilde{x}_t, \tilde{y}_t) + \tilde{\theta}_{t+1}] (\pi_0 - \hat{\pi}_0) \nonumber \\
+&= \tilde{z}_t^\top \pi + [f_t(\tilde{x}_t, \tilde{y}_t) + \tilde{\theta}_{t+1}] \pi_0
+\end{align}
+注：最后一式利用了内层目标函数关于乘子的正齐次性结构（即 $\omega_t^{i+1}(\hat{\pi}, \hat{\pi}_0) = \hat{\pi}^\top \tilde{z}_t + \hat{\pi}_0 [f_t(\tilde{x}_t, \tilde{y}_t) + \tilde{\theta}_{t+1}]$）消除常数常项后展开得到。这与原文完全一致。
+
+\subsubsection{外层对偶最大化问题的割平面标准型}
+在外层优化中，我们将所有历史生成的对偶 Cut 作为一个分段线性的上包络函数加入系统中：
+\begin{align}
+\max_{\pi, \pi_0} \quad & \omega_t^{i+1}(\pi, \pi_0) - \pi^\top x_{t-1}^i - \pi_0 \theta_t^i \\
+\text{s.t.} \quad & \pi_0 \ge 0 \\
+& (\pi, \pi_0) \in \mathcal{L}_1 \text{ 或 } \mathcal{L}_\infty \text{ 或 } \text{LN} \quad (\text{有界乘子约束空间}) \\
+& \omega_t^{i+1}(\pi, \pi_0) \le \tilde{z}_t^\top \pi + [f_t(\tilde{x}_t, \tilde{y}_t) + \tilde{\theta}_{t+1}] \pi_0 \quad (\text{历史对偶 Cut 集合})
+\end{align}
+求解该最大化问题后，所得的最优目标函数值被记为当前系统对偶阶段的**上界（UB）**。
+相应地，对偶函数在历史评估点上的最大已知值构成系统的**下界（LB）**：
+
+\begin{equation}
+\mathrm{LB}^{k}
+:=
+\max_{j=1,\ldots,k}
+\Bigl\{
+\omega_t^{i+1}(\pi^{j},\pi_0^{j})
+-
+(\pi^{j})^\top x_{t-1}^{i}
+-
+\pi_0^{j}\theta_t^{i}
+\Bigr\}.
+\end{equation}
+
+其中 $(\pi^{j},\pi_0^{j})$ 表示第 $j$ 次 Bundle 迭代中实际评估过的乘子点。
+
+由于对偶函数值是真实计算得到的，因此 $\mathrm{LB}^{k}$ 始终是当前对偶最优值的有效下界，并且具有单调不下降性质。
+
+
+
+
+\subsubsection{带有近端项的 Level（级别集）对偶步长更新}
+
+Level 的妙处：用“目标值”代替“步长参数”Level 方法换了一种思路。它不直接在目标函数里加惩罚项去限制步长(调参困难)，而是直接在目标函数上画一条“合格线”（也就是 $\text{level}$）：
+
+
+计算当前的对偶间隙 $\text{gap} = \text{UB} - \text{LB}$。利用缩放系数 $\text{level\_factor} \in (0,1)$，确定目标限制阈值（Level）：
+\begin{equation}
+\text{level} = \text{UB} - \text{gap} \times \text{level\_factor}
+\end{equation}
+为了维持对偶乘子的更新平滑度，在外层引入二次近端项（Proximal Term），求解如下形式的近端二次规划（QP）问题：
+\begin{align}
+\min_{\pi, \pi_0} \quad & \frac{1}{2} \|\pi - \hat{\pi}\|_2^2 + \frac{1}{2} (\pi_0 - \hat{\pi}_0)^2 \\
+\text{s.t.} \quad & \omega_t^{i+1}(\pi, \pi_0) - \pi^\top x_{t-1}^i - \pi_0 \theta_t^i \ge \text{level} \\
+& (\pi, \pi_0) \in \mathcal{L}_1 \text{ 或 } \mathcal{L}_\infty \text{ 或 } \text{LN} \\
+& \omega_t^{i+1}(\pi, \pi_0) \le \omega^{\text{sub}} \quad (\text{利用历史 Cut 构成的对偶值约束})
+\end{align}
+求解该二次规划，即可生成下一轮更加稳定的新对偶乘子中心。
+
+
+\section{基于强化学习的对偶乘子预测}
+
+\subsection{问题重构：将 Level Bundle 外层 QP 替换为 RL 策略}
+
+在传统 Level Bundle 算法中，外层对偶乘子的更新依赖于求解一个带近端项的二次规划（QP）问题。该 QP 问题的规模随历史 Cut 数量增长，且每次迭代均需调用商业求解器（如 Gurobi），计算开销较大。
+
+本方法的核心思想是：将外层对偶乘子的选择过程建模为一个序贯决策问题，利用强化学习（RL）策略 $\pi_\theta$ 直接预测下一轮的对偶乘子 $(\pi, \pi_0)$，从而替代 QP 求解步骤。内层拉格朗日松弛子问题（Inner Problem）仍通过精确求解器求解，以保证次梯度信息的准确性。
+
+具体地，设第 $k$ 步的环境状态为 $s_k$，RL 策略输出动作 $a_k \sim \pi_\theta(\cdot | s_k)$，经过后处理映射为对偶乘子：
+\begin{equation}
+\pi_k = a_k^{[:n_x]}, \quad \pi_{0,k} = \frac{a_k^{[n_x]} + 1}{2} + \epsilon
+\end{equation}
+其中 $n_x = \dim(x_{t-1})$ 为状态变量维度，$\epsilon > 0$ 为小常数以保证 $\pi_0 \ge 0$。动作空间 $\mathcal{A} = [-1, 1]^{n_x + 1}$，通过 $\tanh$ 压缩的高斯分布采样实现。
+
+\subsection{马尔可夫决策过程（MDP）建模}
+
+\subsubsection{状态空间}
+
+状态 $s_k$ 由以下信息拼接构成：
+\begin{equation}
+s_k = \left( \mathcal{H}_k, \, m_k, \, \pi_k, \, \pi_{0,k}, \, \ell_k, \, x_{\text{trial}}, \, \xi_t^{(n)}, T \right)
+\end{equation}
+其中各分量的定义如下：
+
+\begin{itemize}[itemsep=2pt, topsep=2pt]
+    \item \textbf{次梯度历史} $\mathcal{H}_k \in \mathbb{R}^{K \times 2(n_x+1)}$：最近 $K$ 轮的次梯度及生成该次梯度时的乘子。第 $j$ 行为：
+    \begin{equation}
+    \mathcal{H}_k^{[j]} = \left[ \tilde{z}_t^{(j)}, \; f_t(\tilde{x}_t^{(j)}, \tilde{y}_t^{(j)}) + \tilde{\theta}_{t+1}^{(j)}, \; \pi^{(j)}, \; \pi_0^{(j)} \right]
+    \end{equation}
+    其中前 $n_x + 1$ 维为次梯度（Cut 斜率），后 $n_x + 1$ 维为生成该 Cut 时的乘子。
+
+    \item \textbf{有效掩码} $m_k \in \{0, 1\}^K$：标记 $\mathcal{H}_k$ 中哪些位置为有效历史（不足 $K$ 条时前端补零）。
+
+    \item \textbf{当前乘子} $\pi_k \in \mathbb{R}^{n_x}$, $\pi_{0,k} \in \mathbb{R}$：当前轮的对偶乘子。
+
+    \item \textbf{归一化边界信息} $\ell_k \in \mathbb{R}^3$：
+    \begin{equation}
+    \ell_k = \left[ \frac{\mathrm{LB}_k - \mathrm{LB}_0}{\sigma}, \; \frac{\mathrm{UB}_k - \mathrm{LB}_0}{\sigma}, \; \frac{\mathrm{UB}_k - \mathrm{LB}_k}{\sigma} \right]
+    \end{equation}
+    其中 $\sigma = |\mathrm{LB}_0| + 1$ 为缩放因子，$\mathrm{LB}_0$ 为初始下界。
+
+    \item \textbf{试探点} $x_{\text{trial}} \in \mathbb{R}^{n_{\text{trial}}}$：当前 SDDiP 迭代中的前向试探点（展平后的状态变量）。
+
+    \item \textbf{场景特征} $\xi_t^{(n)} \in \mathbb{R}^{n_\xi}$：当前阶段 $t$、场景 $n$ 下的随机参数实现（如负荷 $p_d$、可再生能源 $r_e$）。
+    \item \textbf{阶段} $T \in \mathbb{R}$：当前阶段 $t$。
+\end{itemize}
+
+\subsubsection{动作空间}
+
+动作 $a_k \in [-1, 1]^{n_x + 1}$，经后处理映射为对偶乘子：
+\begin{align}
+\pi_k &= a_k^{[:n_x]} \in [-1, 1]^{n_x} \\
+\pi_{0,k} &= \frac{a_k^{[n_x]} + 1}{2} + \epsilon \in (0, 1]
+\end{align}
+该映射保证 $\pi_0 \ge 0$ 的对偶可行性约束。动作由 Squashed Diagonal Gaussian 分布（$\tanh$ 压缩）采样，内置 log-probability 校正。
+
+\subsubsection{奖励函数}
+
+每步的即时奖励定义为归一化对偶值与迭代惩罚的组合：
+\begin{equation}
+r_k = \frac{d_k}{\sigma} - \lambda_{\text{iter}}
+\end{equation}
+其中对偶值 $d_k$ 为：
+\begin{equation}
+d_k = \omega_t^{i+1}(\pi_k, \pi_{0,k}) - \pi_k^\top x_{t-1}^i - \pi_{0,k} \theta_t^i
+\end{equation}
+$\sigma = |\mathrm{LB}_0| + 1$ 为缩放因子，$\lambda_{\text{iter}} = 0.05$ 为每步迭代惩罚常数。
+
+当对偶间隙收敛时，额外给予收敛奖励：
+\begin{equation}
+r_k \leftarrow r_k + (K - k) \cdot \lambda_{\text{conv}}, \quad \text{若 } \mathrm{UB}_k - \mathrm{LB}_k < \text{gap\_tol} \cdot |\mathrm{UB}_k|
+\end{equation}
+其中 $\lambda_{\text{conv}} = 0.1$，剩余步数越多奖励越大，鼓励尽早收敛。
+
+\subsubsection{终止条件}
+
+Episode 在以下任一条件满足时终止：
+\begin{itemize}[itemsep=2pt, topsep=2pt]
+    \item 达到最大迭代步数 $K$；
+    \item 对偶间隙收敛：$\mathrm{UB}_k - \mathrm{LB}_k < \text{gap\_tol} \cdot |\mathrm{UB}_k|$ 或 $\mathrm{UB}_k - \mathrm{LB}_k < 10^{-6}$。
+\end{itemize}
+
+\subsubsection{环境交互流程}
+
+每个 Episode 的交互流程如下：
+\begin{enumerate}[itemsep=2pt, topsep=2pt]
+    \item \textbf{初始化}：$\pi_0 = \mathbf{0}$, $\pi_{0,0} = 0.1$，求解内层问题获取初始次梯度，计算初始 $\mathrm{LB}_0$ 和 $\mathrm{UB}_0$。
+    \item \textbf{迭代}（$k = 1, 2, \ldots, K$）：
+    \begin{enumerate}[itemsep=1pt, topsep=1pt]
+        \item 策略输出动作 $a_k \sim \pi_\theta(\cdot | s_k)$，映射为 $(\pi_k, \pi_{0,k})$；
+        \item 求解内层问题：$(\tilde{z}_t, f_t + \tilde{\theta}_{t+1}, \omega_t^{i+1}) \leftarrow \text{InnerSolve}(\pi_k, \pi_{0,k})$；
+        \item 计算对偶值 $d_k$，更新 $\mathrm{LB}_k = \max(\mathrm{LB}_{k-1}, d_k)$；
+        \item 将新次梯度加入外层 Cut 集合，求解外层最大化问题更新 $\mathrm{UB}_k$；
+        \item 计算奖励 $r_k$，构建新状态 $s_{k+1}$。
+    \end{enumerate}
+    \item \textbf{终止}：返回最优乘子 $(\pi^*, \pi_0^*)$ 对应的最大 $\mathrm{LB}$ 点。
+\end{enumerate}
+
+
+\subsection{网络架构}
+
+\subsubsection{特征提取器（Features Extractor）}
+
+特征提取器将字典形式的观测状态编码为联合嵌入向量 $\mathbf{h} \in \mathbb{R}^{2H}$，由两个子模块组成：
+
+\paragraph{全局信息编码器（Global Encoder）}
+将当前乘子、边界信息和问题参数编码为全局嵌入：
+\begin{equation}
+\mathbf{h}^{\text{global}} = \mathrm{MLP}_{\text{global}}\!\left( \left[ \pi_k; \pi_{0,k}; \ell_k; x_{\text{trial}}; \xi_t^{(n)} \right] \right) \in \mathbb{R}^{H}
+\end{equation}
+其中 $\mathrm{MLP}_{\text{global}}$ 为带 LayerNorm 的两层全连接网络：$\text{LayerNorm} \to \mathrm{Linear}(d_{\text{in}}, H) \to \mathrm{ReLU} \to \mathrm{Linear}(H, H) \to \mathrm{ReLU}$。
+
+\paragraph{次梯度集合编码器（Set Encoder）}
+将变长的次梯度历史编码为集合嵌入。根据编码方式的不同，支持以下四种配置：
+
+\subsubsection{配置一：DeepSet 编码器}
+
+基于 DeepSet 的置换不变编码，结构为 $\rho\!\left(\sum_{j=1}^{K} m_k^{[j]} \cdot \varphi(\mathcal{H}_k^{[j]})\right)$：
+\begin{align}
+\mathbf{h}_j^{\varphi} &= \varphi\!\left(\mathcal{H}_k^{[j]}\right) = \mathrm{ReLU}\!\left(\mathrm{Linear}_{\varphi_2}\!\left(\mathrm{ReLU}\!\left(\mathrm{Linear}_{\varphi_1}\!\left(\mathcal{H}_k^{[j]}\right)\right)\right)\right) \in \mathbb{R}^{H} \\
+\mathbf{h}^{\Sigma} &= \sum_{j=1}^{K} m_k^{[j]} \cdot \mathbf{h}_j^{\varphi} \in \mathbb{R}^{H} \\
+\mathbf{h}^{\text{set}} &= \rho\!\left(\mathbf{h}^{\Sigma}\right) = \mathrm{Linear}_{\rho_2}\!\left(\mathrm{ReLU}\!\left(\mathrm{Linear}_{\rho_1}\!\left(\mathbf{h}^{\Sigma}\right)\right)\right) \in \mathbb{R}^{H}
+\end{align}
+其中 $m_k^{[j]} \in \{0,1\}$ 为有效掩码，$\varphi$ 为逐元素变换网络，$\rho$ 为聚合后变换网络。该编码器满足置换不变性。
+
+\subsubsection{配置二：Cross-Attention 编码器}
+
+以全局状态为 Query，次梯度 Cut 为 Key/Value 的交叉注意力编码：
+\begin{align}
+\mathbf{q} &= \mathrm{MLP}_{\text{query}}\!\left(\left[\pi_k; \pi_{0,k}; \ell_k\right]\right) \in \mathbb{R}^{H} \\
+\mathbf{K}, \mathbf{V} &= \mathrm{MLP}_{\text{cut}}\!\left(\mathcal{H}_k\right) \in \mathbb{R}^{K \times H}
+\end{align}
+经过 $L$ 层 Cross-Attention 更新：
+\begin{align}
+\mathbf{q}^{(l+1)} &= \mathrm{LayerNorm}\!\left(\mathbf{q}^{(l)} + \mathrm{MHA}\!\left(\mathbf{q}^{(l)}, \mathbf{K}, \mathbf{V}, \bar{m}_k\right)\right) \\
+\mathbf{q}^{(l+1)} &= \mathrm{LayerNorm}\!\left(\mathbf{q}^{(l+1)} + \mathrm{FFN}\!\left(\mathbf{q}^{(l+1)}\right)\right)
+\end{align}
+其中 $\bar{m}_k$ 为无效位置的 key\_padding\_mask，$\mathrm{MHA}$ 为多头注意力，$\mathrm{FFN}$ 为前馈网络。最终集合嵌入为：
+\begin{equation}
+\mathbf{h}^{\text{set}} = \mathrm{MLP}_{\text{out}}\!\left(\mathbf{q}^{(L)}\right) \in \mathbb{R}^{H}
+\end{equation}
+
+\subsubsection{配置三：Self-Attention 编码器}
+
+次梯度 Cut 之间相互关注的自注意力编码，引入可学习的 $[\text{CLS}]$ token 聚合信息：
+\begin{align}
+\mathbf{c}_j &= \mathrm{MLP}_{\text{cut}}\!\left(\mathcal{H}_k^{[j]}\right) \in \mathbb{R}^{H}, \quad j = 1, \ldots, K \\
+\mathbf{X}^{(0)} &= \left[\mathbf{e}_{\text{CLS}}; \mathbf{c}_1; \ldots; \mathbf{c}_K\right] \in \mathbb{R}^{(K+1) \times H}
+\end{align}
+其中 $\mathbf{e}_{\text{CLS}} \in \mathbb{R}^{H}$ 为可学习参数。经过 $L$ 层标准 Transformer Block：
+\begin{align}
+\mathbf{X}^{(l+1)} &= \mathrm{TransformerBlock}\!\left(\mathbf{X}^{(l)}, \bar{m}_k'\right) \\
+&= \mathrm{LayerNorm}\!\left(\mathbf{X}^{(l)} + \mathrm{MHA}\!\left(\mathbf{X}^{(l)}, \mathbf{X}^{(l)}, \mathbf{X}^{(l)}, \bar{m}_k'\right)\right) \\
+&\quad + \mathrm{LayerNorm}\!\left(\cdot + \mathrm{FFN}(\cdot)\right)
+\end{align}
+其中 $\bar{m}_k' \in \mathbb{R}^{K+1}$ 为扩展后的掩码（$[\text{CLS}]$ 位置不掩码）。最终取 $[\text{CLS}]$ 位置的输出：
+\begin{equation}
+\mathbf{h}^{\text{set}} = \mathrm{MLP}_{\text{out}}\!\left(\mathbf{X}^{(L)}_{[0]}\right) \in \mathbb{R}^{H}
+\end{equation}
+
+\subsubsection{配置四：Cut-Aware 编码器}
+
+基于 Level Bundle 外层问题 KKT 条件的结构化编码。KKT 条件表明，新乘子 $(\pi, \pi_0)$ 是历史 Cut 次梯度的凸组合。Cut-Aware 编码器显式利用这一结构：
+
+\paragraph{Step 1：Cut 投影与自注意力交互}
+\begin{align}
+\mathbf{c}_j &= \mathrm{MLP}_{\text{cut}}\!\left(\mathcal{H}_k^{[j]}\right) \in \mathbb{R}^{H} \\
+\mathbf{C}^{(L)} &= \mathrm{TransformerBlocks}\!\left(\mathbf{C}^{(0)}, \bar{m}_k\right) \in \mathbb{R}^{K \times H}
+\end{align}
+
+\paragraph{Step 2：候选乘子解码}
+每个 Cut 独立解码为一个候选乘子增量：
+\begin{equation}
+\Delta\pi_j = \mathrm{MLP}_{\text{cand}}\!\left(\mathbf{C}^{(L)}_j\right) \in \mathbb{R}^{n_x + 1}, \quad j = 1, \ldots, K
+\end{equation}
+
+\paragraph{Step 3：凸组合权重生成}
+利用全局信息调制凸组合权重：
+\begin{align}
+\mathbf{g}_j &= \left[\mathbf{C}^{(L)}_j; \mathbf{h}^{\text{global}}\right] \in \mathbb{R}^{2H} \\
+\alpha_j &= \frac{\exp\!\left(\mathrm{Linear}\!\left(\mathrm{ReLU}\!\left(\mathrm{Linear}\!\left(\mathbf{g}_j\right)\right)\right)\right) \cdot m_k^{[j]}}{\sum_{j'=1}^{K} \exp\!\left(\mathrm{Linear}\!\left(\mathrm{ReLU}\!\left(\mathrm{Linear}\!\left(\mathbf{g}_{j'}\right)\right)\right)\right) \cdot m_k^{[j']}}
+\end{align}
+满足 $\sum_{j=1}^{K} \alpha_j = 1$，$\alpha_j \ge 0$。
+
+\paragraph{Step 4：集合嵌入}
+加权平均 Cut 嵌入作为集合嵌入：
+\begin{equation}
+\mathbf{h}^{\text{set}} = \mathrm{MLP}_{\text{out}}\!\left(\sum_{j=1}^{K} \alpha_j \cdot \mathbf{C}^{(L)}_j\right) \in \mathbb{R}^{H}
+\end{equation}
+
+Cut-Aware 编码器额外输出候选乘子 $\{\Delta\pi_j\}_{j=1}^K$ 和凸组合权重 $\{\alpha_j\}_{j=1}^K$，供 Actor Head 使用。
+
+
+\subsubsection{Actor-Critic 策略网络}
+
+联合嵌入向量由集合嵌入和全局嵌入拼接而成：
+\begin{equation}
+\mathbf{h} = \left[\mathbf{h}^{\text{set}}; \mathbf{h}^{\text{global}}\right] \in \mathbb{R}^{2H}
+\end{equation}
+
+\paragraph{标准 Actor Head（DeepSet / Cross-Attention / Self-Attention 配置）}
+三层 MLP 输出动作均值：
+\begin{equation}
+\boldsymbol{\mu}_k = \mathrm{Linear}_{a_3}\!\left(\mathrm{ReLU}\!\left(\mathrm{Linear}_{a_2}\!\left(\mathrm{ReLU}\!\left(\mathrm{Linear}_{a_1}\!\left(\mathbf{h}\right)\right)\right)\right)\right) \in \mathbb{R}^{n_x + 1}
+\end{equation}
+动作分布为 Squashed Diagonal Gaussian：
+\begin{equation}
+a_k \sim \tanh\!\left(\mathcal{N}\!\left(\boldsymbol{\mu}_k, \mathrm{diag}\!\left(e^{2\boldsymbol{\sigma}}\right)\right)\right)
+\end{equation}
+其中 $\boldsymbol{\sigma} \in \mathbb{R}^{n_x + 1}$ 为可学习的对数标准差，初始化为 $\boldsymbol{\sigma}_0 = -3.0$（对应 $\mathrm{std} \approx 0.05$）。
+
+\paragraph{Cut-Aware Actor Head（Cut-Aware 配置）}
+基于 KKT 凸组合的动作均值计算：
+\begin{equation}
+\boldsymbol{\mu}_k = \underbrace{\sum_{j=1}^{K} \alpha_j \cdot \Delta\pi_j}_{\text{凸组合部分}} + \underbrace{\mathrm{MLP}_{\text{res}}\!\left(\mathbf{h}\right)}_{\text{残差修正}} \in \mathbb{R}^{n_x + 1}
+\end{equation}
+凸组合部分直接从 Cut 几何推导，残差修正项弥补凸组合的理论假设与实际差异（如归一化约束、Level 策略等未在凸组合中体现的因素）。残差网络最后一层初始化增益为 $0.01$，初始时残差很小，主要依赖凸组合。
+
+\paragraph{Value Head}
+比 Actor 更深的 Critic 网络，带 LayerNorm：
+\begin{equation}
+V(s_k) = \mathrm{Linear}_{v_3}\!\left(\mathrm{ReLU}\!\left(\mathrm{LayerNorm}\!\left(\mathrm{Linear}_{v_2}\!\left(\mathrm{ReLU}\!\left(\mathrm{LayerNorm}\!\left(\mathrm{Linear}_{v_1}\!\left(\mathbf{h}\right)\right)\right)\right)\right)\right)\right) \in \mathbb{R}
+\end{equation}
+
+\paragraph{正交初始化}
+所有网络层采用正交初始化：隐藏层增益为 $\sqrt{2}$，Actor 最后一层增益为 $0.01$（与 SB3 一致），Value 最后一层增益为 $1.0$。
+
+
+\subsection{PPO 训练算法}
+
+\subsubsection{目标函数}
+
+采用 Proximal Policy Optimization（PPO）算法训练策略网络。给定一批轨迹数据 $\mathcal{D} = \{(s_k, a_k, r_k)\}$，优势函数通过 GAE（Generalized Advantage Estimation）计算：
+\begin{equation}
+\hat{A}_k = \sum_{l=0}^{T-k-1} (\gamma \lambda)^l \delta_{k+l}, \quad \delta_k = r_k + \gamma V(s_{k+1}) - V(s_k)
+\end{equation}
+其中 $\gamma$ 为折扣因子，$\lambda$ 为 GAE 参数。
+
+PPO 的 Clipped Surrogate 目标为：
+\begin{equation}
+\mathcal{L}^{\text{clip}}(\theta) = \mathbb{E}_k \left[ \min\!\left( \rho_k(\theta) \hat{A}_k, \; \mathrm{clip}\!\left(\rho_k(\theta), 1-\epsilon, 1+\epsilon\right) \hat{A}_k \right) \right]
+\end{equation}
+其中重要性采样比为：
+\begin{equation}
+\rho_k(\theta) = \frac{\pi_\theta(a_k | s_k)}{\pi_{\theta_{\text{old}}}(a_k | s_k)}
+\end{equation}
+$\epsilon$ 为裁剪范围。
+
+总目标函数为：
+\begin{equation}
+\mathcal{L}(\theta) = \mathcal{L}^{\text{clip}}(\theta) - c_1 \mathcal{L}^{\text{VF}}(\theta) + c_2 \mathcal{H}\!\left[\pi_\theta\right]
+\end{equation}
+其中价值函数损失为：
+\begin{equation}
+\mathcal{L}^{\text{VF}}(\theta) = \mathbb{E}_k \left[ \left(V_\theta(s_k) - \hat{R}_k\right)^2 \right]
+\end{equation}
+$\hat{R}_k = \sum_{l=k}^{T} \gamma^{l-k} r_l$ 为折扣回报，$c_1$ 为价值损失系数，$c_2$ 为熵系数。
+
+\subsubsection{训练超参数}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\hline
+\textbf{参数} & \textbf{符号} & \textbf{默认值} \\
+\hline
+学习率 & $\eta$ & $1 \times 10^{-4}$ \\
+裁剪范围 & $\epsilon$ & $0.1$（线性衰减至 $0.05$） \\
+折扣因子 & $\gamma$ & $0.99$ \\
+GAE 参数 & $\lambda$ & $0.95$ \\
+熵系数 & $c_2$ & $0.005$ \\
+价值损失系数 & $c_1$ & $1.0$ \\
+梯度裁剪 & -- & $0.5$ \\
+目标 KL & $\delta_{\text{KL}}$ & $0.02$ \\
+采样步数 & $n_{\text{steps}}$ & $2048$ \\
+批大小 & $n_{\text{batch}}$ & $256$ \\
+更新轮数 & $n_{\text{epochs}}$ & $4$ \\
+对数标准差初始化 & $\boldsymbol{\sigma}_0$ & $-2.0$ \\
+隐藏层维度 & $H$ & $128$ \\
+\hline
+\end{tabular}
+\caption{PPO 训练超参数}
+\end{table}
+
+\subsubsection{裁剪范围衰减策略}
+
+训练过程中，裁剪范围 $\epsilon$ 从初始值 $\epsilon_0$ 线性衰减至 $\epsilon_{\min}$：
+\begin{equation}
+\epsilon(t) = \epsilon_0 - (\epsilon_0 - \epsilon_{\min}) \cdot \frac{t}{T_{\text{total}}}
+\end{equation}
+其中 $t$ 为当前训练步数，$T_{\text{total}}$ 为总训练步数，$\epsilon_0 = 0.1$，$\epsilon_{\min} = 0.05$。该策略在训练初期允许较大的策略更新以加速探索，后期收紧以稳定收敛。
+
+\subsubsection{交错训练策略}
+
+为增强策略在不同问题实例上的泛化能力，采用交错训练（Interleaved Training）策略。设共有 $N_c$ 个问题配置 $\{C_1, \ldots, C_{N_c}\}$（对应不同的阶段 $t$ 和场景 $n$），训练分为 $R$ 轮：
+\begin{equation}
+\text{Round } r = 1, \ldots, R: \quad \text{for each } C_i: \quad \text{train on } \mathrm{Env}(C_i) \text{ for } \Delta T \text{ steps}
+\end{equation}
+其中 $\Delta T$ 为每个配置每轮的训练步数。同一模型参数在所有配置间共享，通过环境切换实现数据多样性。
+
+
+\subsection{测试模式}
+
+\subsubsection{模式一：Baseline（传统 Level Bundle）}
+
+纯传统 Level Bundle 算法，不使用 RL。作为性能基准：
+\begin{enumerate}[itemsep=2pt, topsep=2pt]
+    \item 初始化乘子 $(\hat{\pi}, \hat{\pi}_0)$；
+    \item 求解内层问题获取次梯度；
+    \item 求解外层最大化问题获取 UB；
+    \item 计算 LB，判断收敛；
+    \item Level 策略：求解近端 QP 获取新乘子；
+    \item 重复直至收敛或达到迭代上限。
+\end{enumerate}
+
+\subsubsection{模式二：纯 RL}
+
+完全由 RL 策略预测乘子，不使用 QP 求解：
+\begin{enumerate}[itemsep=2pt, topsep=2pt]
+    \item 初始化环境，获取初始状态 $s_0$；
+    \item 对于 $k = 1, \ldots, K$：
+    \begin{enumerate}[itemsep=1pt, topsep=1pt]
+        \item $a_k \sim \pi_\theta(\cdot | s_k)$（确定性或随机性）；
+        \item 映射为 $(\pi_k, \pi_{0,k})$，求解内层问题；
+        \item 更新 LB，通过外层问题跟踪 UB（仅用于评估，不用于乘子选择）；
+        \item 计算奖励，转移状态。
+    \end{enumerate}
+\end{enumerate}
+
+\subsubsection{模式三：RL Warmstart}
+
+RL 阶段与 Baseline 阶段的混合策略：
+\begin{enumerate}[itemsep=2pt, topsep=2pt]
+    \item \textbf{RL 阶段}：使用 RL 策略预测乘子，快速逼近对偶最优值附近区域；
+    \item \textbf{切换条件}：当 LB 连续 $p$ 次（patience）相对变化小于阈值 $\tau$，或 LB 反向下降时，切换到 Baseline；
+    \begin{equation}
+    \text{切换} \iff \frac{|d_k - d_{k-1}|}{\max(|d_k|, 1)} < \tau \text{ 连续 } p \text{ 次，或 } d_k < d_{k-1}
+    \end{equation}
+    \item \textbf{Baseline 阶段}：以 RL 阶段最终的乘子 $(\hat{\pi}, \hat{\pi}_0)$ 为起点，执行传统 Level Bundle 迭代直至收敛。
+\end{enumerate}
+该模式结合了 RL 的快速探索能力和传统方法的精确收敛保证。
+
+
+\subsection{四种编码器配置的对比总结}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lcccc}
+\hline
+\textbf{特性} & \textbf{DeepSet} & \textbf{Cross-Attn} & \textbf{Self-Attn} & \textbf{Cut-Aware} \\
+\hline
+置换不变性 & $\checkmark$ & $\times$ & $\times$ & $\times$ \\
+全局状态交互 & $\times$ & Query & $[\text{CLS}]$ & 权重调制 \\
+Cut 间交互 & $\times$ & $\times$ & $\checkmark$ & $\checkmark$ \\
+KKT 结构利用 & $\times$ & $\times$ & $\times$ & $\checkmark$ \\
+Actor Head & 标准 MLP & 标准 MLP & 标准 MLP & 凸组合+残差 \\
+参数量 & 低 & 中 & 中 & 高 \\
+\hline
+\end{tabular}
+\caption{四种编码器配置的特性对比}
+\end{table}
+
+DeepSet 适合 Cut 数量少、排列无关的场景；Cross-Attention 适合需要根据当前乘子动态关注最相关 Cut 的场景；Self-Attention 适合 Cut 间存在强交互关系的场景；Cut-Aware 显式利用 KKT 凸组合结构，理论上更贴合 Level Bundle 的几何性质。
+
+
+\end{document}

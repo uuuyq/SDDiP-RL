@@ -1,8 +1,8 @@
 """
-Level Bundle RL 训练入口
+Incremental Level Bundle RL 训练入口
 
-使用 SB3 原生 MultiInputPolicy + 自定义 FeaturesExtractor，
-通过 net_arch 和 log_std_init 控制 Actor/Critic 结构。
+使用 SB3 原生 MultiInputPolicy + 自定义 IncrementalLevelBundleFeaturesExtractor。
+与 script/main_train.py 保持相同的风格。
 """
 
 import os
@@ -10,10 +10,10 @@ from pathlib import Path
 
 import yaml
 
-from bundle_norm_RL.script.config import LevelBundleConfig
-from bundle_norm_RL.script.logger import get_logger
-from bundle_norm_RL.script.env import LevelBundleEnv
-from bundle_norm_RL.script.train import train
+from bundle_norm_RL.script1.config import LevelBundleConfig
+from bundle_norm_RL.script1.logger import get_logger
+from bundle_norm_RL.script1.env import IncrementalLevelBundleEnv
+from bundle_norm_RL.script1.train import train
 
 
 def load_train_config(config_path: str) -> dict:
@@ -24,7 +24,7 @@ def load_train_config(config_path: str) -> dict:
 
 def train_interleaved(
     logger, configs, rounds=3, steps_per_config_per_round=20_000,
-    experiment_name="level_bundle_exp", K=20,
+    experiment_name="incremental_level_bundle_exp", K=20,
     learning_rate=1e-5, clip_range=0.1, clip_range_decay=True,
     n_steps=2048, batch_size=512, gamma=0.99, gae_lambda=0.95,
     n_epochs=3, ent_coef=0.005, vf_coef=1.0, max_grad_norm=0.5,
@@ -40,7 +40,7 @@ def train_interleaved(
         for config_idx, config in enumerate(configs):
             logger.info(f"  训练 Config {config_idx + 1}/{len(configs)} (realization {config.n})")
 
-            env = LevelBundleEnv.create_env(logger, config, K=K)
+            env = IncrementalLevelBundleEnv.create_env(logger, config, K=K)
 
             model, _, _ = train(
                 env=env,
@@ -102,7 +102,7 @@ def main(experiment_name, config_path=None):
     with open(config_save_path, 'w', encoding='utf-8') as f:
         yaml.dump(config, f, default_flow_style=False, encoding='utf-8')
 
-    logger = get_logger(str(log_dir / "level_bundle_train.log"))
+    logger = get_logger(str(log_dir / "incremental_level_bundle_train.log"))
     logger.info(f"项目根目录: {project_root}")
     logger.info(f"配置文件: {config_path}")
     logger.info(f"完整配置: {config}")
@@ -153,5 +153,5 @@ def main(experiment_name, config_path=None):
 
 
 if __name__ == "__main__":
-    experiment_name = "exp_18"
+    experiment_name = "inc_exp_01"
     main(experiment_name=experiment_name)

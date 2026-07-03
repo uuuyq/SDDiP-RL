@@ -1,12 +1,10 @@
 """
-Level Bundle RL 测试入口
+Incremental Level Bundle RL 测试入口
 
-参考 bundle_RL 的测试模式，支持三种对比:
-1. Baseline: 传统 Level Bundle 算法
-2. RL: 纯 RL 模型预测乘子
+与 script/main_test.py 保持相同风格，支持三种对比:
+1. Baseline: 传统增量 Level Bundle 算法
+2. RL: 纯 RL 模型预测增量
 3. RL Warmstart: RL 阶段 + 当 gap 不再下降时切换到 baseline
-
-支持不同的 encoder 配置 (deepset / cross_attention / self_attention)
 """
 
 import json
@@ -19,12 +17,12 @@ import yaml
 from matplotlib import pyplot as plt
 from stable_baselines3 import PPO
 
-from bundle_norm_RL.script.config import LevelBundleConfig
-from bundle_norm_RL.script.env import LevelBundleEnv
-from bundle_norm_RL.script.features_extractor import LevelBundleFeaturesExtractor
-from bundle_norm_RL.script.policy_network import LevelBundleActorCriticPolicy
-from bundle_norm_RL.script.level_bundle_problem import LevelBundleSolver, OuterProblem
-from bundle_norm_RL.script.logger import get_logger
+from bundle_norm_RL.script1.config import LevelBundleConfig
+from bundle_norm_RL.script1.env import IncrementalLevelBundleEnv
+from bundle_norm_RL.script1.features_extractor import IncrementalLevelBundleFeaturesExtractor
+from bundle_norm_RL.script1.policy_network import IncrementalLevelBundleActorCriticPolicy
+from bundle_norm_RL.script1.level_bundle_problem import LevelBundleSolver, IncrementalOuterProblem, InnerProblem
+from bundle_norm_RL.script1.logger import get_logger
 
 
 # ============================================================
@@ -33,7 +31,7 @@ from bundle_norm_RL.script.logger import get_logger
 
 def level_bundle_baseline(logger, config, n=0):
     """
-    运行 Level Bundle baseline，返回最终结果和迭代历史
+    运行增量 Level Bundle baseline
 
     Returns:
         final_lb, final_ub, solve_time, lb_history, ub_history, time_history
@@ -46,7 +44,7 @@ def level_bundle_baseline(logger, config, n=0):
 
 def level_bundle_rl(env, model, logger, deterministic=True, K=20):
     """
-    使用 RL 模型预测乘子，同时用 OuterProblem 跟踪 UB
+    使用 RL 模型预测增量，同时用 IncrementalOuterProblem 跟踪 UB
 
     Returns:
         lb_history, reward_history, time_history, ub_history, f_best_history
@@ -59,17 +57,23 @@ def level_bundle_rl(env, model, logger, deterministic=True, K=20):
     ub_history = []
     f_best_history = []
 
-    # 创建独立的 OuterProblem 用于评估 UB
-    outer = OuterProblem(
+    # 创建独立的 IncrementalOuterProblem 用于评估 UB
+    outer = IncrementalOuterProblem(
         logger,
         dim_pi=env.config.N_VARS,
         X_trial=env.config.X_trial,
         theta_trial=float(env.config.THETA_TRIAL),
+        rho=env.config.rho,
+        B_t=env.config.B_t,
+        norm_bound_type=env.config.norm_bound_type,
+        weights=env.config.weights,
     )
 
     # 添加初始次梯度
     if len(env.subgradient_list) > 0:
-        outer.add_cut(env.subgradient_list[0].tolist())
+        lambda_i = np.concatenate([env.pi, [env.pi0]])
+        omega_i = env.LB
+        outer.add_cut(env.subgradient_list[0].tolist(), lambda_i, omega_i)
         _, _, ub = outer.solve()
         if ub is not None:
             ub_history.append(ub)
@@ -87,10 +91,11 @@ def level_bundle_rl(env, model, logger, deterministic=True, K=20):
 
         # 添加新的次梯度到 outer problem
         if len(env.subgradient_list) > step + 1:
-            outer.add_cut(env.subgradient_list[step + 1].tolist())
+            lambda_i = np.concatenate([env.pi, [env.pi0]])
+            omega_i = env.current_dual
+            outer.add_cut(env.subgradient_list[step + 1].tolist(), lambda_i, omega_i)
             _, _, ub = outer.solve()
             if ub is not None:
-                # UB 单调不增：取 min(当前ub, 历史最小ub)
                 ub = min(ub, ub_history[-1]) if ub_history else ub
                 ub_history.append(ub)
             else:
@@ -98,7 +103,6 @@ def level_bundle_rl(env, model, logger, deterministic=True, K=20):
         else:
             ub_history.append(ub_history[-1] if ub_history else env.LB)
 
-        # 使用当前迭代计算出的 dual 值（不保证单调，但更直观）
         lb_history.append(env.current_dual)
         reward_history.append(reward)
         time_history.append(elapsed)
@@ -120,15 +124,6 @@ def level_bundle_rl_warmstart(env, model, logger, deterministic=True, K=20,
     """
     Warm-start 测试: RL 阶段 + 当 gap 不再下降时切换到 baseline
 
-    Args:
-        env: 环境
-        model: RL 模型
-        logger: 日志器
-        deterministic: 是否确定性策略
-        K: 最大步数
-        warmstart_threshold: gap 相对变化阈值
-        patience: 连续多少次 gap 变化小于阈值后切换
-
     Returns:
         lb_history, reward_history, time_history, ub_history, f_best_history, switch_step
     """
@@ -142,17 +137,22 @@ def level_bundle_rl_warmstart(env, model, logger, deterministic=True, K=20,
     switch_step = None
     consecutive_small_changes = 0
 
-    # 创建独立的 OuterProblem 用于评估
-    outer = OuterProblem(
+    # 创建独立的 IncrementalOuterProblem
+    outer = IncrementalOuterProblem(
         logger,
         dim_pi=env.config.N_VARS,
         X_trial=env.config.X_trial,
         theta_trial=float(env.config.THETA_TRIAL),
+        rho=env.config.rho,
+        B_t=env.config.B_t,
+        norm_bound_type=env.config.norm_bound_type,
+        weights=env.config.weights,
     )
 
-    # 添加初始次梯度
     if len(env.subgradient_list) > 0:
-        outer.add_cut(env.subgradient_list[0].tolist())
+        lambda_i = np.concatenate([env.pi, [env.pi0]])
+        omega_i = env.LB
+        outer.add_cut(env.subgradient_list[0].tolist(), lambda_i, omega_i)
         _, _, ub = outer.solve()
         if ub is not None:
             ub_history.append(ub)
@@ -169,12 +169,12 @@ def level_bundle_rl_warmstart(env, model, logger, deterministic=True, K=20,
         obs, reward, terminated, truncated, info = env.step(action)
         elapsed = time.time() - t0
 
-        # 更新 outer
         if len(env.subgradient_list) > step + 1:
-            outer.add_cut(env.subgradient_list[step + 1].tolist())
+            lambda_i = np.concatenate([env.pi, [env.pi0]])
+            omega_i = env.current_dual
+            outer.add_cut(env.subgradient_list[step + 1].tolist(), lambda_i, omega_i)
             _, _, ub = outer.solve()
             if ub is not None:
-                # UB 单调不增
                 ub = min(ub, ub_history[-1]) if ub_history else ub
                 ub_history.append(ub)
             else:
@@ -182,7 +182,6 @@ def level_bundle_rl_warmstart(env, model, logger, deterministic=True, K=20,
         else:
             ub_history.append(ub_history[-1] if ub_history else env.LB)
 
-        # 使用当前迭代计算出的 dual 值（不保证单调，但更直观）
         lb_history.append(env.current_dual)
         reward_history.append(reward)
         time_history.append(elapsed)
@@ -203,7 +202,6 @@ def level_bundle_rl_warmstart(env, model, logger, deterministic=True, K=20,
             gap_ref = max(abs(lb_history[-1]), 1)
             relative_change = gap_change / gap_ref
 
-            # gap 反向上升
             if lb_history[-1] < lb_history[-2]:
                 logger.info(
                     f"Warmstart - LB 反向下降: {lb_history[-2]:.6f} -> {lb_history[-1]:.6f}，"
@@ -229,41 +227,44 @@ def level_bundle_rl_warmstart(env, model, logger, deterministic=True, K=20,
     # ===== Baseline 阶段 =====
     if switch_step is not None:
         logger.info("==== SWITCHING TO BASELINE ====")
-        # 使用当前 outer problem 继续迭代
         remaining_steps = K - switch_step
 
-        # 获取当前 pi 作为 baseline 的起点
         pi_hat = env.pi.copy()
         pi0_hat = env.pi0
+        pi_bar = env.pi_bar.copy()
+        pi0_bar = env.pi0_bar
+
+        # 同步稳定中心
+        outer.set_stability_center(pi_bar, pi0_bar)
+
+        X_trial = env.X_trial
+        theta_trial = env.theta_trial
 
         for step in range(remaining_steps):
             t0 = time.time()
 
-            # 求解 inner
             z_X_values, obj_term_value, inner_obj = env.inner_problem.solve(pi_hat, pi0_hat)
             if z_X_values is None:
                 break
 
             subgradient = z_X_values + [obj_term_value]
-            outer.add_cut(subgradient)
+            lambda_i = np.concatenate([pi_hat, [pi0_hat]])
+            omega_i = inner_obj - pi_hat @ X_trial - pi0_hat * theta_trial
+            outer.add_cut(subgradient, lambda_i, omega_i)
 
-            # 求解 outer (最大化)
             pi_dummy, pi0_dummy, outer_obj = outer.solve()
             if outer_obj is None:
                 break
 
-            # 更新 LB
-            dual = inner_obj - pi_hat @ env.X_trial - pi0_hat * env.theta_trial
+            dual = inner_obj - pi_hat @ X_trial - pi0_hat * theta_trial
             if dual > env.LB:
                 env.LB = dual
 
             ub = outer_obj
 
             elapsed = time.time() - t0
-            # 使用当前迭代计算出的 dual 值（不保证单调，但更直观）
             lb_history.append(dual)
             time_history.append(elapsed)
-            # UB 单调不增
             ub = min(ub, ub_history[-1]) if ub_history else ub
             ub_history.append(ub)
             f_best_history.append(env.LB)
@@ -273,34 +274,42 @@ def level_bundle_rl_warmstart(env, model, logger, deterministic=True, K=20,
                 f"gap={ub-env.LB:.6e}"
             )
 
-            # 收敛判断
             if ub - env.LB < env.config.gap_tol * abs(ub) or ub - env.LB < 1e-6:
                 break
 
             # Level 策略
             level = ub - env.config.level_factor * (ub - env.LB)
-            outer.set_level(level, pi_hat, pi0_hat)
-            outer.outer_model.model.params.Method = 2
-            outer.outer_model.model.update()
-            outer.outer_model.model.optimize()
+            outer.set_level(level)
+            outer.model.params.Method = 2
+            outer.model.update()
+            outer.model.optimize()
 
-            if outer.outer_model.model.status != 2:
-                outer.outer_model.model.params.Method = 1
-                outer.outer_model.model.update()
-                outer.outer_model.model.optimize()
-                if outer.outer_model.model.status != 2:
-                    outer.outer_model.model.params.Method = 0
-                    outer.outer_model.model.update()
-                    outer.outer_model.model.optimize()
-                    if outer.outer_model.model.status != 2:
+            if outer.model.status != 2:
+                outer.model.params.Method = 1
+                outer.model.update()
+                outer.model.optimize()
+                if outer.model.status != 2:
+                    outer.model.params.Method = 0
+                    outer.model.update()
+                    outer.model.optimize()
+                    if outer.model.status != 2:
                         outer.recover()
                         pi_hat = np.array(pi_dummy)
                         pi0_hat = pi0_dummy
                         continue
 
-            pi_hat = np.array([outer.outer_model.pi[i].x for i in range(env.config.N_VARS)])
-            pi0_hat = outer.outer_model.pi0.x
+            d_pi_star = np.array([outer.d_pi[i].x for i in range(env.config.N_VARS)])
+            d_pi0_star = outer.d_pi0.x
+            pi_hat = outer.pi_bar + d_pi_star
+            pi0_hat = outer.pi0_bar + d_pi0_star
             outer.recover()
+
+            # Serious step
+            current_dual = inner_obj - pi_hat @ X_trial - pi0_hat * theta_trial
+            if current_dual > env.LB + 1e-8 * max(1.0, abs(env.LB)):
+                pi_bar = pi_hat.copy()
+                pi0_bar = pi0_hat
+                outer.set_stability_center(pi_bar, pi0_bar)
 
     return lb_history, reward_history, time_history, ub_history, f_best_history, switch_step
 
@@ -310,19 +319,7 @@ def level_bundle_rl_warmstart(env, model, logger, deterministic=True, K=20,
 # ============================================================
 
 def compute_opt_gap(lb_history, ub_history):
-    """
-    计算归一化优化 gap: (UB - LB) / (UB_0 - LB_0)
-
-    用初始 gap 归一化，使所有 config 的 gap 从 1.0 开始收敛到 0。
-    适用于 LB/UB 为正或负的情况，且不同尺度的 config 可以公平平均。
-
-    Args:
-        lb_history: 每步的最优 LB
-        ub_history: 每步的 UB
-
-    Returns:
-        gap_history: 每步的归一化优化 gap
-    """
+    """计算归一化优化 gap: (UB - LB) / (UB_0 - LB_0)"""
     if len(lb_history) == 0 or len(ub_history) == 0:
         return []
     initial_gap = ub_history[0] - lb_history[0]
@@ -332,14 +329,7 @@ def compute_opt_gap(lb_history, ub_history):
 
 
 def compute_average_results(all_results):
-    """
-    对所有 config 的 baseline/RL/RL Warmstart 的 gap 求均值
-
-    排除首次迭代就收敛的 config（baseline gap_history 长度 <= 1），
-    这类 config 的 gap 始终为 0，会拉低均值曲线。
-    """
-
-    # 识别首次迭代就收敛的 config：baseline 只有 0 或 1 个数据点
+    """对所有 config 的 baseline/RL/RL Warmstart 的 gap 求均值"""
     valid_indices = []
     for idx, result in enumerate(all_results):
         baseline_gap = result.get("baseline", {}).get("gap", [])
@@ -464,7 +454,7 @@ def plot_results(avg_results, save_dir, experiment_name=None):
 def load_train_config(train_experiment_name):
     """从训练实验目录加载训练时保存的配置文件"""
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    base_dir = os.path.dirname(current_dir)  # bundle_norm_RL
+    base_dir = os.path.dirname(current_dir)
     config_path = os.path.join(base_dir, "train_result", "model", train_experiment_name,
                                f"{train_experiment_name}.yml")
 
@@ -483,7 +473,7 @@ def load_latest_model(train_experiment_name, logger,
                       n_heads=4, n_attn_layers=2):
     """加载最新训练的模型"""
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    base_dir = os.path.dirname(current_dir)  # bundle_norm_RL
+    base_dir = os.path.dirname(current_dir)
     base_dir = str(base_dir)
 
     model_dir = os.path.join(base_dir, "train_result", "model", train_experiment_name, "save")
@@ -492,7 +482,7 @@ def load_latest_model(train_experiment_name, logger,
         raise FileNotFoundError(f"模型目录不存在: {model_dir}")
 
     model_files = [f for f in os.listdir(model_dir)
-                   if f.startswith("ppo_level_bundle_") and f.endswith(".zip")]
+                   if f.startswith("ppo_incremental_level_bundle_") and f.endswith(".zip")]
 
     if not model_files:
         raise FileNotFoundError(f"在 {model_dir} 中未找到模型文件")
@@ -513,18 +503,16 @@ def load_latest_model(train_experiment_name, logger,
     model = PPO.load(
         model_path,
         custom_objects={
-            "LevelBundleFeaturesExtractor": LevelBundleFeaturesExtractor,
-            "LevelBundleActorCriticPolicy": LevelBundleActorCriticPolicy,
+            "IncrementalLevelBundleFeaturesExtractor": IncrementalLevelBundleFeaturesExtractor,
+            "IncrementalLevelBundleActorCriticPolicy": IncrementalLevelBundleActorCriticPolicy,
             "policy_kwargs": {
-                "features_extractor_class": LevelBundleFeaturesExtractor,
+                "features_extractor_class": IncrementalLevelBundleFeaturesExtractor,
                 "features_extractor_kwargs": features_extractor_kwargs,
                 "net_arch": dict(pi=[hidden_dim, hidden_dim], vf=[hidden_dim, hidden_dim]),
             },
         }
     )
     return model
-
-
 
 
 # ============================================================
@@ -597,7 +585,7 @@ def run_test_for_configs(configs, config_info_list, experiment_name, logger, mod
 
         # 2. RL
         logger.info("Running RL...")
-        rl_env = LevelBundleEnv.create_env(logger, config, K=K, verbose=True, use_outer=True)
+        rl_env = IncrementalLevelBundleEnv.create_env(logger, config, K=K, verbose=True, use_outer=True)
         rl_lb, rl_reward, rl_time, rl_ub, _ = level_bundle_rl(
             rl_env, model, logger, deterministic=True, K=K
         )
@@ -606,7 +594,7 @@ def run_test_for_configs(configs, config_info_list, experiment_name, logger, mod
 
         # 3. RL Warmstart
         logger.info("Running RL Warmstart...")
-        ws_env = LevelBundleEnv.create_env(logger, config, K=K, verbose=True, use_outer=True)
+        ws_env = IncrementalLevelBundleEnv.create_env(logger, config, K=K, verbose=True, use_outer=True)
         ws_lb, ws_reward, ws_time, ws_ub, _, ws_switch_step = level_bundle_rl_warmstart(
             ws_env, model, logger, deterministic=True, K=K,
             warmstart_threshold=warmstart_threshold, patience=patience,
@@ -657,7 +645,7 @@ def main(experiment_name, train_experiment_name=None, i=1, t=5, K=20,
         train_experiment_name = experiment_name
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    base_dir = os.path.dirname(current_dir)  # bundle_norm_RL
+    base_dir = os.path.dirname(current_dir)
     base_dir = str(base_dir)
 
     save_dir = os.path.join(base_dir, "test_result", experiment_name)
@@ -722,7 +710,6 @@ def main(experiment_name, train_experiment_name=None, i=1, t=5, K=20,
     logger.info("All tests completed!")
 
 
-
 # ============================================================
 # Config 收集
 # ============================================================
@@ -733,9 +720,9 @@ def collect_configs():
     config_info = []
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    base_dir = os.path.dirname(current_dir)  # bundle_norm_RL
+    base_dir = os.path.dirname(current_dir)
     config_dir = Path(os.path.join(base_dir, "configs"))
-    # for i in range(1, 10):
+
     i = 2
     for t in range(1, 5):
         for n in range(6):
@@ -750,8 +737,9 @@ def collect_configs():
 
     return configs, config_info
 
+
 if __name__ == "__main__":
-    experiment_name = "exp_17"
+    experiment_name = "inc_exp_01"
     main(
         experiment_name=experiment_name,
         train_experiment_name=experiment_name,
