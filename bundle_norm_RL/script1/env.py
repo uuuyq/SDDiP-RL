@@ -42,7 +42,8 @@ from bundle_norm_RL.script1.level_bundle_problem import InnerProblem, Incrementa
 
 class IncrementalLevelBundleEnv(gym.Env):
 
-    def __init__(self, logger, config, n, K=20, verbose=False, use_outer=True):
+    def __init__(self, logger, config, n, K=20, verbose=False, use_outer=True,
+                 rho=1.0, B_t=None, norm_bound_type="l1", weights=None):
         """
         Args:
             logger: 日志器
@@ -51,6 +52,10 @@ class IncrementalLevelBundleEnv(gym.Env):
             K: 次梯度历史长度
             verbose: 是否输出详细日志
             use_outer: 是否使用 IncrementalOuterProblem 计算 UB（训练时 True，测试时 False）
+            rho: proximal 惩罚参数 (默认 1.0)
+            B_t: 对偶边界值 (None 表示不添加范数边界约束)
+            norm_bound_type: 范数边界约束类型 ("l1" 或 "linf")
+            weights: 权重系数列表
         """
         super().__init__()
 
@@ -60,6 +65,10 @@ class IncrementalLevelBundleEnv(gym.Env):
         self.K = K
         self.verbose = verbose
         self.use_outer = use_outer
+        self.rho = rho
+        self.B_t = B_t
+        self.norm_bound_type = norm_bound_type
+        self.weights = weights
 
         self.problem_params = config.PROBLEM_PARAMS
         self.stage = config.T
@@ -76,10 +85,10 @@ class IncrementalLevelBundleEnv(gym.Env):
                 dim_pi=config.N_VARS,
                 X_trial=config.X_trial,
                 theta_trial=float(config.THETA_TRIAL),
-                rho=config.rho,
-                B_t=config.B_t,
-                norm_bound_type=config.norm_bound_type,
-                weights=config.weights,
+                rho=rho,
+                B_t=B_t,
+                norm_bound_type=norm_bound_type,
+                weights=weights,
             )
 
         # trial point
@@ -170,10 +179,10 @@ class IncrementalLevelBundleEnv(gym.Env):
                 dim_pi=self.config.N_VARS,
                 X_trial=self.config.X_trial,
                 theta_trial=float(self.config.THETA_TRIAL),
-                rho=self.config.rho,
-                B_t=self.config.B_t,
-                norm_bound_type=self.config.norm_bound_type,
-                weights=self.config.weights,
+                rho=self.rho,
+                B_t=self.B_t,
+                norm_bound_type=self.norm_bound_type,
+                weights=self.weights,
             )
 
         # 初始求解
@@ -343,7 +352,8 @@ class IncrementalLevelBundleEnv(gym.Env):
         }
 
     @classmethod
-    def create_env(cls, logger, config, K=20, verbose=False, use_outer=True):
+    def create_env(cls, logger, config, K=20, verbose=False, use_outer=True,
+                   rho=1.0, B_t=None, norm_bound_type="l1", weights=None):
         """创建环境"""
         env = cls(
             logger=logger,
@@ -352,5 +362,9 @@ class IncrementalLevelBundleEnv(gym.Env):
             K=K,
             verbose=verbose,
             use_outer=use_outer,
+            rho=rho,
+            B_t=B_t,
+            norm_bound_type=norm_bound_type,
+            weights=weights,
         )
         return env

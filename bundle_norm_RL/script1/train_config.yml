@@ -14,6 +14,10 @@ experiment:
 # ------------------------------
 environment:
   K: 20                   # 次梯度历史长度 / episode 最大步数
+  rho: 1.0                # proximal 惩罚参数
+  # B_t: null             # 对偶边界值 (null 表示不添加范数边界约束)
+  # norm_bound_type: l1   # 范数边界约束类型 ("l1" 或 "linf")
+  # weights: null         # 权重系数列表
 
 # ------------------------------
 # PPO 算法超参数

@@ -63,10 +63,10 @@ def level_bundle_rl(env, model, logger, deterministic=True, K=20):
         dim_pi=env.config.N_VARS,
         X_trial=env.config.X_trial,
         theta_trial=float(env.config.THETA_TRIAL),
-        rho=env.config.rho,
-        B_t=env.config.B_t,
-        norm_bound_type=env.config.norm_bound_type,
-        weights=env.config.weights,
+        rho=env.rho,
+        B_t=env.B_t,
+        norm_bound_type=env.norm_bound_type,
+        weights=env.weights,
     )
 
     # 添加初始次梯度
@@ -143,10 +143,10 @@ def level_bundle_rl_warmstart(env, model, logger, deterministic=True, K=20,
         dim_pi=env.config.N_VARS,
         X_trial=env.config.X_trial,
         theta_trial=float(env.config.THETA_TRIAL),
-        rho=env.config.rho,
-        B_t=env.config.B_t,
-        norm_bound_type=env.config.norm_bound_type,
-        weights=env.config.weights,
+        rho=env.rho,
+        B_t=env.B_t,
+        norm_bound_type=env.norm_bound_type,
+        weights=env.weights,
     )
 
     if len(env.subgradient_list) > 0:
@@ -567,7 +567,8 @@ def save_results_to_json(all_results, save_dir):
 # ============================================================
 
 def run_test_for_configs(configs, config_info_list, experiment_name, logger, model,
-                         K=20, warmstart_threshold=1e-4, patience=3):
+                         K=20, warmstart_threshold=1e-4, patience=3,
+                         rho=1.0, B_t=None, norm_bound_type="l1", weights=None):
     """对一组 config 运行测试"""
     all_results = []
 
@@ -585,7 +586,10 @@ def run_test_for_configs(configs, config_info_list, experiment_name, logger, mod
 
         # 2. RL
         logger.info("Running RL...")
-        rl_env = IncrementalLevelBundleEnv.create_env(logger, config, K=K, verbose=True, use_outer=True)
+        rl_env = IncrementalLevelBundleEnv.create_env(
+            logger, config, K=K, verbose=True, use_outer=True,
+            rho=rho, B_t=B_t, norm_bound_type=norm_bound_type, weights=weights,
+        )
         rl_lb, rl_reward, rl_time, rl_ub, _ = level_bundle_rl(
             rl_env, model, logger, deterministic=True, K=K
         )
@@ -594,7 +598,10 @@ def run_test_for_configs(configs, config_info_list, experiment_name, logger, mod
 
         # 3. RL Warmstart
         logger.info("Running RL Warmstart...")
-        ws_env = IncrementalLevelBundleEnv.create_env(logger, config, K=K, verbose=True, use_outer=True)
+        ws_env = IncrementalLevelBundleEnv.create_env(
+            logger, config, K=K, verbose=True, use_outer=True,
+            rho=rho, B_t=B_t, norm_bound_type=norm_bound_type, weights=weights,
+        )
         ws_lb, ws_reward, ws_time, ws_ub, _, ws_switch_step = level_bundle_rl_warmstart(
             ws_env, model, logger, deterministic=True, K=K,
             warmstart_threshold=warmstart_threshold, patience=patience,
@@ -639,7 +646,8 @@ def run_test_for_configs(configs, config_info_list, experiment_name, logger, mod
 
 def main(experiment_name, train_experiment_name=None, i=1, t=5, K=20,
          hidden_dim=128, encoder_type="self_attention", n_heads=4, n_attn_layers=2,
-         auto_load_config=True, warmstart_threshold=1e-4, patience=3):
+         auto_load_config=True, warmstart_threshold=1e-4, patience=3,
+         rho=1.0, B_t=None, norm_bound_type="l1", weights=None):
     """主测试函数"""
     if train_experiment_name is None:
         train_experiment_name = experiment_name
@@ -658,6 +666,7 @@ def main(experiment_name, train_experiment_name=None, i=1, t=5, K=20,
         train_config = load_train_config(train_experiment_name)
         if train_config is not None:
             net_cfg = train_config.get('network', {})
+            env_cfg = train_config.get('environment', {})
             if 'hidden_dim' in net_cfg:
                 hidden_dim = net_cfg['hidden_dim']
             if 'encoder_type' in net_cfg:
@@ -666,8 +675,18 @@ def main(experiment_name, train_experiment_name=None, i=1, t=5, K=20,
                 n_heads = net_cfg['n_heads']
             if 'n_attn_layers' in net_cfg:
                 n_attn_layers = net_cfg['n_attn_layers']
+            # 从训练配置加载增量参数
+            if 'rho' in env_cfg:
+                rho = env_cfg['rho']
+            if 'B_t' in env_cfg:
+                B_t = env_cfg['B_t']
+            if 'norm_bound_type' in env_cfg:
+                norm_bound_type = env_cfg['norm_bound_type']
+            if 'weights' in env_cfg:
+                weights = env_cfg['weights']
             logger.info(f"从训练配置加载网络参数: hidden_dim={hidden_dim}, "
                         f"encoder_type={encoder_type}, n_heads={n_heads}, n_attn_layers={n_attn_layers}")
+            logger.info(f"从训练配置加载增量参数: rho={rho}, B_t={B_t}, norm_bound_type={norm_bound_type}")
 
     # 加载模型
     logger.info(f"加载模型: {train_experiment_name}")
@@ -693,6 +712,7 @@ def main(experiment_name, train_experiment_name=None, i=1, t=5, K=20,
     all_results = run_test_for_configs(
         configs, config_info_list, experiment_name, logger, model,
         K=K, warmstart_threshold=warmstart_threshold, patience=patience,
+        rho=rho, B_t=B_t, norm_bound_type=norm_bound_type, weights=weights,
     )
 
     # 计算平均结果

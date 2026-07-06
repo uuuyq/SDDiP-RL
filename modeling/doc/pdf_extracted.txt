@@ -1,0 +1,2332 @@
+===== PAGE 1 =====
+6530 IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING, VOL. 22, 2025
+A Hierarchical Framework-Based Coordinated
+Optimization of Building HVAC Systems and EVs
+Haoming Zhao , Student Member, IEEE, Zhanbo Xu , Member, IEEE, Jiang Wu , Member, IEEE,
+Fengxia Liu, Student Member, IEEE, and Xiaohong Guan , Life Fellow, IEEE
+Abstract— The demands of electric vehicles (EVs) and building heating, ventilation, and air conditioning (HVAC) systems
+have considerable flexibility. Their flexibility is influenced by
+occupants’ behavior resulting in huge complementary and dispatchable capability. Therefore, the coordination of EVs and
+HVAC systems holds significant potential for optimizing the building demand profiles and energy cost under time-of-use (TOU)
+tariffs. However, solving the coordinated problem in practice
+still faces the challenges in computational complexity and global
+information requirement due to the spatio-temperal coupling
+constraints. In this paper, a mixed-integer linear programming
+model is developed to formulate the multi-building energy system
+with EVs and the impact of occupants’ behavior on the demand
+and flexibility of the system. The problem is converted into
+a three-level structure using Lagrangian relaxation framework.
+A dynamic programming-based Lagrangian relaxation (DPLR)
+algorithm is developed to independently solve all sub-problems of
+the three-level structure in a decomposition and coordination way
+while avoiding the iterative computation between the middle and
+lower level. The numerical results show the developed method can
+obtain a near-optimal solution in an efficient way without perceivable degradation in accuracy, which is 4% worse but at least
+three times faster, compared to the existing centralized algorithm.
+Note to Practitioners—The escalating demand for EVs and
+HVAC systems results in increased energy costs and challenges to
+existing power systems, such as frequency deviations and higher
+peak loads. Therefore, this paper focuses on the coordinated
+optimization of the EV charging and building HVAC system
+operation, while considering rooftop photovoltaic generation
+supply within the system. Optimal coordination of the above
+system can effectively reduce energy costs under TOU tariffs
+and enhance the ability to utilize renewable energy sources.
+However, solving the coordinated optimization problem still faces
+difficulties since the computational complexity will exponentially
+grow with increasing problem scale due to the spatio-temperal
+coupling between the demand of EVs and HVAC systems.
+Manuscript received 17 May 2024; accepted 13 August 2024. Date of
+publication 24 September 2024; date of current version 12 March 2025. This
+article was recommended for publication by Associate Editor J. P. S. Catalão
+and Editor K. Liu upon evaluation of the reviewers’ comments. This work was
+supported in part by the National Natural Science Foundation of China under
+Grant 62122062, Grant 62192755, Grant 62192750, and Grant 62192752.
+(Corresponding author: Zhanbo Xu.)
+Haoming Zhao, Zhanbo Xu, Jiang Wu, and Fengxia Liu are with the
+MOE KLINNS Laboratory, Systems Engineering Institute, Xi’an Jiaotong
+University, Xi’an 710049, China (e-mail: zhaohaoming@stu.xjtu.edu.cn;
+zbxu@sei.xjtu.edu.cn; jwu@sei.xjtu.edu.cn; fengxialiu@stu.xjtu.edu.cn).
+Xiaohong Guan is with the MOE KLINNS Laboratory, Systems Engineering
+Institute, Xi’an Jiaotong University, Xi’an 710049, China, and also with
+TNLiST, Department of Automation, Centre for Intelligent and Networked
+Systems (CFINS), Tsinghua University, Beijing 100084, China (e-mail:
+xhguan@sei.xjtu.edu.cn).
+Digital Object Identifier 10.1109/TASE.2024.3446908
+Therefore, a DPLR algorithm is developed. There is a central
+coordinator that collects the demand information of EVs and
+HVAC systems and broadcasts the coordination information
+calculated according to the demand information. Every single EV
+and HVAC system can make decisions based on the coordination
+information independently. The DPLR algorithm decouples EVs
+and HVAC systems and avoids the curse of dimensionality.
+It has great improvement on computational efficiency and global
+information requirement reduction. The computational efficiency
+and effectiveness of the developed method is verified through
+multi-scale case studies. The numerical results show that compared with independent optimization of EVs and HVAC systems,
+coordinated optimization can reduce over 44% of the energy
+costs.
+Index Terms— Demand side management, coordinated optimization, electric vehicle (EV) and building HVAC system,
+Lagrangian relaxation (LR), dynamic programming.
+NOTATION
+A. Indices and Sets
+A
+R Set of the actions of building HVAC system.
+Ak Set of the actions at time stage k.
+I Set of the index for EVs.
+J Set of the index for rooms.
+J
+B
+n Set of the index for rooms in building n.
+K Set of the index for time stages.
+N Set of the index for buildings.
+Sk Set of the system states at time stage k.
+i Index of EVs, i ∈ {1, 2, . . . , I}.
+j Index of rooms, j ∈ {1, 2, . . . , J }.
+k Index of time stages, k ∈ {1, 2, . . . , K}.
+n Index of buildings, n ∈ {1, 2, . . . , N}.
+B. Parameters
+1k Time period per stage (h).
+ηj The coefficient of performance of the HVAC
+system in room j.
+S Minimum state of charge of EVs.
+Cj Equivalent heat capacity of room j (kJ/◦C).
+c
+p
+k
+
+c
+s
+k
+
+Electricity price purchased from (sold to) power
+grid at time stage k (CNY/kWh).
+E
+V,cap
+i Battery capacity of EV i (kWh).
+fk,i(1k) The energy consumption of EV i for driving a
+time stage at time stage k.
+I Total number of EVs.
+1558-3783 © 2024 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission.
+See https://www.ieee.org/publications/rights/index.html for more information.
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:23:45 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 2 =====
+ZHAO et al.: HIERARCHICAL FRAMEWORK-BASED COORDINATED OPTIMIZATION 6531
+J Total number of rooms.
+K Total number of scheduling time stages.
+N Total number of buildings.
+Ok,j Occupied state of room j at time stage k.
+P
+V
+i Rated charging and discharging power of EV
+i (kW).
+P
+cap
+n Power capacity between the power grid and
+building n (kW).
+P
+EV,cap
+n Power capacity of EV charging facility in
+building n (kW).
+P
+e
+k,n
+Power load of other electrical equipments in
+building n at time stage k (kW).
+P
+H V AC,cap
+j Rated capacity of HVAC system in room j
+(kW).
+P
+PV
+k,n
+Power supplied by roof-top photovoltaic generation in building n at time stage k (kW).
+R
+e
+j Equivalent thermal resistance of room j
+(
+◦C/kW).
+T
+−(T+) Lower (Upper) indoor temperature bound for
+human thermal comfort requirement (◦C).
+T
+o
+k The outdoor air temperature at time stage k
+(
+◦C).
+C. Variables
+a
+R
+k,j HVAC system action of room j at time stage k
+(kW).
+a
+V,c
+k,i
+(a
+V,d
+k,i
+) Charging (discharging) action of EV i at time
+stage k, a
+V,c
+k,i ∈ {0, 1}, a
+V,d
+k,i ∈ {0, 1}.
+P
+EV
+k,n
+Power exchange between building n and EV
+charging facility at time stage k (kW).
+P
+p
+k,n
+(P
+s
+k,n
+) Power of building n purchased from (sold to)
+power grid at time stage k (kW).
+Sk,i The state of charge of EV i at time stage k,
+Sk,i ∈ [0, 1].
+T
+R
+k,j The indoor temperature of room j at time stage
+k (
+◦C).
+I. INTRODUCTION
+A
+FTER the remarkable development of electric vehicle
+(EV) over the past decade, the total number of EVs have
+been raising to 26 million in 2022 [1]. However, the increasing
+number of EVs has resulted in a significant increase in electricity consumption and brought challenges to power grids [2],
+such as frequency deviation and higher peak loads [3], [4].
+On the other hand, building energy systems (BES) account for
+over 40% of energy consumption in the U.S., among them,
+heating, ventilation, and air conditioning (HVAC) systems
+consume 45% of the electricity energy [5]. Due to room indoor
+temperature dynamics and EVs’ required charging time being
+much shorter than their parking duration, the coordination of
+EVs and HVAC systems provides huge potential in enhancing
+the flexibility of BES for demand side management [6].
+To coordinately optimize the operation of EVs and BES,
+various studies have been made to minimize their total
+cost [7], [8], improve the utilization efficiency of distributed
+renewable energy sources [9], reduce peak load and reshape
+demand profiles [10]. EVs and buildings typically share the
+same infrastructure, Contreras-Ocana et al. [11] proposed
+a coordinated optimization problem of EVs and buildings
+considering the demand limits, peak demand charges and
+itemized billing tariffs to optimize their demand flexibility.
+Wang et al. [12] developed a three-level scheduling model
+for aggregated HVAC systems and EVs under the locational
+marginal price in the competitive market to make benefit for
+both distribution systems and aggregators.
+The coordinated problem of EVs and HVAC systems is
+usually large-scale. Many efforts have been made to tackle the
+curse of dimensionality. E.g., Hurtado et al. [13] developed
+a multi-agent based decentralized approach to optimize the
+EVs charging strategy and reshape the demand profile of BES.
+Yang et al. [14] developed a decentralized EV-based charging
+algorithm under the Lagrangian relaxation (LR) framework
+to determine multiple EVs charging based on the building’s
+electrical and thermal demand. In order to improve the computational efficiency by reducing the state space, the event-based
+approaches are also developed to solve the optimization problem of EVs and building HVAC systems, since the state space
+aggregation can be realized by defining several events [15],
+[16], [17]. Furthermore, other decentralized algorithms, such
+as Dantzig-Wolfe decomposition [18], Bender’s decomposition [19], and the alternating direction method of multipliers
+algorithm (ADMM) [20] are also developed to solve the
+coordinated problem. Although many innovative results in the
+coordinated optimization of EVs and building HVAC systems
+are reported in the literature, the computational efficiency and
+convergence of existing methods are still hard to be guaranteed
+due to the spatio-temporal coupling constraints caused by
+occupant’s thermal comfort requirement and mobility.
+Thus, there are still many challenges in the coordination
+of EVs and building HVAC systems. First, spatio-temporal
+coupling. Multiple buildings are coupled in space due to
+the mobility of EVs. In addition, the operation of EVs and
+HVAC are also coupled in time due to the thermal comfort and next trip requirement of occupants. So, the above
+spatio-temporal coupling between multiple buildings and EVs
+needs to be well formulated to maximally enhance the flexibility provided by EVs and HVAC systems. Second, multiple
+stakeholders. Multiple stakeholders of EVs and buildings are
+involved in the energy conversion and interaction process of
+the coordination of EVs and HVAC systems. The centralized
+algorithm is thus limited since the global information is costly
+to collect in practice due to occupants’ privacy concerns
+and high communication and computation costs. Third, the
+curse of dimensionality. The state space and policy space
+of the coordinated problem will exponentially grow with
+the increasing scale of EVs and buildings. The coordinated
+problem is believed to be NP-hard [14], [15]. In addition,
+due to the spatio-temporal coupling, the existing decentralized
+method cannot be directly applied since their optimality and
+convergence may not be guaranteed. Therefore, an effective
+and efficient decentralized optimization method needs to be
+developed based on the structure of the coordinated problem
+for practical engineering.
+In order to overcome the challenges mentioned above,
+we make the following contributions in this paper. First,
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:23:45 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 3 =====
+6532 IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING, VOL. 22, 2025
+the coordinated optimization problem of multiple EVs and
+building HVAC systems is formulated as a centralized
+mixed-integer linear programming (MILP) problem. The
+spatio-temporal coupling and interaction between EVs and
+HAVC systems are captured based on power balance with
+occupants’ thermal comfort requirement of each building and
+mobility behavior of each EV. In this way, the coupling
+and interaction between HVAC systems and each EV are
+formulated, thus, the system flexibility can be enhanced with
+the coordination of buildings and all the EVs. Second, an LRbased decentralized optimization framework is developed to
+convert the original centralized problem into a problem with
+three-level structure. The EVs and HVAC systems are decoupled by introducing Lagrangian multipliers and relaxing the
+system-wide constraints. The problem can be solved with
+inner and outer iteration in a decomposition and coordination way that reduce the global information requirement.
+Third, a dynamic programming-based LR (DPLR) algorithm
+is developed to efficiently solve the problem of the three-level
+structure problem. Based on the DPLR algorithm, the optimal
+analytic solution of EV charging sub-problems in the lower
+level are derived by dynamic programming. The dual problems
+of EV charging facility operation sub-problem in the middle
+level are transformed from “max-min” structure problems to
+“max” optimization problems of the Lagrangian multipliers,
+thus avoiding the inner iteration between the middle and lower
+level. In this way, the sub-problems of each HVAC system
+operation and the sub-problems of each EV charging can be
+independently solved. Numerical results show the coordinated
+optimization can get better utilization of the complementary
+flexibility of EVs and HVAC systems demand and save over
+44% of the energy cost. The performance of the DPLR
+algorithm developed in this paper has great improvement
+that at least three times faster than the centralized algorithm
+with less than 4% worse accuracy. It also can save 52%
+computational time with better accuracy compared with the
+traditional LR algorithm.
+The remainder of this paper is organized as follows.
+In Section II, the coordinated problem is formulated as a
+centralized MILP problem. In Section III, the decentralized
+problem of a three-level structure is developed based on
+the LR framework and the DPLR algorithm is developed.
+In Section IV, the case studies and numerical results are presented to validate the performance of the DPLR algorithm. The
+discussion of the performance of developed DPLR algorithm is
+given in Section V. A brief conclusion is given in Section VI.
+II. PROBLEM FORMULATION
+This paper focuses on the coordination of multi-building
+energy system with EVs as shown in Fig. 1. There may be
+various kinds of buildings, e.g., residential buildings, office
+buildings and commercial buildings in the system. Within
+each building, there are amount of rooms with HVAC system, parking lots with charging facility, roof-top photovoltaic
+generation devices and other electrical equipments. There
+are bidirectional energy interactions between EVs and each
+building, including EV charging from buildings and feeding
+energy into buildings through charging facility in buildings.
+Fig. 1. Multi-building energy system with EVs.
+As similar to [21] and [22], we assume that there is a central
+coordinator among buildings in the system (e.g., the aggregator
+of buildings or the scheduling center of the city or town).
+It is connected with all buildings to collect global information
+(such as the trip plans and initial state of charge of EVs,
+and the power supplied by roof-top photovoltaic generation)
+and broadcasts centralized coordination information to help
+all buildings make decision for their operation of HVAC
+systems and EVs charging, while satisfying the occupant
+thermal comfort requirement and the trip energy requirement
+of occupant mobility in daily life.
+In this section, the coordinated optimization problem of the
+multi-building energy system with EVs is formulated as a
+discrete-time-based MILP problem. The objective is to minimize the energy cost of the multi-building energy system under
+TOU tariff mechanism while satisfying the occupant’s thermal
+comfort requirement and mobility requirement. In the following, the objective function is given in sub-section III-A. The
+operation constraints including the coupling between occupant
+thermal comfort and mobility requirement are developed in
+sub-section III-B. The centralized coordinated optimization
+problem is described in sub-sections III.C.
+A. Objective Function
+The objective of the coordinated problem is to minimize
+the energy cost of the system while satisfying occupants’
+requirement. The EVs can only charging and discharging in
+the buildings. So, the energy cost of EVs is considered in the
+building’s energy cost. Thus, the objective function during the
+scheduling horizon is defined as
+minC =
+X
+K
+k=1
+X
+N
+n=1
+
+c
+p
+k P
+p
+k,n − c
+s
+k P
+s
+k,n
+
+1k. (1)
+B. System Constraints
+To guarantee the power balance of building n, we have
+P
+p
+k,n − P
+s
+k,n + P
+PV
+k,n = P
+e
+k,n + P
+EV
+k,n +
+X
+j∈J
+B
+n
+a
+R
+k,j
+. (2)
+The building HVAC systems and EV charging facility in
+building n are coupled by this constraint.
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:23:45 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 4 =====
+ZHAO et al.: HIERARCHICAL FRAMEWORK-BASED COORDINATED OPTIMIZATION 6533
+Intuitively, the power purchased and sold by buildings
+should be constrained by the power capacity of the transmission line. Besides, buildings cannot purchase and sell
+electricity to the grid at the same time for safety reason, i.e.,
+0 ≤ P
+p
+k,n ≤ z
+p
+k,n P
+cap
+n
+, (3)
+0 ≤ P
+s
+k,n ≤ z
+s
+k,n P
+cap
+n
+, (4)
+z
+p
+k,n + z
+s
+k,n ≤ 1, (5)
+where z
+p
+k,n ∈ {0, 1} and z
+s
+k,n ∈ {0, 1} are binary variables that
+z
+p
+k,n = 1(z
+s
+k,n = 1) indicating building n purchases (sells)
+power from (to) power grid at time stage k. There is no energy
+exchange between building n and power grid when z
+p
+k,n =
+0 and z
+s
+k,n = 0.
+The total power exchanged between building n and EV
+charging facility at time stage k consists of the charging and
+discharging power of the EVs parking in building n. It should
+be constrained by charging facility capacity, i.e.,
+P
+EV
+k,n =
+X
+I
+i=1
+Lk,i,n
+
+a
+V,c
+k,i − a
+V,d
+k,i
+
+P
+V
+i
+, (6)
+−P
+EV,cap
+n ≤ P
+EV
+k,n ≤ P
+EV,cap
+n
+, (7)
+where Lk,i,n is a binary variable indicating the location of EV
+i at time stage k is building n or not and Lk,i,n ∈ {0, 1}.
+Lk,i,n = 1 (Lk,i,n = 0) indicates EV i is (is not) parking in
+building n at time stage k.
+PN
+n=1
+Lk,i,n = 0 indicates EV i
+is on the road at time stage k. Actually, Lk,i,n and P
+V
+i
+are
+parameters. Therefore, the constraint (6) is linear with respect
+to the actions a
+V,c
+k,i
+and a
+V,d
+k,i
+. Equation (6) implies that P
+EV
+k,n
+only take into account the EVs parking in building n at time
+stage k. Similar to [22], the charging and discharging rate of
+EVs is assumed to be a constant. Therefore, the charging and
+discharging action of EVs are defined as binary variables that
+a
+V,c
+k,i = 1
+
+a
+V,d
+k,i = 1
+
+means EV i is charged (discharged) at
+time stage k. Otherwise, a
+V,c
+k,i = 0 and a
+V,d
+k,i = 0 indicates the
+EV i is idle at time stage k. Based on (6), EVs are coupled
+together because they share the same charging facility in the
+building. Moreover, the buildings are also coupled due to EVs
+charge and discharge in different buildings that caused by the
+mobility of EVs. Equation (7) implies the power exchanged
+between building and EV charging facility cannot exceed the
+charging facility capacity.
+The dynamics of EV’s state of charge (SoC) is given by:
+Sk+1,i = Sk,i +
+
+a
+V,c
+k,i − a
+V,d
+k,i
+
+P
+V
+i 1k
+E
+V,cap
+i
+−
+
+1 − z
+EV
+k,i
+
+×
+fk,i(1k)
+E
+V,cap
+i
+, (8)
+where the parking state z
+EV
+k,i ∈ {0, 1} denotes the EV i is
+parking at buildings (z
+EV
+k,i = 1) or trip on the road (z
+EV
+k,i = 0)
+at time stage k. The energy consumption of EV i for driving
+a time stage at time stage k is denoted as fk,i(1k). Note that
+the second term of the right-hand side represents the energy
+change caused by charging (discharging) action when the EV
+parks in a building and the last term is the energy consumed
+by the trip when EV is on the road.
+The relationship between the location and parking state of
+EV i at time stage k can be denoted as:
+z
+EV
+k,i =
+X
+N
+n=1
+Lk,i,n. (9)
+Considering the constraints of EV battery capacity and
+charging (discharging) location, we have:
+S ≤ Sk,i ≤ 1, (10)
+a
+V,c
+k,i + a
+V,d
+k,i ≤ z
+EV
+k,i
+. (11)
+Equation (10) implies the SoC of EVs cannot below the
+lower limit, for the purpose of battery life-time concern, and
+cannot exceed the battery capacity. Equation (11) implies that
+the EVs cannot be charged or discharged (a
+V,c
+k,i = 0, a
+V,d
+k,i = 0)
+when they trip on the road (z
+EV
+k,i = 0) and cannot be charged
+and discharged simultaneously.
+Furthermore, in order to formulate the dynamics of the
+indoor temperature of the room, a resistance-capacitance circuit model [23] is adopted, i.e.,
+T
+R
+k+1,j = T
+o
+k − ηja
+R
+k,j R
+e
+j +
+
+T
+R
+k,j − T
+o
+k + ηja
+R
+k,j R
+e
+j
+
+e
+−
+1k
+R
+e
+j
+C j
+.
+(12)
+The HVAC system is assumed to be a multi-speed system so
+that the a
+R
+k,j
+is continuous and is constrained by rated capacity
+of building HVAC system [24]:
+0 ≤ a
+R
+k,j ≤ P
+H V AC,c ap
+j
+. (13)
+As mentioned before, the HVAC system should be operated
+to satisfy human thermal comfort requirement when the room
+is occupied, i.e.,
+−M
+
+1 − Ok,j
+
++ Ok,j T
+− ≤ TR
+k,j ≤ Ok,j T
++ + M
+
+1 − Ok,j
+
+,
+(14)
+where M is a big positive number to constrain the indoor
+temperature under unoccupied stages and Ok,j denotes the
+occupied state of the room j at time stage k i.e.,
+Ok,j = γk,i,j I
+
+Lk,i,n = 1
+
++ νk,i,j
+
+1 − I
+
+Lk,i,n = 1
+, (15)
+where γk,i,j and νk,i,j are random binary variables that denote
+the occupied state of room j in building n (j ∈ J
+B
+n
+) which has
+the same occupant with EV i. γk,i,j = 1 (γk,i,j = 0) indicates
+that the room j is occupied (not occupied) when the EV i
+is parking in building n at time stage k. Similarly, νk,i,j = 1
+(νk,i,j = 0) indicates that the room j is occupied (not occupied)
+when the EV i is not parking in building n at time stage k.
+The γk,i,j and νk,i,j can be obtained by the history data of EVs
+location and room occupied state. This constraint couples the
+demand of EVs and HVAC systems.
+C. Coordinated Optimization Problem
+A daily coordinated optimization problem for N buildings,
+J rooms and I EVs is formulated, which is uniformly divided
+into K time stages. The system states at stage k including the
+SoC of EVs and the indoor temperature of rooms are defined
+as Sk =
+h
+Sk,i, T
+R
+k,j
+i
+, ∀i ∈ I, ∀ j ∈ J. The system decisions
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:23:45 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 5 =====
+6534 IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING, VOL. 22, 2025
+including the power purchased and sold by buildings, the
+action of building HVAC system operation and the charging
+and discharging action of EVs at stage k are denoted as
+Ak =
+h
+P
+p
+k,n
+, P
+s
+k,n
+, a
+R
+k,j
+, a
+V,c
+k,i
+, a
+V,d
+k,i
+i
+, ∀n ∈ N, ∀ j ∈ J, ∀i ∈ I.
+Overall, the coordinated problem of EVs and HVAC systems
+can be written as the centralized optimization problem P1, i.e.,
+P1: min
+A
+C, with C =
+X
+N
+n=1
+X
+K
+k=1
+
+c
+p
+k P
+p
+k,n − c
+s
+k P
+s
+k,n
+
+1k
+s.t. (2) − (15). (16)
+The optimal operation strategy of EVs and building HVAC
+systems to minimize the energy cost of the multi-building
+energy system with EVs can be obtained by solving the
+problem P1. However, due to the spatio-temporal coupling
+constraints in (2) and (6), the state space at time stage k
+is Sk ⊂ R
+I × RJ
+. The decision space of EVs is 2I×K ×
+2
+I×K
+and the decision space of HVAC systems is A
+R =
+(A
+R
+1
+, A
+R
+2
+, . . . , A
+R
+K
+) ⊂ R
+J×K
+. The decision space in the centralized problem is the decision space of EVs times the decision
+space of HVAC systems that will exponentially grow with
+the increasing scale of the problem. Solving such optimization problem faces the computational complexity challenge.
+Furthermore, the central coordinator has to collect all the
+global information for the purpose of solving the centralized
+problem. In practice, collecting global information may face
+difficulties in high transmission requirement and occupants’
+privacy concerns. Therefore, A DPLR algorithm is developed
+in Section III to let EVs and HVAC systems make their
+decision in a decomposition and coordination way.
+III. HIERARCHICAL FRAMEWORK-BASED OPTIMIZATION
+ALGORITHM
+As mentioned before, solving the centralized coordinated
+problem P1 directly faces the challenges in computational
+complexity and global information requirement in practical
+engineering. In order to tackle the challenges, P1 is equivalently decomposed into a hierarchical framework with three
+levels based on Lagrangian relaxation in sub-section III-A.
+A DPLR algorithm is developed to solve the hierarchical
+framework-based problem in subsection III-B.
+A. Lagrangian Relaxation Framework
+As shown in (1), the objective function has decomposable
+structure for different buildings but EVs and the HVAC
+systems in same building are coupled with (2). The Lagrangian
+function is defined by introducing the Lagrangian multipliers
+λ to relax the coupled constraint (2), i.e.,
+L =
+X
+K
+k=1
+X
+N
+n=1
+
+c
+p
+k P
+p
+k,n − c
+s
+k P
+s
+k,n
+
+1k +
+X
+K
+k=1
+X
+N
+n=1
+λk,n(P
+p
+k,n
+− P
+s
+k,n + P
+PV
+k,n − P
+e
+k,n − P
+EV
+k,n −
+X
+j∈J
+B
+n
+a
+R
+k,j
+), (17)
+where λ =
+
+λk,n
+	
+, ∀n ∈ N, ∀k ∈ K is the set of Lagrangian
+multipliers.
+Therefore, using the duality theorem [25], the coordinated
+problem P1 is decomposed to the dual problems of P1 and
+the sub-problems of building operation, EV charging facility
+operation and HVAC system operation. The sub-problems
+of building n operation, EV charging facility operation and
+HVAC system operation of room j in building n with given
+Lagrangian multipliers λ can be defined as:
+min
+P
+p
+k,n
+,P
+s
+k,n
+L
+B
+n
+, with L
+B
+n =
+X
+K
+k=1
+c
+p
+k 1k + λk,n
+
+P
+p
+k,n
+−
+
+c
+s
+k1k + λk,n
+
+P
+s
+k,n + λk,n P
+PV
+k,n − λk,n P
+e
+k,n
+
+s.t. (3) − (5). (18)
+min
+P
+EV
+k,n
+L
+V
+n
+, with L
+V
+n =
+X
+K
+k=1
+−λk,n P
+EV
+k,n
+s.t. (6) − (11). (19)
+min
+a
+R
+k,j
+L
+R
+j
+, with L
+R
+j =
+X
+K
+k=1
+−λk,na
+R
+k,j
+, ∀ j ∈ J
+B
+n
+s.t. (12) − (15). (20)
+Therefore, the dual problem of P1 is defined as:
+max
+λ
+8(λ), with 8(λ)
+=
+X
+N
+n=1
+min
+P
+p
+k,n
+,P
+s
+k,n
+L
+B
+n +
+X
+N
+n=1
+min
+P
+EV
+k,n
+L
+V
+n +
+X
+J
+j=1
+min
+a
+R
+k,j
+L
+R
+j
+. (21)
+In fact, the sub-problems of EV charging facility operation
+for different buildings still have spatial coupled constraints
+caused by EVs trip between buildings. Thus, other Lagrangian
+multipliers µ for EV charging facility operation sub-problems
+are introduced to relax (6). The Lagrangian function of
+EV charging facility operation sub-problem in building n is
+defined as:
+L
+V
+n =
+X
+K
+k=1
+−λk,n P
+EV
+k,n
++ µk,n
+"
+P
+EV
+k,n −
+X
+I
+i=1
+Lk,i,n
+
+a
+V,c
+k,i − a
+V,d
+k,i
+
+P
+V
+i
+#
+, (22)
+where µ =
+
+µk,n
+	
+, ∀n ∈ N, ∀k ∈ K is the set of Lagrangian
+multipliers. Then the sub-problem of EV charging facility
+operation in building n can be rewritten as:
+min
+P
+EV
+k,n
+L
+EV C F
+n
+, with L
+EV C F
+n =
+X
+K
+k=1
+
+µk,n − λk,n
+
+P
+EV
+k,n
+s.t. (7). (23)
+The sub-problem of EV i charging can be defined as:
+min
+a
+V,c
+k,i
+,a
+V,d
+k,i
+L
+EV
+i
+, with
+L
+EV
+i =
+X
+K
+k=1
+X
+N
+n=1
+−µk,nLk,i,n
+
+a
+V,c
+k,i − a
+V,d
+k,i
+
+P
+V
+i
+s.t. (8) − (11). (24)
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:23:45 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 6 =====
+ZHAO et al.: HIERARCHICAL FRAMEWORK-BASED COORDINATED OPTIMIZATION 6535
+Fig. 2. The three-level optimization problem structure and information
+exchange mechanism.
+Similarly, the dual problem of (19) is defined as:
+max
+µ
+n(µ), with n(µ)
+= min
+P
+EV
+k,n
+L
+EV C F
+n +
+X
+I
+i=1
+min
+a
+V,c
+k,i
+,a
+V,d
+k,i
+L
+EV
+i
+. (25)
+After relaxing the constraints (2) and (6), the coordinated
+problem P1 is converted into three levels as shown in Fig. 2.
+The dual problem of P1 is in the upper level. In the middle
+level, there are three sub-problems which are the sub-problems
+of building operation, the sub-problems of HVAC system
+operation and the dual problems of EV charging facility
+operation sub-problem. The EV charging sub-problems are in
+the lower level. The sub-problems in middle and lower level do
+not have coupled constraints and can be solved independently.
+The dual problem of P1 can be rewritten as:
+max
+λ
+8(λ), with 8(λ)
+=
+X
+N
+n=1
+min
+P
+p
+k,n
+,P
+s
+k,n
+L
+B
+n +
+X
+N
+n=1
+max
+µ
+n(µ) +
+X
+J
+j=1
+min
+a
+R
+k,j
+L
+R
+j
+. (26)
+According to the duality theory [25], the optimal solution
+of the problem P1 can be derived by solving the dual problem (26). Therefore, once the optimal Lagrangian multipliers
+are obtained, the central coordinator can broadcast them to
+HVAC systems and EVs. The HVAC systems and EVs can
+make the decision according to the optimal Lagrangian multipliers in a decomposition and coordination way.
+Thus, a LR-based three-level structure is presented in Fig. 2.
+The coordinated problem can be solved under a double-layer
+iteration framework. The optimal Lagrangian multipliers are
+obtained by the sub-gradient method, which are theoretically
+guaranteed to converge to the optimal solution [26]. The
+information exchange mechanism between different levels is
+also shown in Fig. 2.
+For the inner iteration, charging facility in buildings spread
+the Lagrangian multipliers µ to EVs for them to make decisions independently in the lower level. Then, µ are upgraded
+by solving the dual problems of EV charging facility operation
+sub-problem in the middle level according to the charging
+decision uploaded by EVs. The charging facility uploads the
+aggregated demand of EVs to central coordinator.
+Algorithm 1 LR Framework-Based Iteration Algorithm
+Step1. Initialization: Set l=0, u=0. Initialize the Lagrangian
+multipliers i.e., λ0 and µ0
+Step2. Upgrade the solution of EVs: Solve EV charging subproblem (24).
+Solve EV charging facility operation sub-problem (23).
+Step3. Upgrade the Lagrangian multipliers µl: Obtain the
+gradient direction of µl by:
+g
+µ
+k,n,l =P
+EV
+k,n,l −
+XI
+i=1
+Lk,i,n
+
+a
+V,c
+k,i,l − a
+V,d
+k,i,l
+
+P
+V
+i
+.
+Choose the step size s
+µ
+l which should satisfy:
+0 < s
+µ
+l <
+
+L
+V,∗
+n − L
+V
+n,l
+
+/
+
+g
+µ
+l
+
+
+2
+,
+where g
+µ
+l
+denotes the set of g
+µ
+k,n,l
+, L
+V,∗
+n
+is the optimal value of
+Lagrangian function of EV charging facility operation sub-problem
+of building n.
+Update the multipliers:
+µk,n,l+1 = µk,n,l + s
+µ
+l
+g
+µ
+k,n,l
+,l = l + 1.
+If ||µl+1 − µl|| ≤ ϵ, where ϵ is the accuracy requirement, go to
+Step4. Otherwise, go back to Step 2.
+Step4. Construct a feasible solution: Construct the feasible
+solution for EV charging facility operation sub-problems.
+Step5. Upgrade the solution of buildings: Solve HVAC system
+operation sub-problem (20).
+Solve building operation sub-problem (18).
+Step6. Upgrade the Lagrangian multipliers λu : Obtain the
+gradient direction of λu by:
+g
+λ
+k,n,u = P
+p
+k,n,u − P
+s
+k,n,u + P
+PV
+k,n
+− P
+e
+k,n − P
+EV
+k,n,l −
+X
+j∈J
+B
+n
+a
+R
+k,j,u
+.
+Choose the step size s
+λ
+u which should satisfy:
+0 < s
+λ
+u < (L
+∗ − Ll)/
+
+g
+λ
+u
+
+
+2
+,
+where g
+λ
+u
+denotes the set of g
+λ
+k,n,u
+, L
+∗
+is the optimal value of
+Lagrangian function of system.
+Update the multipliers:
+λk,n,u+1 = λk,n,u + s
+λ
+u
+g
+λ
+k,n,u
+, u = u + 1.
+If ||λu − λu−1|| ≤ ϵ, where ϵ is the accuracy requirement, go to
+Step7. Otherwise, go to Step2.
+Step7. Construct a feasible solution: Construct the feasible
+solution for P1.
+For the outer iteration, the central coordinator spread the
+Lagrangian multipliers λ to the charging facility for inner
+iteration, buildings and HVAC systems for operation decision
+making in middle level. The λ are upgraded in the dual problem of P1 in the upper level by central coordinator according
+to the demand uploaded by the buildings, charging facility
+and the decisions uploaded by HVAC systems. Therefore,
+the central coordinator can calculate the optimal multipliers
+according to limited information uploaded by buildings, HVAC
+systems and charging facility.
+An LR framework-based iteration algorithm is developed.
+Note that in Algorithm 1, the central coordinator only needs to
+collect the aggregated demand of the buildings to upgrade the
+Lagrangian multipliers λ instead of all the global information.
+The occupants only need to upload their charging demand
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:23:45 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 7 =====
+6536 IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING, VOL. 22, 2025
+to EV charging facility for upgrading Lagrangian multipliers
+µ instead of the trip plan and initial SoC. It can reduce the
+information transmission requirement and protect the privacy
+of occupants. Each EV and each HVAC system can make
+decision individually according to the Lagrangian multipliers
+after the central coordinator and EV charging facility upgrade
+them. Therefore, the computational time per iteration will not
+increase with the increased scale of EVs and HVAC systems.
+Although the computational complexity of the double-layer
+iterations does not depend on the scale of the problem. Its
+convergence efficiency and accuracy are hard to be guaranteed.
+Therefore, a DPLR algorithm is developed in next sub-section.
+B. Dynamic Programming-Based LR Algorithm
+Focused on the challenges mentioned above, a DPLR
+algorithm is developed in this sub-section. In this way, the dual
+problems of EV charging facility operation sub-problem (25),
+which are “max-min” structures problems, are transformed
+to “max” optimization problems of Lagrangian multipliers
+µ based on the optimal analytic expression of EV charging
+sub-problems. It can avoid the inner iteration in Algorithm 1
+and improve the convergence efficiency. The details of DPLR
+algorithm are shown as below.
+In the LR-based three-level structure developed in subsection III-A, every single EV can obtain their optimal
+decision independently. But the dual problems of EV charging facility operation sub-problem have to be solved by the
+iteration of Lagrangian multipliers µ. The coordinated problem is solved under a double-layer iteration framework. The
+convergence efficiency is hard to be guaranteed. It is found
+that in the EV charging sub-problem (24), the decisions are
+made in discrete stages and the objective function is additive
+over time. Therefore, the optimal analytic expression of EV
+charging sub-problems can be derived by value iteration of
+dynamic programming [27]. The SoC and charging action of
+EVs can be defined as system state variables and decision
+variables, respectively. The cost function of EV i charging
+sub-problem is derived as:
+
+
+
+J
+EV∗
+k,i
+
+Sk,i
+
+= min
+a
+V,c
+k,i
+,a
+V,d
+k,i
+(X
+N
+n=1
+−µk,nLk,i,n
+
+a
+V,c
+k,i − a
+V,d
+k,i
+
+P
+V
+i
++J
+EV∗
+k+1,i
+
+Sk+1,i
+
+Sk,i, a
+V,c
+k,i
+, a
+V,d
+k,i
+o,
+J
+EV∗
+K+1,i
+
+SK+1,i
+
+= 0,
+(27)
+where Sk+1,i
+
+Sk,i, a
+V,c
+k,i
+, a
+V,d
+k,i
+
+denotes the SoC of EV i at next
+time stage after execute a
+V,c
+k,i
+and a
+V,d
+k,i
+on Sk,i at stage k. The
+cost function of the state at time stage k consists of cost-to-go
+and one-step cost.
+Although the SoC of EV is a continuous variable, it can only
+transition to a few certain values with the given initial state,
+discrete energy consumption for trip, discrete charging and
+discharging actions. The feasible state of EV i’s SoC at time
+stage k with the given initial state and trip energy consumption
+for the cost function (27) can be denoted as (27a), shown at
+the bottom of the page. The k
+a
+i
+denotes the change of SoC of
+EV i caused by charging or discharging for a time step that
+k
+a
+i = P
+V
+i 1k/E
+V,cap
+i
+. The k
+c
+k,i
+denotes the change of SoC of EV
+i caused by energy consumption of trip on the road for a time
+step at time stage k that k
+c
+k,i = fk,i(1k)/E
+V,cap
+i
+. As shown
+in Fig.3, the value in the green area is infeasible because of
+EV’s battery capacity constraint. The states in yellow area
+is infeasible that is caused by EV charging and discharging
+power constraint. The other values in the white area are the
+values that can be transitioned to from the SoC of the EV with
+the certain initial state and trip energy consumption. Among
+them, the blue area denotes the EV is on the road which
+implies that the SoC of EV can only transition to the certain
+value based on the trip energy consumption.
+Intuitively, at most three decisions can be made for a certain
+SoC at a certain time stage which are charging, discharging
+and idle. The objective is to choose the feasible decision that
+Sk,i =
+(
+SK+1,i + xka
+i +
+X
+K
+t=k
+
+1 − z
+EV
+t,i
+
+k
+c
+t,i
+|∀x ∈ Z, |x |≤ K − k + 1, S ≤ SK+1,i + xka
+i +
+X
+K
+t=k
+
+1 − z
+EV
+t,i
+
+k
+c
+t,i ≤ 1
+)
+. (27a)
+J
+EV∗
+k,i
+
+Sk,i,c
+
+=
+
+
+
+J
+EV∗
+k+1,i
+
+Sk+1,i,c+1
+
+−
+X
+N
+n=1
+µk,nLk,i,n P
+V
+i
+i f Sk+1,i,c+1 ∈ Sk+1,i,z
+EV
+k,i
+̸= 0,
+J
+EV∗
+k+1,i
+
+Sk+1,i,c+1
+
+−
+P
+N
+n=1
+µk,nLk,i,n P
+V
+i ≤ J
+EV∗
+k+1,i
+
+Sk+1,i,c−1
+
++
+P
+N
+n=1
+µk,nLk,i,n P
+V
+i
+,
+J
+EV∗
+k+1,i
+
+Sk+1,i,c+1
+
+−
+P
+N
+n=1
+µk,nLk,i,n P
+V
+i ≤ J
+EV∗
+k+1,i
+
+Sk+1,i,c
+
+J
+EV∗
+k+1,i
+
+Sk+1,i,c−1
+
++
+X
+N
+n=1
+µk,nLk,i,n P
+V
+i
+i f Sk+1,i,c−1 ∈ Sk+1,i,z
+EV
+k,i
+̸= 0,
+J
+EV∗
+k+1,i
+
+Sk+1,i,c−1
+
++
+P
+N
+n=1
+µk,nLk,i,n P
+V
+i ≤ J
+EV∗
+k+1,i
+
+Sk+1,i,c+1
+
+−
+P
+N
+n=1
+µk,nLk,i,n P
+V
+i
+,
+J
+EV∗
+k+1,i
+
+Sk+1,i,c−1
+
++
+P
+N
+n=1
+µk,nLk,i,n P
+V
+i ≤ J
+EV∗
+k+1,i
+
+Sk+1,i,c
+
+J
+EV∗
+k+1,i
+
+Sk+1,i,c
+
+else.
+(27b)
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:23:45 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 8 =====
+ZHAO et al.: HIERARCHICAL FRAMEWORK-BASED COORDINATED OPTIMIZATION 6537
+Fig. 3. State transition of EV SoC with given initial state and constraints.
+minimizes the cost function among the three decisions. Thus,
+the cost function (27) can be transformed to (27b), as shown
+at the bottom of the previous page. The cth available discrete
+value of the SoC of EV i at time k is defined as Sk,i,c. Therefore, the neighboring states are denoted as Sk,i,c+1 = Sk,i,c+k
+a
+i
+and Sk,i,c−1 = Sk,i,c − k
+a
+i
+. The optimal solution of single
+EV charging sub-problem (24) is equivalent with the cost
+of its initial state J
+EV∗
+1,i which can be derived independently
+according to the trip information and the initial state of SoC
+uploaded by occupant. The objective function of the dual
+problems of charging facility operation sub-problem (25) can
+be rewrite as (28). The first item is the optimal solution of the
+sub-problem of EV charging facility operation which should
+be on the bound of the charging facility capacity constraint
+that can be described as (29) - (31), where z
+EV C F
+k,n ∈ {0, 1}.
+The optimal analytic expression of EV charging sub-problem
+(27b) chooses the minimum value under three condition and
+it can be transformed to (32) - (36) as the constraints of the
+dual problems of charging facility operation sub-problem.
+The problem (25) can thus be transformed to (28) - (36).
+
+∗
+(λ) = max
+µ
+X
+N
+n=1
+X
+K
+k=1
+
+µk,n − λk,n
+
+P
+EV
+k,n +
+X
+I
+i=1
+J
+EV∗
+1,i
+(28)
+s.t. µk,n − λk,n + (1 − z
+EV C F
+k,n
+)M ≥ 0, (29)
+µk,n − λk,n − z
+EV C F
+k,n M < 0, (30)
+P
+EV
+k,n = (1 − 2 × z
+EV C F
+k,n
+)P
+EV,cap
+n
+, (31)
+J
+EV∗
+k,i
+
+Sk,i,c
+
+= +∞,i f Sk,i,c ∈/ Sk,i, (32)
+J
+EV∗
+k,i
+
+Sk,i,c
+
+= J
+EV∗
+k+1,i
+
+Sk+1,i,c
+
+,
+i f zEV
+k,i = 0, Sk,i,c ∈ Sk,i, (33)
+J
+EV∗
+k,i
+
+Sk,i,c
+
+≤ J
+EV∗
+k+1,i
+
+Sk+1,i,c
+
+,
+i f Sk,i,c ∈ Sk,i,z
+EV
+k,i
+̸= 0, (34)
+J
+EV∗
+k,i
+
+Sk,i,c
+
+≤ J
+EV∗
+k+1,i
+
+Sk+1,i,c−1
+
++
+X
+N
+n=1
+µk,nLk,i,n P
+V
+i
+,
+i f Sk,i,c ∈ Sk,i,z
+EV
+k,i
+̸= 0, (35)
+J
+EV∗
+k,i
+
+Sk,i,c
+
+≤ J
+EV∗
+k+1,i
+
+Sk+1,i,c+1
+
+−
+X
+N
+n=1
+µk,nLk,i,n P
+V
+i
+,
+i f Sk,i,c ∈ Sk,i,z
+EV
+k,i
+̸= 0. (36)
+Algorithm 2 DPLR Algorithm
+Step1. Initialization: Set u=0. Initialize the Lagrangian
+multipliers i.e., λ0.
+Step2. Upgrade the solution of EVs:
+Solve (28) s.t. (29)-(36).
+Solve (24) with obtained µ.
+Step3. Upgrade the solution of buildings : Solve HVAC
+system operation sub-problems (20).
+Solve building operation sub-problems (18).
+Step4. Check the convergence: Obtain the gradient direction of λu by:
+g
+λ
+k,n,u = P
+p
+k,n,u − P
+s
+k,n,u + P
+PV
+k,n
+− P
+e
+k,n − P
+EV
+k,n,u −
+X
+j∈J
+B
+n
+a
+R
+k,j,u
+.
+Choose the step size s
+λ
+u which should satisfy:
+0 < s
+λ
+u <
+
+L
+∗ − Lu
+
+/
+
+g
+λ
+u
+
+
+2
+,
+where g
+λ
+u
+denotes the set of g
+λ
+k,n,u
+, L
+∗
+is the optimal value
+of Lagrangian function of system.
+Update the multipliers:
+λk,n,u+1 = λk,n,u + s
+λ
+u
+g
+λ
+k,n,u
+, u = u + 1.
+If ||g
+λ
+u − g
+λ
+u−1
+|| ≤ ϵ, where ϵ is the accuracy requirement,
+go to Step5. Otherwise, go to Step2.
+Step5. Construct a feasible solution: Construct the feasible
+solution for P1.
+The dual problems of charging facility operation subproblem (25) with “max-min” structure are transformed to
+“max” problems (28) - (36) of Lagrangian multipliers µ with
+given λ. It can be solved directly to substitute the inner
+iteration in Algorithm 1 (Step 2-Step 4). The DPLR algorithm
+is developed to obtain the optimal solution of P1.
+Therefore, the P1 can be solved in a single-layer iteration
+structure shown as Algorithm 2 instead of the double-layer
+iteration structure in Algorithm 1 which can improve the
+convergence efficiency. The optimality is theoretically guaranteed by duality theory [25]. The optimal solution of the dual
+problem obtained from sub-gradient method may not satisfy
+all the constraints. So, a feasible solution has to be constructed
+to satisfy all the constraints. Actually, the duality gap always
+exists due to the discrete variables. However, the duality gap
+can be used to evaluate the performance of the feasible solution
+constructed. The optimal analytic expression of EV charging
+sub-problem can be derived independently. The computational
+complexity of solving the problem (25) do not depend on the
+scale of EVs consists in the system. Hence, the computational
+complexity is greatly reduced while dealing with the largescale problem. In next section, the performance of coordinated
+optimization and the developed DPLR algorithm is evaluated
+by several case studies.
+IV. CASE STUDIES AND NUMERICAL RESULTS
+A. Description of Numerical Case Studies
+In this section, the performance of the developed method
+is demonstrated using several numerical case studies with difAuthorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:23:45 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 9 =====
+6538 IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING, VOL. 22, 2025
+Fig. 4. (a) TOU tariffs, (b) Solar radiation, (c) Outdoor air temperature.
+ferent scales. Since the performance of the developed method
+is generally related to the problem scale but not influenced
+by weather conditions, the trip rule of the occupants, and
+other system inputs, the coordinated optimization problem of
+10 buildings with EVs in Beijing for a typical summer day
+is tested as an example. Fig. 4 shows the TOU electricity
+price of Beijing obtained from [28], the solar radiation and
+outdoor air temperature obtained from [29]. The photovoltaic
+generation output can be calculated based on solar radiation
+density and installed capacity [30]. The electricity selling
+price is set as c
+s
+k = 0.3C N Y/kW h which is according to
+the grid purchase price of Beijing [31], [32]. The scheduling
+horizon of the coordinated optimization problem is 24 hours
+and uniformly divided into 48 stages. The buildings are
+classified as 6 residential buildings, 3 office buildings and
+a commercial building. The area of photovoltaic generation
+installed on the roof-top of three types of buildings are 50m
+2
+,
+TABLE I
+EV NUMBER AND BUILDINGS PARAMETERS FOR 5 CASES
+50m
+2
+and 100m
+2
+, respectively. The parameters for the room
+indoor temperature dynamic model and the thermal comfort
+requirement of occupants are obtained according to [33].
+EnergyPlus is used to simulate the demand profiles of other
+electrical equipments per unit area in buildings [34]. Assume
+that the rooms in residential buildings are occupied during
+0:00-9:00 and 18:00-24:00, the rooms in office buildings
+and commercial building are occupied during 9:00-18:00 and
+10:00-22:00, respectively.
+The occupants are assumed evenly distributed live
+in residential building and work in office building.
+From 2015 Beijing transportation report [35], the time that
+people go to work and get off work follow normal distribution
+and can be described as N(8:00, (1h)2) and N(18:00, (1h)2).
+The trip time between different buildings is assumed to follow
+normal distribution N(1h, (0.5h)2). Assume that occupants
+drive to office buildings from residential buildings in the
+morning and drive back to residential buildings in the end of
+the day of which half of them go to commercial building for
+shopping or entertainment and others go back home directly
+after work. The trip chain of EVs is simulated using Monte
+Carlo method according to the above patterns and assumed to
+be known in advance. The energy consumption rate, battery
+capacity and rated charging and discharging power of EVs are
+set as fk,i(1t) = 5kWh, E
+V,cap
+i = 50kWh and P
+V
+i = 20kW.
+The computational complexity of solving the coordinated
+optimization problem is mainly influenced by the scale of
+EVs and HVAC systems. As shown in TABLE I, 5 different
+scales of cases are designed to demonstrate the computational
+efficiency and accuracy of the developed DPLR algorithm. The
+scale of EVs and HVAC systems is increased from Case 1 to
+Case 5. Note that the number of occupants, each building
+areas, the capacity of HVAC systems are also increased along
+with the rise in the problem scale from Case 1 to Case 5.
+In following, the performance of the developed method is
+validated using Case 1 to Case 5 and also compared with that
+of the centralized algorithm and the traditional LR algorithm.
+B. Performance Analysis of Coordinated Optimization
+Compared With Individual Optimization
+In this subsection, the energy cost reduction of the coordinated optimization of the multi-building energy system with
+EVs is evaluated. The scheduling strategy obtained by the
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:23:45 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 10 =====
+ZHAO et al.: HIERARCHICAL FRAMEWORK-BASED COORDINATED OPTIMIZATION 6539
+Fig. 5. Power loads of three different type buildings under coordinated optimization: (a) Residential building, (b) Office building, and (c) Commercial
+building.
+Fig. 6. Power loads of three different type buildings under individual optimization: (a) Residential building, (b) Office building, and (c) Commercial building.
+TABLE II
+TOTAL COST AND COST REDUCTION OF INDIVIDUAL OPTIMIZATION AND
+COORDINATED OPTIMIZATION
+DPLR algorithm is compared with the strategy obtained by
+independent optimization of EVs and HVAC systems which is
+used as the benchmark. In independent optimization strategy,
+EVs optimal reduce their cost according to TOU electricity
+price. The HVAC systems optimal reduce building energy
+cost according to the load of other electrical equipments in
+buildings, PV supply and TOU electricity price.
+TABLE II shows that the coordinated optimization of the
+multi-building energy system with EVs makes over 44.3%
+energy cost reduction compared with individual optimization. Fig. 5. shows the power load of a residential building,
+an office building and a commercial building respectively
+under the coordinated optimization strategy obtained by the
+DPLR algorithm while Fig. 6. shows them under independent
+optimization strategy. It can be found that under the strategy
+obtained from the DPLR algorithm, the EVs consume more
+electricity for charging in 0:00-8:00 and 23:00-24:00 with
+valley electricity price. And EVs feed electricity to buildings
+with peak electricity price (18:00-21:00). The independent
+optimization strategy never uses EVs as energy storage system.
+The coordination can greatly enhance the flexibility of the
+system. It makes a significant reduction in buildings’ total load
+during the peak price period of the TOU tariff mechanism and
+TABLE III
+TOTAL COST AND COMPUTATIONAL TIME OF DIFFERENT
+ALGORITHM FOR 5 CASES
+causes a reduction in the total cost of the multi-building energy
+system with EVs.
+C. Performance Analysis of DPLR Algorithm
+In this subsection, the performance of the developed DPLR
+algorithm is evaluated by comparing with the centralized
+algorithm and traditional LR algorithm based on the 5 cases
+in different scales mentioned above. The problems are solved
+by Python with Gurobi 9.0.1 on a Windows 10 PC which
+has a CPU with 2.6GHz main frequency and 8GB RAM.
+The total cost of the coordinated optimization problem and
+computational time are shown in TABLE III. The buildings
+considered in Case 1 to Case 5 are the same. Among all cases,
+EVs scales are different. Thus, the roof-top PV generation
+installed capacity is the same in all cases and the system can
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:23:45 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 11 =====
+6540 IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING, VOL. 22, 2025
+Fig. 7. The convergence of DPLR algorithm and traditional LR algorithm
+for Case 5.
+get income from selling the extra PV power back to the grid
+which is bigger than the energy cost in small cases. Therefore,
+the total costs of small cases (e.g., Case 1 and 2) are negative.
+Compared with other algorithms, the results from
+TABLE III show that the developed DPLR algorithm has
+good scalability. Although the centralized algorithm has better
+computational efficiency in small cases, it cannot deal with
+large-scale problems because of the curse of dimensionality.
+Due to the two-level iteration, the traditional LR algorithm
+takes more time and iterations to solve the same problem
+and has worse convergence performance. The DPLR algorithm
+is three times faster without sacrificing too much accuracy
+compared with the centralized algorithm in medium cases.
+In the large-scale cases that cannot be solved by the centralized
+algorithm, the DPLR algorithm can get better result with 52%
+computational time saving compared with the traditional LR
+algorithm.
+Besides, the accuracy of the DPLR algorithm is also
+demonstrated. The results obtained by the DPLR algorithm
+are only 2%-4% worse than the optimal result which is
+obtained by the centralized algorithm while the results of the
+traditional LR algorithm are 3%-8% worse. The duality gaps
+of DPLR algorithm and traditional LR algorithm are shown
+in TABLE IV. It is found that the duality gaps of them are
+TABLE IV
+THE CONVERGENCE OF DPLR ALGORITHM AND
+TRADITIONAL LR ALGORITHM
+4%-8% and 5%-11%, respectively. The convergence processes
+of these two algorithms for Case 5 (as an example) are shown
+in Fig. 7. The results show that the convergence efficiency of
+DPLR is over 20 times better than traditional LR algorithm,
+the similar results are also found in other cases.
+V. DISCUSSION
+A. Comparison of DPLR Algorithm With Traditional LR
+Algorithm and Centralized Algorithm
+On solving an optimization problem with N buildings, J
+rooms and I EVs by centralized algorithm, the state space at
+time stage k is Sk ⊂ R
+I × RJ
+. The decision space of EVs
+is 2I×K × 2
+I×K
+and the decision space of HVAC systems is
+A
+R = (AR
+1
+, A
+R
+2
+, . . . , A
+R
+K
+) ⊂ R
+J×K
+. The decision space in
+the centralized problem is the decision space of EVs times
+the decision space of HVAC systems that will exponentially
+grow with the increasing scale of the problem. In DPLR
+algorithm, the HVAC system operation sub-problems and EV
+charging facility operation sub-problems in middle level are
+decoupled by relaxation of (2) and their decision space is
+thus decoupled. Moreover, the EV charging sub-problems in
+lower level are decoupled by relaxation of (6) that lead to
+the decision space of them is reduced from 2I×K × 2
+I×K
+to
+I(2
+K ×2K
+) which will linearly grow with the increasing scale
+of the problem. Therefore, the computational complexity of
+DPLR is greatly reduced compared with centralized algorithm.
+The optimality of DPLR algorithm is theoretically guaranteed
+by duality theory. Although the non-convexity caused by the
+binary variables consist in the model may lead to duality gap,
+the case studies show that it only sacrifices little accuracy
+while getting the solution three times faster.
+Compared with traditional LR algorithm, the DPLR
+algorithm can solve the optimization problem in a single-layer
+iteration structure which can reduce the computational complexity and improve convergence efficiency. The optimal
+analytic expression of EV charging sub-problems respect to
+the Lagrangian multipliers are derived independently. Thus,
+the dual problems of EV charging facility sub-problem can be
+solved directly and the computational complexity of solving
+the problem do not depend on the scale of EVs and it also
+avoids the redundant iteration. The numerical results show
+that the DPLR algorithm can get better solution with less
+computational time.
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:23:45 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 12 =====
+ZHAO et al.: HIERARCHICAL FRAMEWORK-BASED COORDINATED OPTIMIZATION 6541
+B. Occupant’s Information Privacy Protection
+In the centralized algorithm, the central coordinator has to
+collect all the global information (including the trip plans
+and initial state of charge of EVs, and the power supplied
+by roof-top photovoltaic generation) from the occupants to
+make optimal decision and scheduling the demand of EVs and
+HVAC systems to satisfy occupant’s requirement and reduce
+the energy cost under TOU tariffs.
+In practice, occupants may not be willing to share all the
+information to central coordinator due to privacy concern.
+Thus, the DPLR algorithm is developed in this paper. In this
+way, the occupants of EVs and HVAC systems can make their
+own decision in a decomposition and coordination way according to the Lagrangian multipliers. Instead of uploading the
+private information such as trip plan and get the optimal action
+signal from the centralized way, based on DPLR algorithm, the
+central coordinator only needs to collect the information of
+the aggregated demand of EVs and HVAC systems uploaded
+by occupants to calculate the optimal Lagrangian multipliers.
+The trip plan and demand information of single occupant is
+not necessary for coordinately scheduling. It can partly protect
+the occupant’s privacy.
+C. Information Exchange Mechanism
+In DPLR algorithm, the central coordinator broadcasts the
+Lagrangian multipliers λ to EV charging facility and rooms
+in buildings. EV charging facility spreads the Lagrangian
+multipliers µ to EVs. The EVs upload their demand
+information to EV charging facility and buildings collect and
+upload the aggregated demand information of EV charging
+facility and rooms to central coordinator to calculate the
+optimal Lagrangian multipliers µ and λ. By introducing
+the Lagrangian multipliers µ and λ, the sub-problems of
+HVAC systems and the sub-problems of EVs are decoupled
+due to the relaxation of the power balance constraints.
+In this way, EVs and HVAC systems can make their own
+decision individually in a decomposition and coordination
+way according to the Lagrangian multipliers λ and µ which
+are treated as price signal.
+VI. CONCLUSION
+A coordinated optimization problem of the multi-building
+energy system with EVs is investigated in this paper. The
+problem is formulated as a centralized optimization problem to
+capture the spatio-temporal coupling and interaction between
+EVs and HVAC systems caused by occupant’s thermal comfort
+requirement and mobility. The problem is converted into
+a three-level optimization problem base on LR framework
+in a decomposition and coordination way to overcome the
+computational complexity and global information requirement
+challenge. However, the convergence and accuracy of solving
+the optimization problem with the three-level structure is hard
+to be guaranteed due to the double-layer iterations. A DPLR
+algorithm is developed to transform the dual problems of
+EV charging facility operation sub-problem from “max-min”
+structure problem to “max” optimization problems in order
+to solve it directly. The numerical result shows that the
+coordination of EVs and building HVAC system can reduce
+44% of the energy cost by utilizing their load flexibility. The
+developed DPLR algorithm is at least three times faster than
+the centralized algorithm with less than 4% worse accuracy.
+It also can save 52% with better accuracy compared with the
+traditional LR algorithm.
+REFERENCES
+[1] International Energy Agency. (2023). Global EV Outlook 2023.
+Accessed: Sep. 20, 2023. [Online]. Available: https://iea.blob.core.wind
+ows.net/assets/dacf14d2-eabc-498a-8263-9f97fd5dc327/GEVO2023.pdf
+[2] Q. Huang, L. Yang, Q.-S. Jia, Y. Qi, C. Zhou, and X. Guan, “A
+simulation-based primal-dual approach for constrained V2G scheduling
+in a microgrid of building,” IEEE Trans. Autom. Sci. Eng., vol. 20, no. 3,
+pp. 1–13, Jul. 2004.
+[3] G. Wenzel, M. Negrete-Pincetic, D. E. Olivares, J. MacDonald, and
+D. S. Callaway, “Real-time charging strategies for an electric vehicle
+aggregator to provide ancillary services,” IEEE Trans. Smart Grid, vol. 9,
+no. 5, pp. 5141–5151, Sep. 2018.
+[4] D. Wang, X. Guan, J. Wu, P. Li, P. Zan, and H. Xu, “Integrated energy
+exchange scheduling for multimicrogrid system with electric vehicles,”
+IEEE Trans. Smart Grid, vol. 7, no. 4, pp. 1762–1774, Jul. 2016.
+[5] U.S. Department of Energy. Building Energy Data Book. Accessed:
+Nov. 15, 2023. [Online]. Available: http://buildingsdatabook.eren.doe.
+gov/ChapterIntro1.Aspx
+[6] J. Yusuf and S. Ula, “A comprehensive optimization solution for
+buildings with distributed energy resources and V2G operation
+in smart grid applications,” in Proc. IEEE Power Energy Soc.
+Innov. Smart Grid Technol. Conf. (ISGT), Feb. 2020, pp. 1–5, doi:
+10.1109/ISGT45199.2020.9087656.
+[7] H. Nakano et al., “Aggregation of V2H systems to participate in
+regulation market,” IEEE Trans. Autom. Sci. Eng., vol. 18, no. 2,
+pp. 668–680, Apr. 2021.
+[8] K. Ojand and H. Dagdougui, “Q-learning-based model predictive control
+for energy management in residential aggregator,” IEEE Trans. Autom.
+Sci. Eng., vol. 19, no. 1, pp. 70–81, Jan. 2022.
+[9] Z. Jiang, Q.-S. Jia, and X. Guan, “A computing budget allocation method
+for minimizing EV charging cost using uncertain wind power,” IEEE
+Trans. Autom. Sci. Eng., vol. 18, no. 2, pp. 681–692, Apr. 2021.
+[10] L. Yang, X. Geng, X. Guan, and L. Tong, “EV charging scheduling
+under demand charge: A block model predictive control approach,” IEEE
+Trans. Autom. Sci. Eng., vol. 1, no. 1, pp. 1–14, Jul. 2004.
+[11] J. E. Contreras-Ocaña, M. R. Sarker, and M. A. Ortega-Vazquez,
+“Decentralized coordination of a building manager and an electric vehicle aggregator,” IEEE Trans. Smart Grid, vol. 9, no. 4, pp. 2625–2637,
+Jul. 2018.
+[12] X. Wang et al., “Tri-level scheduling model considering residential
+demand flexibility of aggregated HVACs and EVs under distribution LMP,” IEEE Trans. Smart Grid, vol. 12, no. 5, pp. 3990–4002,
+Sep. 2021.
+[13] L. A. Hurtado, A. Syed, P. H. Nguyen, and W. L. Kling, “Multi-agent
+based electric vehicle charging method for smart grid-smart building
+energy management,” in Proc. IEEE Eindhoven PowerTech, Jun. 2015,
+pp. 1–6.
+[14] Y. Yang, Q.-S. Jia, X. Guan, X. Zhang, Z. Qiu, and G. Deconinck,
+“Decentralized EV-based charging optimization with building integrated wind energy,” IEEE Trans. Autom. Sci. Eng., vol. 16, no. 3,
+pp. 1002–1017, Jul. 2019.
+[15] B. Sun, P. B. Luh, Q.-S. Jia, and B. Yan, “Event-based optimization
+within the Lagrangian relaxation framework for energy savings in HVAC
+systems,” IEEE Trans. Autom. Sci. Eng., vol. 12, no. 4, pp. 1396–1406,
+Oct. 2015.
+[16] Q.-S. Jia, J. Wu, Z. Wu, and X. Guan, “Event-based HVAC control—
+A complexity-based approach,” IEEE Trans. Autom. Sci. Eng., vol. 15,
+no. 4, pp. 1909–1919, Oct. 2018.
+[17] T. Long and Q.-S. Jia, “Matching uncertain renewable supply with
+electric vehicle charging demand—A bi-level event-based optimization method,” Complex Syst. Model. Simul., vol. 1, no. 1, pp. 33–44,
+Mar. 2021.
+[18] M. H. Amini, P. McNamara, P. Weng, O. Karabasoglu, and Y. Xu,
+“Hierarchical electric vehicle charging aggregator strategy using dantzigwolfe decomposition,” IEEE Des. Test. IEEE Des. Test. Comput., vol. 35,
+no. 6, pp. 25–36, Dec. 2018.
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:23:45 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 13 =====
+6542 IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING, VOL. 22, 2025
+[19] Z. Yang, K. Long, P. You, and M.-Y. Chow, “Joint scheduling of largescale appliances and batteries via distributed mixed optimization,” in
+Proc. IEEE Power Energy Soc. Gen. Meeting, Jul. 2015, pp. 1–11.
+[20] T. Rahman, Y. Xu, and Z. Qu, “Continuous-domain real-time distributed
+ADMM algorithm for aggregator scheduling and voltage stability in
+distribution network,” IEEE Trans. Autom. Sci. Eng., vol. 19, no. 1,
+pp. 60–69, Jan. 2022.
+[21] Q. Huang, Q.-S. Jia, Z. Qiu, X. Guan, and G. Deconinck, “Matching EV
+charging load with uncertain wind: A simulation-based policy improvement approach,” IEEE Trans. Smart Grid, vol. 6, no. 3, pp. 1425–1433,
+May 2015.
+[22] H. Zhao, Z. Xu, J. Wu, K. Liu, L. Yang, and X. Guan, “Optimal
+coordination of EVs and HVAC systems with uncertain renewable
+supply,” in Proc. IEEE 15th Int. Conf. Autom. Sci. Eng. (CASE),
+Aug. 2019, pp. 733–738.
+[23] S. Bhattacharya, K. Kar, and J. H. Chow, “Economic operation of thermostatic loads under time varying prices: An optimal control approach,”
+IEEE Trans. Sustain. Energy, vol. 10, no. 4, pp. 1960–1970, Oct. 2019.
+[24] S. Bhattacharya, K. Kar, and J. H. Chow, “Optimal precooling of
+thermostatic loads under time-varying electricity prices,” in Proc. Amer.
+Control Conf. (ACC), May 2017, pp. 1407–1412.
+[25] D. G. Luenberger and Y. Ye, Linear and Nonlinear Programming. Cham,
+Switzerland: Springer, 2008.
+[26] X. Guan, P. B. Luh, H. Yan, and J. A. Amalfi, “An optimization-based
+method for unit commitment,” Int. J. Electr. Power Energy Syst., vol. 14,
+no. 1, pp. 9–17, 1992.
+[27] D. P. Bertsekas, Dynamic Programming and Optimal Control, 4th ed.,
+Belmont, MA, USA: Athena Scientific, 1995.
+[28] Website Of China National Development and Reform Commission.
+Accessed: Nov. 15, 2023. [Online]. Available: http://fgw.beijing.
+gov.cn/fgwzwgk/zcgk/bwqtwj
+[29] DeST Software Department of Building Science. Accessed: Nov. 15,
+2023. [Online]. Available: http://www.dest.com.cn
+[30] Z. Xu, G. Hu, and C. J. Spanos, “Coordinated optimization of multiple
+buildings with a fair price mechanism for energy exchange,” Energy
+Buildings, vol. 151, pp. 132–145, Sep. 2017.
+[31] Website Of China National Development and Reform Commission.
+Accessed: Nov. 15, 2023. [Online]. Available: https://www.ndrc.gov.cn/
+xxgk/zcfb/tz/202106/t20210611_1283088.html
+[32] Website Of Beijing Development and Reform Commission. Accessed:
+Nov. 15, 2023. [Online]. Available: https://www.beijing.gov.cn/zhengce/
+zhengcefagui/201905/t20190522_58495.html
+[33] N. Lu and Y. Zhang, “Design considerations of a centralized load
+controller using thermostatically controlled appliances for continuous
+regulation reserves,” IEEE Trans. Smart Grid, vol. 4, no. 2, pp. 914–921,
+Jun. 2013.
+[34] J. Liu, Z. Xu, J. Wu, K. Liu, X. Sun, and X. Guan, “Optimal planning
+of Internet data centers decarbonized by hydrogen-water-based energy
+systems,” IEEE Trans. Autom. Sci. Eng., vol. 20, no. 3, pp. 1–14,
+Jun. 2004.
+[35] Beijing Transportation Research Center. Beijing Transportation Development Annual Report. Accessed: Nov. 15, 2023. [Online]. Available:
+http://www.bjtrc.org.cn/InfoCenter/NewsAttac
+Haoming Zhao (Student Member, IEEE) received
+the B.E. degree in aircraft design and engineering
+from Northwestern Polytechnical University, China,
+in 2016, and the M.S. degree in advanced control
+and dynamics engineering from the University of
+Leicester, U.K., in 2018. He is currently pursuing the Ph.D. degree with the System Engineering
+Institute and the School of Automation Science
+and Engineering, Xi’an Jiaotong University, Xi’an,
+China.
+His research interests include coordinated optimization of EVs and building energy systems.
+Zhanbo Xu (Member, IEEE) received the B.E.
+degree in electrical engineering and automation
+from Harbin Institute of Technology University,
+China, in 2008, and the Ph.D. degree in control
+science and engineering from Xi’an Jiaotong
+University, Xi’an, China, in 2015.
+He was a Post-Doctoral Scholar with Berkeley
+Education Alliance for Research, Singapore,
+from 2015 to 2017. He is currently a Professor with
+the Systems Engineering Institute, Xi’an Jiaotong
+University. His research interests include networked
+energy systems, including smart power grids, energy internet, planning and
+scheduling of cyber-physical energy systems, building energy management,
+and smart city.
+Jiang Wu (Member, IEEE) received the B.S. degree
+in electrical engineering and the Ph.D. degree in
+systems engineering from Xi’an Jiaotong University,
+Xi’an, China, in 2002 and 2008, respectively.
+He is currently an Associate Professor with the
+Systems Engineering Institute, Xi’an Jiaotong University. His research interests include stochastic unit
+commitment, wind energy, and deregulated electricity markets.
+Fengxia Liu (Student Member, IEEE) received the
+B.E. degree in communication engineering from
+Shandong University, Jinan, China, in 2008, the
+M.S. degree in signal and information processing
+from the University of Science and Technology of
+China, Hefei, in 2011. She is currently pursuing
+the Ph.D. degree in control science and engineering
+with Xi’an Jiaotong University, Xi’an, China. Her
+research interests include robust optimization, coordination of renewable energy, and electric vehicles.
+Xiaohong Guan (Life Fellow, IEEE) received the
+B.S. and M.S. degrees in control engineering from
+Tsinghua University, Beijing, China, in 1982 and
+1985, respectively, and the Ph.D. degree in electrical
+and systems engineering from the University of
+Connecticut in 1993.
+He was a Senior Consulting Engineer with Pacific
+Gas and Electric, from 1993 to 1995. He visited the Division of Engineering and Applied
+Science, Harvard University, from 1999 to 2000.
+From 1985 to 1988 and since 1995, he has been
+with Xi’an Jiaotong University, Xi’an, China. He has been the Cheung
+Kong Professor of Systems Engineering with Xi’an Jiaotong University, since
+1999. He was the Director of the State Key Laboratory for Manufacturing
+Systems (1999–2009) and the Dean of School of Electronic and Information
+Engineering (2008–2018) and the Faculty of Electronic and Information
+Engineering (since 2019). Since 2001, he has also been with the Center for
+Intelligent and Networked Systems, Tsinghua University. He was the Head
+of the Department of Automation, Tsinghua University, from 2003 to 2008.
+His research interests include economics and security of networked systems,
+including power and energy systems, manufacturing systems, and cyberphysical systems. He is the member of Chinese Academy of Science.
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:23:45 UTC from IEEE Xplore. Restrictions apply. 

@@ -1,0 +1,2073 @@
+===== PAGE 1 =====
+Journal of Energy Storage 85 (2024) 111125
+Available online 1 March 2024
+2352-152X/© 2024 Elsevier Ltd. All rights reserved.
+Contents lists available at ScienceDirect
+Journal of Energy Storage
+journal homepage: www.elsevier.com/locate/est
+Research papers
+Seasonal operation planning of hydrogen-enabled multi-energy microgrids
+through multistage stochastic programming✩
+Xunhang Sun a,c, Xiaoyu Cao a,b,∗, Miaomiao Li b, Qiaozhu Zhai a, Xiaohong Guan a,b,d
+a School of Automation Science and Engineering, Xi’an Jiaotong University, Xi’an, 710049, China
+b National Innovation Platform (Center) for Industry-Education Integration of Energy Storage Technology, Xi’an Jiaotong University, Xi’an, 710049, China
+c Coordinated Science Laboratory, University of Illinois at Urbana-Champaign, Urbana, IL, 61801, USA
+d Center for Intelligent and Networked Systems, Department of Automation, Tsinghua University, Beijing, 100084, China
+A R T I C L E I N F O
+Keywords:
+Hydrogen-enabled microgrids
+Multi-energy synergy
+Operation planning
+Seasonal hydrogen storage
+Multistage stochastic programming
+A B S T R A C T
+As a carbon-free storage medium, hydrogen has advantages in large-scale and long-term energy shifting,
+thereby mitigating the seasonal imbalance between energy supply and demands. By integrating hydrogen,
+electricity, heating and cooling, the hydrogen-enabled multi-energy microgrid (HMM) provides a desirable
+test bed for decarbonizing the energy and power systems. In this paper, we study the networked HMMs
+operation planning (NHOP) that optimizes the multi-timescale synergy of seasonal and short-term energy
+storage. To hedge against the complex demand–supply uncertainties (e.g., seasonal fluctuation and hourly
+variation of renewable power generation and energy demands), the NHOP problem is recast as a multistage
+stochastic mixed-integer program (MS-MIP). Moreover, to overcome the computational challenges, a nested
+decomposition algorithm based on stochastic dual dynamic integer programming (SDDiP) is tailored and
+implemented. Case studies on a 33-bus test network with multiple HMMs demonstrate the economic benefits
+of our operation planning strategy. The proposed NHOP model can well capture the seasonal and intra-day
+dynamics of multi-type storage operation, which helps improve the cost-benefits under versatile practical
+situations. Also, the customized SDDiP algorithm shows a strong scalable capacity for efficiently computing
+large-scale MS-MIPs.
+1. Introduction
+Global climate change poses one of the greatest challenges to the
+sustainable development of humanity. The target of controlling global
+warming demands for the efforts of multiple social sectors to achieve
+the carbon neutrality in the long-run [1]. The energy sectors, which
+have contributed to nearly 40% CO2emissions [2], are particularly
+urgent for a revolutionary transition to clean and low-carbon operation
+patterns. Among the alternatives to carbon-intensive fossil fuels, hydrogen, which bears the merits of diverse sources, zero carbon emissions
+and high energy density [3], has tremendous potential for a wide
+range of applications in energy and power systems [4,5], transportation [6,7], and industrial sectors [8]. Notably, integrating hydrogen
+with renewable energy sources (RESs), e.g., photovoltaic arrays (PVs)
+and wind turbines (WTs), may contribute to fostering a sustainable energy future. In this way, renewable electricity can be effectively stored
+by converting to hydrogen, enabling its subsequent on-site utilization
+✩ This work was supported in part by National Key R&D Program of China (2022YFA1004600), and National Natural Science Foundation of China (62373294,
+62192752, 62103321).
+∗ Corresponding author at: School of Automation Science and Engineering, Xi’an Jiaotong University, Xi’an, 710049, China.
+E-mail addresses: xhsun@sei.xjtu.edu.cn (X. Sun), cxykeven2019@xjtu.edu.cn (X. Cao), Laradox@stu.xjtu.edu.cn (M. Li), qzzhai@sei.xjtu.edu.cn (Q. Zhai),
+xhguan@xjtu.edu.cn (X. Guan).
+or long-distance transport to mitigate the short-term (e.g., daily and
+weekly) as well as long-term (e.g., monthly and seasonal) imbalances
+in energy supply and demands without carbon emissions [3].
+With the recent advances in hydrogen production and storage technologies, developing the hydrogen-enabled multi-energy microgrids
+(HMMs) becomes a viable pathway for revolutionizing the energy
+supply infrastructure. By converting the excessive generation of RESs
+to ‘‘green’’ hydrogen through water electrolyzers (ELZs), the potential
+renewable curtailment can be largely reduced. Also, the produced
+hydrogen would be converted back to feed the electrical power system
+via fuel cells (FCs) during the periods that RES outputs are inadequate,
+along with the generation of thermal energy [9]. For a typical proton
+exchange membrane FC (PEMFC) stack, its power and thermal generation efficiencies are 35%–39% and 55%, respectively [10]. The thermal
+energy can be further collected to satisfy local heating and cooling
+demands, thereby establishing a hydrogen-enabled combined cooling,
+https://doi.org/10.1016/j.est.2024.111125
+Received 26 December 2023; Received in revised form 13 February 2024; Accepted 27 February 2024
+
+===== PAGE 2 =====
+Journal of Energy Storage 85 (2024) 111125
+2
+X. Sun et al.
+Nomenclature
+Abbreviation
+AC Absorption chiller
+BS Battery storage
+COP Coefficient of performance
+CWS Chilled water storage
+ELZ Electrolyzer
+FC Fuel cell
+H-CCHP Hydrogen-enabled combined cooling, heating and power
+HMM Hydrogen-enabled multi-energy microgrid
+HS Hydrogen storage
+HWS Hot water storage
+LV Low-voltage
+MS-MIP Multistage stochatic mixed-integer
+program
+MV Medium-voltage
+NHOP Networked HMMs operation planning
+OPEX Operating expense
+PDN Power distribution network
+PV Photovoltaic array
+RES Renewable energy source
+SDDiP Stochastic dual dynamic integer programming
+SHS Seasonal hydrogen storage
+SOC State of charge
+WT Wind turbine
+Sets and Indices
+(𝑡, 𝑑, ℎ) Time index of operating period ℎ in typical
+day 𝑑 of season 𝑡
+𝛬 Set of buses with HSS deployment
+∕(𝑖, 𝑗) Set/index of lines of PDN
+∕𝑖, 𝑗, 𝑙 Set/index of buses of PDN
+𝛺𝑟𝑒𝑠 Set of RESs
+𝛩(𝑖) Set of children buses of bus 𝑖
+𝐷 Number of typical days of a season
+𝑑 Index of typical days of season 𝑡
+𝐻 Number of operating periods in a typical
+day
+ℎ Index of operating periods in typical day
+𝑘 Index of candidate facilities
+𝑡 Index of seasons
+Parameters
+𝛽
+max
+𝑏𝑠 Maximum depth of discharge of battery
+storage unit
+𝛥ℎ Duration of operating period ℎ
+𝛿
+𝑡,𝑑,ℎ
+𝑘,𝑖 Capacity factor of RES 𝑘 restricted by
+natural resources at bus 𝑖 at (𝑡, 𝑑, ℎ)
+𝜂𝑘+∕𝜂𝑘− Charge/discharge efficiency of storage 𝑘
+𝜄𝑒𝑠∕𝜄ℎ𝑠∕𝜄
+𝑐𝑠 Penalty cost factor of electrical/heating/cooling load
+shedding
+𝜓𝑘 Loss factor of component 𝑘
+𝜎 Scale factor from typical days to a season
+𝜘𝑒𝑐 Penalty cost factor of electricity curtailment
+𝜑
+max
+𝑘
+∕𝜑
+min
+𝑘 Max-/minimum power factor angle of inverter connected with component 𝑘
+𝜑
+𝑡,𝑑,ℎ
+𝑝𝑙,𝑖 Power factor angle of electrical demands at
+bus 𝑖 at (𝑡, 𝑑, ℎ)
+𝜚
+𝑡,𝑑,ℎ
+𝑖𝑚𝑝 Utility prices for power procurement at
+(𝑡, 𝑑, ℎ)
+𝜁𝑘 Degradation price of component 𝑘
+𝑃𝑘,𝑖∕𝐶𝑘,𝑖 Power/energy capacity of component 𝑘 at
+bus 𝑖
+𝑃 𝐷𝑡,𝑑,ℎ
+𝑖
+∕𝐻𝐷𝑡,𝑑,ℎ
+𝑖
+∕
+𝐶𝐷𝑡,𝑑,ℎ
+𝑖
+Electrical/heating/cooling demands at bus 𝑖
+at (𝑡, 𝑑, ℎ)
+𝑟𝑖𝑗∕𝑥𝑖𝑗 Resistance/reactance of line (𝑖, 𝑗)
+𝑆
+max
+𝑖𝑗 Capacity limit of line (𝑖, 𝑗)
+𝑆
+max
+𝑙𝑣,𝑖 Capacity limit of LV substation at bus 𝑖
+𝑆
+max
+𝑚𝑣
+Capacity limit of MV substation
+𝑇 Number of seasons in operation horizon
+𝑈
+max
+𝑖
+∕𝑈
+min
+𝑖
+Voltage magnitude upper/lower bound at
+bus 𝑖
+Decision Variables
+𝑒
+𝑡,𝑑,ℎ
+𝑏𝑠,𝑖 SOC of BSs at bus 𝑖 at (𝑡, 𝑑, ℎ)
+𝑓𝑝𝑡,𝑑,ℎ
+𝑖𝑗 ∕𝑓 𝑞𝑡,𝑑,ℎ𝑖𝑗 Active/reactive power flow on line (𝑖, 𝑗) at
+(𝑡, 𝑑, ℎ)
+𝑔
+𝑡,𝑑,ℎ
+𝑘+,𝑖 ∕𝑔
+𝑡,𝑑,ℎ
+𝑘−,𝑖 Hydrogen inflow/outflow of HSs/SHSs at
+bus 𝑖 at (𝑡, 𝑑, ℎ)
+𝑔
+𝑡,𝑑,ℎ
+𝑘,𝑖 SOC of HSs/SHSs at bus 𝑖 at (𝑡, 𝑑, ℎ)
+𝑚
+𝑡,𝑑,ℎ
+𝑎𝑐,𝑖 ∕𝑛
+𝑡,𝑑,ℎ
+𝑎𝑐,𝑖 Heating inflow/cooling outflow of ACs at
+bus 𝑖 at (𝑡, 𝑑, ℎ)
+𝑚
+𝑡,𝑑,ℎ
+𝑐𝑤𝑠,𝑖 SOC of CWSs at bus 𝑖 at (𝑡, 𝑑, ℎ)
+𝑚
+𝑡,𝑑,ℎ
+ℎ𝑤𝑠+,𝑖∕𝑚
+𝑡,𝑑,ℎ
+ℎ𝑤𝑠−,𝑖 Heating inflow/outflow of HWSs at bus 𝑖 at
+(𝑡, 𝑑, ℎ)
+𝑚
+𝑡,𝑑,ℎ
+ℎ𝑤𝑠,𝑖 SOC of HWSs at bus 𝑖 at (𝑡, 𝑑, ℎ)
+𝑛
+𝑡,𝑑,ℎ
+𝑐𝑤𝑠+,𝑖∕𝑛
+𝑡,𝑑,ℎ
+𝑐𝑤𝑠−,𝑖 Cooling inflow/outflow of CWSs at bus 𝑖 at
+(𝑡, 𝑑, ℎ)
+𝑝
+𝑡,𝑑,ℎ
+𝑏𝑠+,𝑖∕𝑝
+𝑡,𝑑,ℎ
+𝑏𝑠−,𝑖 Charging/discharging power of BSs at bus 𝑖
+at (𝑡, 𝑑, ℎ)
+𝑝
+𝑡,𝑑,ℎ
+𝑒𝑙𝑧,𝑖 ∕𝑔
+𝑡,𝑑,ℎ
+𝑒𝑙𝑧,𝑖 Power input/hydrogen outflow of ELZs at
+bus 𝑖 at (𝑡, 𝑑, ℎ)
+𝑝
+𝑡,𝑑,ℎ
+𝑓 𝑐,𝑖 ∕𝑚
+𝑡,𝑑,ℎ
+𝑓 𝑐,𝑖 ∕𝑔
+𝑡,𝑑,ℎ
+𝑓 𝑐,𝑖 Power/heating output/hydrogen inflow of
+FCs at bus 𝑖 at (𝑡, 𝑑, ℎ)
+𝑝
+𝑡,𝑑,ℎ
+𝑘,𝑖 ∕𝑞
+𝑡,𝑑,ℎ
+𝑘,𝑖 Active/reactive power output of component
+𝑘 at bus 𝑖 at (𝑡, 𝑑, ℎ)
+𝑝
+𝑡,𝑑,ℎ
+𝑙𝑣,𝑖 ∕𝑞
+𝑡,𝑑,ℎ
+𝑙𝑣,𝑖 Active/reactive power via lv substation at
+bus 𝑖 at (𝑡, 𝑑, ℎ)
+𝑝
+𝑡,𝑑,ℎ
+𝑚𝑣 ∕𝑞
+𝑡,𝑑,ℎ
+𝑚𝑣 Active/reactive power via mv substation at
+(𝑡, 𝑑, ℎ)
+𝑝𝑙𝑡,𝑑,ℎ
+𝑖
+∕ℎ𝑙𝑡,𝑑,ℎ
+𝑖
+∕𝑐𝑙𝑡,𝑑,ℎ
+𝑖
+Satisfied electrical/heating/cooling
+demands at bus 𝑖 at (𝑡, 𝑑, ℎ)
+𝑣
+𝑡,𝑑,ℎ
+𝑖
+Squared magnitudes of voltage at bus 𝑖 at
+(𝑡, 𝑑, ℎ)
+𝑧
+𝑡,𝑑,ℎ
+𝑘,𝑖 Binary, 1 if storage 𝑘 at bus 𝑖 charges at
+(𝑡, 𝑑, ℎ), and 0 otherwise
+𝑧
+𝑡
+𝑠ℎ𝑠,𝑖 Binary, 1 if SHS at bus 𝑖 charges at 𝑡, and 0
+otherwise
+heating and power (H-CCHP) system [11]. Note that the aforementioned energy supply procedures is with zero carbon and pollutants
+emission. Additionally, when connected to the power distribution network (PDN), HMMs can actively participate in the demand response
+
+===== PAGE 3 =====
+Journal of Energy Storage 85 (2024) 111125
+3
+X. Sun et al.
+(DR) programs or power regulation markets to improve the economic
+benefits [7,12].
+However, at the current stage, the hydrogen production through
+electrolysis could be very costly [13]. It is critical to optimize the
+operation of HMMs for enhancing the economic efficiency. To date,
+the operational optimization of HMMs has been extensively studied in
+many existing literature. Ref. [14] investigated the optimal operation of
+hydrogen-based integrated systems, coordinating hydrogen, electricity,
+cooling and heating. This study indicated that the synergy of hydrogen
+and water storage has brought an 80% reduction in energy costs, while
+achieving nearly 100% RES accommodation. Due to the low efficiency
+of large-scale water electrolysis-based hydrogen production, an optimal
+scheduling strategy for hydrogen-based microgrids was proposed in
+Ref. [15], resulting in a 12.5% enhancement of ELZs’ utilization rates.
+In Ref. [16], a market-oriented multi-timescale energy management
+method for HMMs, comprising day-ahead and real-time economic dispatch, was studied, which could reduce the average diurnal operational
+costs by 37.08%. Considering the distinguished preferences of different
+operators, Ref. [17] proposed a multi-objective scheduling approach for
+integrated power-hydrogen systems based on distributed 𝜉-constraint
+optimization. This method was to optimize the main objective function
+while ensuring the interests of other objective terms. To facilitate the
+resilient operations against extreme events, e.g., natural disaster and
+malicious attacks, Ref. [18] developed a risk-averse rolling-horizon
+scheduling method for HMMs. As revealed by the numerical results, this
+method could potentially delay the occurrence time of power supply
+interruption, and improve the load survivability under disastrous occasions. Similarly, Ref. [19] presented a proactive scheduling method for
+resilience-oriented operation of hydrogen systems. Moreover, considering the coordination of energy and transportation sectors, Ref. [20]
+formulated an economical scheduling method for microgrids integrating hydrogen fueling stations, facilitating optimal on-site hydrogen
+generation and refueling services for hydrogen vehicles (HVs).
+We have noticed that, in these studies, the hydrogen storage is
+usually utilized for intra-day or real-time energy regulation, which
+demonstrates a similar functionality to ordinary storage types (e.g., batteries, supercapacitors or flywheel storage). Compared to conventional
+storage facilities, however, the hydrogen storage is with a higher energy
+density, which could be more suitable to perform the large-scale and
+long-term energy shifting (e.g., the seasonal storage through underground salt caverns) [21]. Such technical advantage has significant
+practical meanings for its application to handle the volatile and random
+RES generation, which may follow an evident seasonal rhythm [22].
+For instance, in Northern China, the peaks of solar generation generally
+occur in Summer, while the wind power resources could be more
+abundant during Spring and Winter months. On the other hand, the
+seasonal pattern of multi-energy demands is also non-negligible [11].
+For instance, cooling and heating demands could be concentratedly
+consumed in Summer and Winter respectively, which happens to be
+consistent with the peaking periods of power consumption. To keep
+track with the seasonal fluctuation of energy supply and demands, we
+believe that the seasonal hydrogen storage (SHS) needs to be properly
+configured and optimally operated.
+A few recent studies have concerned the planning and scheduling
+of multi-energy systems equipping with SHS devices, e.g., in Refs. [21,
+23–26]. Ref. [21] presented a mixed integer program (MIP) formulation to support the system design incorporating SHS. It indicated
+that hydrogen storage operates in a seasonal pattern only when a
+high storage capacity is available, which enabled smooth charging and
+discharging. Ref. [23] showed that the SHS could further improve the
+economical benefits of hydrogen-based integrated energy systems, by
+addressing the randomness of RES outputs. Ref. [24] proposed a riskconstrained stochastic planning method for off-grid microgrids under
+economics and resilience considerations. In this study, the levelized
+system cost could be reduced by 0.0746 $/kWh through proper investment decisions on SHS and short-term energy storage. Ref. [25]
+studied the energy management strategies of an off-grid microgrid
+equipping with RESs, SHS and short-term battery storage. Through
+the generated strategy, SHS could be fully exploited to maintain the
+long-term energy balance, reducing the load shedding and renewable
+energy curtailment. In Ref. [26], an optimal scheduling method based
+on Deep Deterministic Policy Gradient (DDPG) was developed for an
+integrated energy system with SHS, which improved the energy utilization efficiency, and mitigated the dependence on external energy
+networks. In the existing publications, however, there lacks an in-depth
+exploration on the complex and multi-timescale interaction among SHS
+and various short-term storage devices. So it could be difficult to induce
+a long-term economical operation strategy for networked HMMs to
+realize the synergy of multiscale energy storage. Moreover, the current
+uncertainty models are essentially static, which cannot capture the
+dynamic storage scheduling decisions against the seasonal randomness
+of RES generation and energy demands.
+To address these challenges, this paper studied the long-term operational optimization of HMMs integrating RES units, SHS, short-term
+energy storage (i.e., the daily hydrogen storage, battery banks and
+thermal storage vessels) and H-CCHP systems. For the first time, the
+networked HMMs operation planning (NHOP) problem is formulated
+as a multistage program for characterizing the seasonal and diurnal
+synergy of multiscale energy storage. Then, to handle the complex
+supply–demand uncertainties, a stochastic extension of NHOP is presented. By leveraging the specific structure of scenario tree to discretely
+represent the stochastic processes (including seasonal large-scale fluctuation and hourly small-scale variation of RES outputs as well as
+the electrical, heating and cooling demands), we derive a multistage
+stochastic mixed-integer program (MS-MIP) model. Moreover, based
+on stochastic dual dynamic integer programming (SDDiP), a nested
+decomposition algorithm is developed and customized to reduce the
+computational burden for our stochastic formulation.
+Compared to the current studies, the major contributions of this
+paper can be summarized as three-fold:
+1. A seasonal NHOP formulation is proposed, where the dynamic
+interaction of short- and long-term energy storage, as well as
+various energy conversion units are analytically modeled.
+2. An MS-MIP extension for NHOP is developed to control the operational risks of HMMs associating with the multiscale supply–
+demand uncertainties. Also, an SDDiP-based nested decomposition algorithm is designed and implemented to efficiently solve
+this MS-MIP model.
+3. Numerical studies on a 33-bus networked microgrids system
+under real-world RES data demonstrate the economical benefits
+of the proposed method. Through the coordinated scheduling
+of SHS and short-term energy storage, a higher operational
+flexibility can be achieved to reduce the risk cost.
+The remainder of this paper is organized as follows. Section 2
+proposes the NHOP formulation and its stochastic extension. Section 3
+developed the nested decomposition algorithm based on SDDiP. Then,
+we perform case studies in Section 4 to demonstrate the effectiveness
+of our NHOP model and SDDiP algorithm. Finally, conclusions are
+attained and discussed in Section 5.
+2. Problem formulation
+We study the NHOP problem in an industry park. As exhibited in
+Fig. 1, driven by RESs, i.e., PVs and WTs, an HMM produces ‘‘green’’
+hydrogen through ELZs. Then, by utilizing FCs, HMM could convert
+hydrogen to electricity, and produce heat simultaneously. Integrating
+FCs, heat recovery units (HRs) and absorption chillers (ACs), an HCCHP system is built, so as to satisfy the local electricity, cooling and
+heating demands. The whole procedure mentioned above should be
+noted for its zero-carbon emissions. In order to cope with the shortterm mismatch between supply and demand sides, battery storage (BS)
+
+===== PAGE 4 =====
+Journal of Energy Storage 85 (2024) 111125
+4
+X. Sun et al.
+Fig. 1. Illustrative structure of networked hydrogen-enabled multi-energy microgrids.
+units, hydrogen storage (HS) units, hot water storage (HWS) units and
+chilled water storage (CWS) units are incorporated to store electricity,
+hydrogen, heating and cooling, respectively. Besides, the SHS units
+are also considered to further mitigate the long-term supply–demand
+imbalance.
+HMMs are connected to the supporting PDN, which possesses a
+spanning-tree topology. The sets of PDN buses and lines are denoted as
+ and , respectively. We set the medium-voltage (MV) substation at
+bus 0, while the corresponding subset of buses with HMM deployment
+is denoted as 𝛬. The operation horizon is composed of 𝑇 seasons, in
+which each season is modeled by 𝐷 successive typical days. Also, each
+typical day is discretized by 𝐻 operating periods. In the following of
+this section, the basic deterministic formulation of NHOP is provided.
+2.1. Objective function
+The objective of NHOP is to minimize the total operation expenses
+(𝛷𝑜𝑝𝑒𝑥) upon the operation horizon, which can be expressed as:
+𝛷𝑜𝑝𝑒𝑥 = min ∑𝑇
+𝑡=1
+𝛷
+𝑡
+𝑜𝑝𝑒𝑥
+(1)
+where 𝛷𝑡
+𝑜𝑝𝑒𝑥
+represents OPEXs during season 𝑡. In (2), 𝛷𝑡
+𝑜𝑝𝑒𝑥
+includes
+electricity purchase costs (line 1), degradation costs of BSs, ELZs and
+FCs (line 2 and 3), and penalty costs of RES curtailment (line 4) and
+load shedding (line 5 and 6). Time-related factor 𝛿
+𝑡,𝑑,ℎ
+𝑘,𝑖 is introduced to
+describe the availability of renewable natural resources, i.e., wind and
+solar. Also, the electricity procurement price, 𝜚
+𝑡,𝑑,ℎ
+𝑖𝑚𝑝 , is in the time-of-use
+(TOU) mode.
+𝛷
+𝑡
+𝑜𝑝𝑒𝑥
+= 𝜎
+∑
+𝑑∈𝑡
+∑
+ℎ∈𝑡,𝑑
+𝜚
+𝑡,𝑑,ℎ
+𝑖𝑚𝑝 𝑝
+𝑡,𝑑,ℎ
+𝑚𝑣
+𝛥ℎ
++𝜎
+∑
+𝑑∈𝑡
+∑
+ℎ∈𝑡,𝑑
+[∑
+𝑖∈𝛬
+1
+2
+𝜁𝑏𝑠(𝑝
+𝑡,𝑑,ℎ
+𝑏𝑠+,𝑖 + 𝑝
+𝑡,𝑑,ℎ
+𝑏𝑠−,𝑖)
+𝛥ℎ +
+∑
+𝑖∈𝛬
+(
+𝜁𝑒𝑙𝑧𝑝
+𝑡,𝑑,ℎ
+𝑒𝑙𝑧,𝑖 𝛥ℎ + 𝜁𝑓 𝑐𝑝
+𝑡,𝑑,ℎ
+𝑓 𝑐,𝑖 𝛥ℎ
+)] (2)
++𝜎
+∑
+𝑑∈𝑡
+∑
+ℎ∈𝑡,𝑑
+[∑
+𝑖∈𝛬
+∑
+𝑘∈𝛺𝑟𝑒𝑠
+𝜘𝑒𝑐(𝛿
+𝑡,𝑑,ℎ
+𝑘,𝑖 𝑃𝑘,𝑖 − 𝑝
+𝑡,𝑑,ℎ
+𝑘,𝑖 )
+𝛥ℎ
+]
++𝜎
+∑
+𝑑∈𝑡
+∑
+ℎ∈𝑡,𝑑
+[∑
+𝑖∈
+𝜄𝑒𝑠(𝑃 𝐷𝑡,𝑑,ℎ
+𝑖
+− 𝑝𝑙𝑡,𝑑,ℎ
+𝑖
+)
+𝛥ℎ +
+∑
+𝑖∈𝛬
+𝜄ℎ𝑠(𝐻𝐷𝑡,𝑑,ℎ
+𝑖
+− ℎ𝑙𝑡,𝑑,ℎ
+𝑖
+)
+𝛥ℎ +
+∑
+𝑖∈𝛬
+𝜄
+𝑐𝑠(
+𝐶𝐷𝑡,𝑑,ℎ
+𝑖
+− 𝑐𝑙𝑡,𝑑,ℎ
+𝑖
+)
+𝛥ℎ
+]
+2.2. Long-term operation constraints
+According to each season 𝑡 = 1, …, 𝑇 , the operational constraints of
+NHOP are summarized in this subsection.
+2.2.1. Renewable energy source
+The constraints of RESs (i.e., WTs and PVs) are given in (3) and (4).
+Note that the availability of RES outputs depends on natural resources
+(𝛿
+𝑡,𝑑,ℎ
+𝑘,𝑖 ).
+0 ≤ 𝑝
+𝑡,𝑑,ℎ
+𝑘,𝑖 ≤ 𝛿
+𝑡,𝑑,ℎ
+𝑘,𝑖 𝑃𝑘,𝑖, ∀𝑘 ∈ 𝛺𝑟𝑒𝑠, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (3)
+𝑝
+𝑡,𝑑,ℎ
+𝑘,𝑖 tan 𝜑
+min
+𝑘
+≤ 𝑞
+𝑡,𝑑,ℎ
+𝑘,𝑖 ≤ 𝑝
+𝑡,𝑑,ℎ
+𝑘,𝑖 tan 𝜑
+max
+𝑘
+, ∀𝑘 ∈ 𝛺𝑟𝑒𝑠, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (4)
+2.2.2. Battery storage
+Operation of BSs is confined by (5)–(9). 𝑃𝑏𝑠,𝑖 and 𝐸𝑏𝑠,𝑖 represent
+power and energy capacities of BS, respectively. By using 0–1 variable
+𝑧
+𝑡,𝑑,ℎ
+𝑏𝑠,𝑖 , the charging and discharging power are imposed by (5) and
+(6). (7) presents the dynamic equation, reflecting the relationship of
+state-of-charge (SOC) between adjacent periods, and SOC is limited by
+(8). Considering the charging–discharging cycle, (9) confirms the net
+charging capacities to be zero during one-day operation.
+0 ≤ 𝑝
+𝑡,𝑑,ℎ
+𝑏𝑠+,𝑖 ≤ 𝑃𝑏𝑠,𝑖𝑧
+𝑡,𝑑,ℎ
+𝑏𝑠,𝑖 , ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (5)
+0 ≤ 𝑝
+𝑡,𝑑,ℎ
+𝑏𝑠−,𝑖 ≤ 𝑃𝑏𝑠,𝑖 (
+1 − 𝑧
+𝑡,𝑑,ℎ
+𝑏𝑠,𝑖 )
+, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (6)
+𝑒
+𝑡,𝑑,ℎ+1
+𝑏𝑠,𝑖 = 𝑒
+𝑡,𝑑,ℎ
+𝑏𝑠,𝑖 +
+(
+𝑝
+𝑡,𝑑,ℎ
+𝑏𝑠+,𝑖𝜂𝑏𝑠+ − 𝑝
+𝑡,𝑑,ℎ
+𝑏𝑠−,𝑖∕𝜂𝑏𝑠−
+)
+𝛥ℎ, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (7)
+(
+1 − 𝛽
+max
+𝑏𝑠
+)
+𝐶𝑏𝑠,𝑖 ≤ 𝑒
+𝑡,𝑑,ℎ
+𝑏𝑠,𝑖 ≤ 𝐶𝑏𝑠,𝑖, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (8)
+∑𝐻
+ℎ=1
+(
+𝑝
+𝑡,𝑑,ℎ
+𝑏𝑠+,𝑖𝜂𝑏𝑠+ − 𝑝
+𝑡,𝑑,ℎ
+𝑏𝑠−,𝑖∕𝜂𝑏𝑠−
+)
+𝛥ℎ = 0, ∀𝑖 ∈ 𝛬, ∀𝑑 (9)
+2.2.3. Electrolyzers
+ELZ is the device for electricity-hydrogen conversion. (10) and (11)
+show the constraints of hydrogen production through water electrolysis. 𝜒𝑝−𝑔
+is the coefficient of performance (COP) of ELZ for electricityhydrogen conversion.
+𝑔
+𝑡,𝑑,ℎ
+𝑒𝑙𝑧,𝑖 = 𝜒𝑒−𝑔
+𝑝
+𝑡,𝑑,ℎ
+𝑒𝑙𝑧,𝑖 , ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (10)
+
+===== PAGE 5 =====
+Journal of Energy Storage 85 (2024) 111125
+5
+X. Sun et al.
+0 ≤ 𝑝
+𝑡,𝑑,ℎ
+𝑒𝑙𝑧,𝑖 ≤ 𝑃𝑒𝑙𝑧,𝑖, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (11)
+2.2.4. Fuel cell and heat recovery unit
+FC is the core component of the H-CCHP system. (12) and (13) exhibit the electrical power generated by FC. (14) calculates the captured
+and recovered residual heating in the power generation procedure. 𝜒𝑔−𝑒
+and 𝜒𝑔−ℎ are electrical and heating COPs of FC, respectively. Besides,
+the electrical power output is restricted by FC’s capacity, as shown in
+(15).
+𝑝
+𝑡,𝑑,ℎ
+𝑓 𝑐,𝑖 = 𝜒𝑔−𝑒
+𝑔
+𝑡,𝑑,ℎ
+𝑓 𝑐,𝑖 , ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (12)
+𝑝
+𝑡,𝑑,ℎ
+𝑓 𝑐,𝑖 tan 𝜑
+min
+𝑓 𝑐 ≤ 𝑞
+𝑡,𝑑,ℎ
+𝑓 𝑐,𝑖 ≤ 𝑝
+𝑡,𝑑,ℎ
+𝑓 𝑐,𝑖 tan 𝜑
+max
+𝑓 𝑐 , ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (13)
+𝑚
+𝑡,𝑑,ℎ
+𝑓 𝑐,𝑖 = 𝜒𝑔−ℎ
+𝑔
+𝑡,𝑑,ℎ
+𝑓 𝑐,𝑖 , ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (14)
+0 ≤ 𝑝
+𝑡,𝑑,ℎ
+𝑓 𝑐,𝑖 ≤ 𝑃𝑓 𝑐,𝑖, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (15)
+2.2.5. Absorption chiller
+Through AC, the heating energy generated by FC can be transformed
+to cooling. (16) and (17) specify the cooling energy produced by AC.
+𝜒ℎ−𝑐is COP of AC.
+𝑛
+𝑡,𝑑,ℎ
+𝑎𝑐,𝑖 = 𝜒ℎ−𝑐𝑚
+𝑡,𝑑,ℎ
+𝑎𝑐,𝑖 , ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (16)
+0 ≤ 𝑛
+𝑡,𝑑,ℎ
+𝑎𝑐,𝑖 ≤ 𝑃𝑎𝑐,𝑖, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (17)
+2.2.6. Short-term hydrogen, heating and cooling storage
+Eqs. (18), (23) and (26) represent the storage dynamics of shortterm HS, HWS and CWS, respectively. (19) and (20) restrict the charging and discharging state of HT by a 0–1 variable 𝑧
+𝑡,𝑑,ℎ
+ℎ𝑠,𝑖 . Similar to
+(8), Eqs. (21), (24) and (27) describe the constraints associated with
+the daily storage cycle. (22), (25) and (28) provide the limitations
+corresponding to HS, HES and CWS capacities.
+𝑔
+𝑡,𝑑,ℎ+1
+ℎ𝑠,𝑖 =
+(
+1 − 𝜓ℎ𝑠)𝑔
+𝑡,𝑑,ℎ
+ℎ𝑠,𝑖 +
+(
+𝑔
+𝑡,𝑑,ℎ
+ℎ𝑠+,𝑖𝜂ℎ𝑠+ − 𝑔
+𝑡,𝑑,ℎ
+ℎ𝑠−,𝑖∕𝜂ℎ𝑠−
+)
+𝛥ℎ,
+∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (18)
+0 ≤ 𝑔
+𝑡,𝑑,ℎ
+ℎ𝑠+,𝑖 ≤ 𝐶ℎ𝑠,𝑖𝑧
+𝑡,𝑑,ℎ
+ℎ𝑠,𝑖 , ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (19)
+0 ≤ 𝑔
+𝑡,𝑑,ℎ
+ℎ𝑠−,𝑖 ≤ 𝐶ℎ𝑠,𝑖(1 − 𝑧
+𝑡,𝑑,ℎ
+ℎ𝑠,𝑖 ), ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (20)
+∑
+ℎ∈𝑡,𝑑
+(
+𝑔
+𝑡,𝑑,ℎ
+ℎ𝑠+,𝑖𝜂ℎ𝑠+ − 𝑔
+𝑡,𝑑,ℎ
+ℎ𝑠−,𝑖∕𝜂ℎ𝑠−
+)
+= 0, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (21)
+0 ≤ 𝑔
+𝑡,𝑑,ℎ
+ℎ𝑠,𝑖 ≤ 𝐶ℎ𝑠,𝑖, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (22)
+𝑚
+𝑡,𝑑,ℎ+1
+ℎ𝑤𝑠,𝑖 =
+(
+1 − 𝜓ℎ𝑤𝑠)𝑚
+𝑡,𝑑,ℎ
+ℎ𝑤𝑠,𝑖
++
+(
+𝑚
+𝑡,𝑑,ℎ
+ℎ𝑤𝑠+,𝑖𝜂ℎ𝑤𝑠+ − 𝑚
+𝑡,𝑑,ℎ
+ℎ𝑤𝑠−,𝑖∕𝜂ℎ𝑤𝑠−
+)
+𝛥ℎ, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (23)
+∑
+ℎ∈𝑡,𝑑
+(
+𝑚
+𝑡,𝑑,ℎ
+ℎ𝑤𝑠+,𝑖𝜂ℎ𝑤𝑠+ − 𝑚
+𝑡,𝑑,ℎ
+ℎ𝑤𝑠−,𝑖∕𝜂ℎ𝑤𝑠−
+)
+𝛥ℎ = 0, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (24)
+0 ≤ 𝑚
+𝑡,𝑑,ℎ
+ℎ𝑤𝑠,𝑖 ≤ 𝐶ℎ𝑤𝑠,𝑖, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (25)
+𝑛
+𝑡,𝑑,ℎ+1
+𝑐𝑤𝑠,𝑖 =
+(
+1 − 𝜓𝑐𝑤𝑠)𝑛
+𝑡,𝑑,ℎ
+𝑐𝑤𝑠,𝑖
++
+(
+𝑛
+𝑡,𝑑,ℎ
+𝑐𝑤𝑠+,𝑖𝜂𝑐𝑤𝑠+ − 𝑛
+𝑡,𝑑,ℎ
+𝑐𝑤𝑠−,𝑖∕𝜂𝑐𝑤𝑠−
+)
+𝛥ℎ, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (26)
+∑
+ℎ∈𝑡,𝑑
+(
+𝑛
+𝑡,𝑑,ℎ
+𝑐𝑤𝑠+,𝑖𝜂𝑐𝑤𝑠+ − 𝑛
+𝑡,𝑑,ℎ
+𝑐𝑤𝑠−,𝑖∕𝜂𝑐𝑤𝑠−
+)
+𝛥ℎ = 0, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (27)
+0 ≤ 𝑛
+𝑡,𝑑,ℎ
+𝑐𝑤𝑠,𝑖 ≤ 𝐶𝑐𝑤𝑠,𝑖, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (28)
+2.2.7. Seasonal hydrogen storage
+Eqs. (29)–(35) provide the constraints for long-term SHS. (29) is the
+intra-day dynamic equation. (30) confirms the continuity of hydrogen
+SOC between two typical days. Since we only consider 𝐷 typical days
+in each season, we introduce 𝑔
+𝑡,𝑒𝑛𝑑,𝐻+1
+𝑠ℎ𝑠,𝑖 to denote the actual SOC after
+the last day of season 𝑡, which equals to the initial SOC of next season
+𝑡+1. (31) and (32) show the relationship among 𝑔
+𝑡,𝑒𝑛𝑑,𝐻+1
+𝑠ℎ𝑠,𝑖 , 𝑔
+𝑡,1,1
+𝑠ℎ𝑠,𝑖, 𝑔
+𝑡,𝐷,𝐻+1
+𝑠ℎ𝑠,𝑖
+and 𝑔
+𝑡+1,1,1
+𝑠ℎ𝑠,𝑖 . 𝛱 is the scale factor for 𝐷 typical days to one season. (33)
+is the capacity constraint for hydrogen SOC. With a seasonal 0–1 state
+variable 𝑧
+𝑡
+𝑠ℎ𝑠,𝑖, (34) and (35) impose the charging and discharging of
+SHS units.
+𝑔
+𝑡,𝑑,ℎ+1
+𝑠ℎ𝑠,𝑖 =
+(
+1 − 𝜓𝑠ℎ𝑠)𝑔
+𝑡,𝑑,ℎ
+𝑠ℎ𝑠,𝑖
++
+(
+𝑔
+𝑡,𝑑,ℎ
+𝑠ℎ𝑠+,𝑖𝜂𝑠ℎ𝑠+ − 𝑔
+𝑡,𝑑,ℎ
+𝑠ℎ𝑠−,𝑖∕𝜂𝑠ℎ𝑠−
+)
+𝛥ℎ, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (29)
+𝑔
+𝑡,𝑑,1
+𝑠ℎ𝑠,𝑖 = 𝑔
+𝑡,𝑑−1,𝐻+1
+𝑠ℎ𝑠,𝑖 , ∀𝑖 ∈ 𝛬, ∀𝑑 (30)
+𝑔
+𝑡,𝑒𝑛𝑑,𝐻+1
+𝑠ℎ𝑠,𝑖 = 𝑔
+𝑡,1,1
+𝑠ℎ𝑠,𝑖 + 𝛱
+(
+𝑔
+𝑡,𝐷,𝐻+1
+𝑠ℎ𝑠,𝑖 − 𝑔
+𝑡,1,1
+𝑠ℎ𝑠,𝑖)
+, ∀𝑖 ∈ 𝛬 (31)
+𝑔
+𝑡+1,1,1
+𝑠ℎ𝑠,𝑖 = 𝑔
+𝑡,𝑒𝑛𝑑,𝐻+1
+𝑠ℎ𝑠,𝑖 , ∀𝑖 ∈ 𝛬 (32)
+0 ≤ 𝑔
+𝑡,𝑑,ℎ
+𝑠ℎ𝑠,𝑖, 𝑔
+𝑡,𝑒𝑛𝑑,𝐻+1
+𝑠ℎ𝑠,𝑖 ≤ 𝐶𝑠ℎ𝑠,𝑖, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (33)
+0 ≤ 𝑔
+𝑡,𝑑,ℎ
+𝑠ℎ𝑠+,𝑖 ≤ 𝑧
+𝑡
+𝑠ℎ𝑠,𝑖𝐶𝑠ℎ𝑠,𝑖, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (34)
+0 ≤ 𝑔
+𝑡,𝑑,ℎ
+𝑠ℎ𝑠−,𝑖 ≤ (1 − 𝑧
+𝑡
+𝑠ℎ𝑠,𝑖)𝐶𝑠ℎ𝑠,𝑖, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (35)
+2.2.8. Electrical, heating and cooling demands
+Considering the mechanism of load shedding, the satisfied electrical
+load (𝑝𝑙𝑡,𝑑,ℎ
+𝑖
+), heating load (ℎ𝑙𝑡,𝑑,ℎ
+𝑖
+) and cooling load (𝑐𝑙𝑡,𝑑,ℎ
+𝑖
+) are imposed
+in (36)–(38), respectively. In them, 𝑃 𝐷𝑡,𝑑,ℎ
+𝑖
+, 𝐻𝐷𝑡,𝑑,ℎ
+𝑖
+and 𝐶𝐷𝑡,𝑑,ℎ
+𝑖
+give the
+actual electrical, heating and cooling demands of the local area.
+0 ≤ 𝑝𝑙𝑡,𝑑,ℎ
+𝑖
+≤ 𝑃 𝐷𝑡,𝑑,ℎ
+𝑖
+, ∀𝑖 ∈ , ∀𝑑, ∀ℎ (36)
+0 ≤ ℎ𝑙𝑡,𝑑,ℎ
+𝑖
+≤ 𝐻𝐷𝑡,𝑑,ℎ
+𝑖
+, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (37)
+0 ≤ 𝑐𝑙𝑡,𝑑,ℎ
+𝑖
+≤ 𝐶𝐷𝑡,𝑑,ℎ
+𝑖
+, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (38)
+2.2.9. System-level coupling constraints
+Eqs. (39) and (40) represent the active and reactive power balances
+of an HMM. (41) limits the power transaction through the low-voltage
+(LV) substations, which connect to PDN. Moreover, (42)–(47) provide the coupling equations for hydrogen, heating and cooling energy
+components.
+∑
+𝑘∈𝛺𝑟𝑒𝑠
+𝑝
+𝑡,𝑑,ℎ
+𝑘,𝑖 +
+(
+𝑝
+𝑡,𝑑,ℎ
+𝑏𝑠−,𝑖 − 𝑝
+𝑡,𝑑,ℎ
+𝑏𝑠+,𝑖)
++ 𝑝
+𝑡,𝑑,ℎ
+𝑓 𝑐,𝑖 + 𝑝
+𝑡,𝑑,ℎ
+𝑙𝑣,𝑖
+= 𝑝𝑙𝑡,𝑑,ℎ
+𝑖
++ 𝑝
+𝑡,𝑑,ℎ
+𝑒𝑙𝑧,𝑖 , ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (39)
+∑
+𝑘∈𝛺𝑟𝑒𝑠
+𝑞
+𝑡,𝑑,ℎ
+𝑘,𝑖 + 𝑞
+𝑡,𝑑,ℎ
+𝑓 𝑐,𝑖 + 𝑞
+𝑡,𝑑,ℎ
+𝑙𝑣,𝑖 = 𝑝𝑙𝑡,𝑑,ℎ
+𝑖
+tan 𝜑
+𝑡,𝑑,ℎ
+𝑝𝑙,𝑖 , ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (40)
+(
+𝑝
+𝑡,𝑑,ℎ
+𝑙𝑣,𝑖 )2
++
+(
+𝑞
+𝑡,𝑑,ℎ
+𝑙𝑣,𝑖 )2
+≤
+(
+𝑆
+max
+𝑙𝑣,𝑖 )2
+, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (41)
+𝑔
+𝑡,𝑑,ℎ
+ℎ𝑠+,𝑖 + 𝑔
+𝑡,𝑑,ℎ
+𝑠ℎ𝑠+,𝑖 = 𝑔
+𝑡,𝑑,ℎ
+𝑒𝑙𝑧,𝑖 , ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (42)
+𝑔
+𝑡,𝑑,ℎ
+ℎ𝑠−,𝑖 + 𝑔
+𝑡,𝑑,ℎ
+𝑠ℎ𝑠−,𝑖 = 𝑔
+𝑡,𝑑,ℎ
+𝑓 𝑐,𝑖 , ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (43)
+𝑚
+𝑡,𝑑,ℎ
+ℎ𝑤𝑠+,𝑖 = 𝑚
+𝑡,𝑑,ℎ
+𝑓 𝑐,𝑖 , ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (44)
+𝑚
+𝑡,𝑑,ℎ
+ℎ𝑤𝑠−,𝑖 = 𝑚
+𝑡,𝑑,ℎ
+𝑎𝑐,𝑖 + ℎ𝑙𝑡,𝑑,ℎ𝑖
+, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (45)
+𝑛
+𝑡,𝑑,ℎ
+𝑐𝑤𝑠+,𝑖 = 𝑛
+𝑡,𝑑,ℎ
+𝑎𝑐,𝑖 , ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (46)
+𝑛
+𝑡,𝑑,ℎ
+𝑐𝑤𝑠−,𝑖 = 𝑐𝑙𝑡,𝑑,ℎ𝑖
+, ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ (47)
+Remark 1. Note that (41) holds a nonlinear form due to the quadratic
+terms (𝑝
+𝑡,𝑑,ℎ
+𝑙𝑣,𝑖 )2
+and (𝑞
+𝑡,𝑑,ℎ
+𝑙𝑣,𝑖 )2
+, which may pose computational challenges
+in practice. Following the strategy mentioned in [27], (41) can be
+approximately replaced by the linear constraints as below:
+−𝑆
+max
+𝑙𝑣,𝑖 ≤ 𝑝
+𝑡,𝑑,ℎ
+𝑙𝑣,𝑖 , 𝑞
+𝑡,𝑑,ℎ
+𝑙𝑣,𝑖 ≤ 𝑆
+max
+𝑙𝑣,𝑖 , ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ
+−
+√
+2𝑆
+max
+𝑙𝑣,𝑖 ≤ 𝑝
+𝑡,𝑑,ℎ
+𝑙𝑣,𝑖 + 𝑞
+𝑡,𝑑,ℎ
+𝑙𝑣,𝑖 ≤
+√
+2𝑆
+max
+𝑙𝑣,𝑖 , ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ
+−
+√
+2𝑆
+max
+𝑙𝑣,𝑖 ≤ 𝑝
+𝑡,𝑑,ℎ
+𝑙𝑣,𝑖 − 𝑞
+𝑡,𝑑,ℎ
+𝑙𝑣,𝑖 ≤
+√
+2𝑆
+max
+𝑙𝑣,𝑖 , ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ
+2.2.10. Constraints of power distribution network
+We apply a linearlized Disflow model [28] to formulate the operation of PDN, as described in (48)–(56). Subset + is defined as ∖0 =
+
+===== PAGE 6 =====
+Journal of Energy Storage 85 (2024) 111125
+6
+X. Sun et al.
+{1, 2, …}. Capacity constraints (52) and (56) can also be linearized by
+using the method in Remark 1.
+𝑓𝑝𝑡,𝑑,ℎ
+𝑗𝑖 −
+∑
+𝑙∈𝛩(𝑖)
+𝑓𝑝𝑡,𝑑,ℎ
+𝑖𝑙 =
+{
+𝑝
+𝑡,𝑑,ℎ
+𝑙𝑣,𝑖 , ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ
+𝑝𝑙𝑡,𝑑,ℎ
+𝑖
+, ∀𝑖 ∈ +∖𝛬, ∀𝑑, ∀ℎ
+(48)
+𝑓 𝑞𝑡,𝑑,ℎ
+𝑗𝑖 −
+∑
+𝑙∈𝛩(𝑖)
+𝑓 𝑞𝑡,𝑑,ℎ
+𝑖𝑙 =
+{ 𝑞
+𝑡,𝑑,ℎ
+𝑙𝑣,𝑖 , ∀𝑖 ∈ 𝛬, ∀𝑑, ∀ℎ
+𝑝𝑙𝑡,𝑑,ℎ
+𝑖
+tan 𝜑
+𝑡,𝑑,ℎ
+𝑝𝑙,𝑖 , ∀𝑖 ∈ +∖𝛬, ∀𝑑, ∀ℎ
+(49)
+∑
+𝑙∈𝛩(0)
+𝑓𝑝𝑡,𝑑,ℎ
+0𝑙
+= 𝑝
+𝑡,𝑑,ℎ
+𝑚𝑣
+≥ 0, ∀𝑑, ∀ℎ (50)
+∑
+𝑙∈𝛩(0)
+𝑓 𝑞𝑡,𝑑,ℎ
+0𝑙
+= 𝑞
+𝑡,𝑑,ℎ
+𝑚𝑣
+≥ 0, ∀𝑑, ∀ℎ (51)
+(
+𝑓𝑝𝑡,𝑑,ℎ
+𝑖𝑗 )2
++
+(
+𝑓 𝑞𝑡,𝑑,ℎ
+𝑖𝑗 )2
+≤
+(
+𝑆
+max
+𝑖𝑗 )2
+, ∀(𝑖, 𝑗) ∈ , ∀𝑑, ∀ℎ (52)
+𝑣
+𝑡,𝑑,ℎ
+𝑖
+− 𝑣
+𝑡,𝑑,ℎ
+𝑗
+= (𝑟𝑖𝑗𝑓𝑝𝑡,𝑑,ℎ
+𝑖𝑗 + 𝑥𝑖𝑗𝑓 𝑞𝑡,𝑑,ℎ𝑖𝑗 )∕𝑈0
+, ∀(𝑖, 𝑗) ∈ , ∀𝑑, ∀ℎ (53)
+(
+𝑈
+min
+𝑖
+)2
+≤ 𝑣
+𝑡,𝑑,ℎ
+𝑖
+≤
+(
+𝑈
+max
+𝑖
+)2
+, ∀𝑖 ∈ , ∀𝑑, ∀ℎ (54)
+𝑣
+𝑡,𝑑,ℎ
+0
+= 𝑈
+2
+0
+, ∀𝑑, ∀ℎ (55)
+(
+𝑝
+𝑡,𝑑,ℎ
+𝑚𝑣 )2
++
+(
+𝑞
+𝑡,𝑑,ℎ
+𝑚𝑣 )2
+≤
+(
+𝑆
+max
+𝑚𝑣 )2
+, ∀𝑑, ∀ℎ (56)
+2.3. Compact matrix form
+For season 𝑡, let 𝒙𝑡represent state variables (i.e., the variables
+linking adjacent seasons) and 𝒚𝑡 be local variables (i.e., the variables
+only corresponding to season 𝑡). In the proposed formulation, 𝑔
+𝑡,𝑒𝑛𝑑,𝐻+1
+𝑠ℎ𝑠,𝑖
+serves as the state variable and the others are all local variables. Then,
+the NHOP problem mentioned in (1)–(56) can be mathematically stated
+in a compact form as:
+𝛷 = min∑𝑇
+𝑡=1
+𝒅
+𝑇
+𝑡
+𝒚𝑡
+s.t.
+(
+𝒙𝑡, 𝒚𝑡
+)
+∈ 𝑡
+(
+𝒙𝑡−1)
+, 𝑡 = 1,… , 𝑇
+𝒙𝑡 ∈ R
+𝜒1 , 𝒚𝑡 ∈ R𝜓1 × (0, 1)
+𝜓2 , 𝑡 = 1, …, 𝑇
+(57)
+where 𝑡(𝒙𝑡−1) denotes the constraint set of season 𝑡. Formulation (57)
+is a classic multistage program, in which each season 𝑡 corresponds to
+a stage.
+2.4. Multi-stage stochastic program extension
+The NHOP formulation in (57) is a deterministic optimization problem. However, the NHOP decisions could be significantly affected
+by various supply–demand uncertainties, i.e., the seasonal large-scale
+fluctuation and hourly small-scale variation of RES outputs and energy demands. Hence, we extend the deterministic formulation to a
+stochastic one for handling the complex uncertainties.
+A stochastic process {̃𝝃𝑡}𝑡=1,…,𝑇 , which reveals gradually over stages,
+is defined to capture these supply–demand uncertainties. ̃𝝃𝑡 denotes
+the uncertain factors of stage 𝑡, and is assumed to be stage-wise independent. Then, we reformulate the deterministic NHOP in (57) as the
+following multistage stochastic mixed-integer program (MS-MIP):
+𝛷 = min
+𝒙1,𝒚1∈1
+𝒅
+𝑇
+1
+𝒚1 + Ẽ𝝃2
+[
+min
+𝒙2,𝒚2∈2(𝒙1,̃𝝃2)
+𝒅
+𝑇
+2
+𝒚2
++ Ẽ𝝃3
+[
+⋯ + Ẽ𝝃𝑇
+[
+min
+𝒙𝑇,𝒚𝑇 ∈𝑇(𝒙𝑇−1,̃𝝃𝑇)
+𝒅
+𝑇
+𝑇
+𝒚𝑇
+]
+⋯
+] ] (58)
+where Ẽ𝝃𝑡
+[⋅] denotes the expectation with respect to a specific probability distribution of ̃𝝃𝑡
+. Note that (58) has a nested structure, reflecting
+the ‘‘non-anticipativity’’, i.e., the decisions on stage 𝑡 should not depend
+on the realizations of uncertainties in the future [29].
+3. Solution methodology
+3.1. Discretization through scenario tree
+To address the complicated nested structure in (58), we first discretize the stochastic process to form a scenario tree, as shown in
+Fig. 2(a). In stage 𝑡, each node 𝝃̂
+𝓁
+𝑡
+represents the 𝓁-th actual realization
+of ̃𝝃𝑡. It is connected to every node in stage 𝑡 + 1 because of the stagewise independence. We assume the number of actual realizations in
+each stage to be equal, denoted by |𝛯|. So the scenario tree in Fig. 2(a)
+can be further recombined to Fig. 2(b), where each path from the
+root node to one end is defined as a ‘‘scenario’’. The total number of
+scenarios is |𝛯|
+𝑇−1, which grows with |𝛯| in (𝑇 − 1) power. Besides, 𝝃
+𝑚
+𝑡
+denotes the realization of 𝑚th scenario in stage 𝑡.
+3.2. Nested decomposition algorithm
+An intuitive way to deal with (58) is to directly solve its extensive form [29]. Nevertheless, it may become computational intractable when |𝛯| enlarges, even using the state-of-the-art optimization solver, e.g., Gurobi. To efficiently address the large-scale MS-MIP,
+we customize a nested decomposition algorithm based on SDDiP.
+3.2.1. DP reformulation
+Before introducing SDDiP, we equivalently reformulate (58) by a set
+of dynamic programming (DP) equations:
+𝛷 = min
+𝒙1,𝒚1∈1
+𝒅
+𝑇
+1
+𝒚1 + Ẽ𝝃2
+[
+𝑄2(𝒙1; ̃𝝃2)
+]
+(59)
+for 𝑡 = 2, …, 𝑇 ,
+𝑄𝑡(𝒙𝑡−1; ̃𝝃𝑡) = min
+𝒙𝑡,𝒚𝑡∈𝑡(𝒙𝑡−1;̃𝝃𝑡)
+𝒅
+𝑇
+𝑡
+𝒚𝑡 + Ẽ𝝃𝑡+1 [
+𝑄𝑡+1(𝒙𝑡; ̃𝝃𝑡+1)
+]
+(60)
+where 𝑄𝑡(𝒙𝑡−1) is the cost-to-go function. The expected cost-to-go
+(ECTG) function can be defined as:
+𝑡(𝒙𝑡) ∶= Ẽ𝝃𝑡+1 [
+𝑄𝑡+1(𝒙𝑡; ̃𝝃𝑡+1)
+]
+(61)
+For 𝑡 = 𝑇 , 𝑇(𝒙𝑇−1) = 0.
+3.2.2. Stochastic dual dynamic integer programming
+The basic idea of SDDiP is to decompose the DP reformulation
+(59)–(60) by stages through constructing an under-approximation for
+the ECTG function. Then, it generates cutting planes through forward
+passes and backward passes alternatively to strengthen this approximation, until the updated approximation is ‘‘tight’’ or good enough.
+Specifically, for each iteration 𝜏, SDDiP randomly samples 𝑀 scenarios from the scenario tree. Then, a forward pass starts on the 𝑀
+selected scenarios, from 𝑡 = 1 to 𝑇 , computing the stage-wise forward
+subproblem 𝒫
+𝜏
+𝑡
+(𝒙̂
+𝑚,𝜏
+𝑡−1, 𝝃
+𝑚
+𝑡
+) (𝑚 = 1, …,𝑀), which can be expressed as:
+𝑄
+𝜏
+𝑡
+(𝒙̂
+𝑚,𝜏
+𝑡−1, 𝝃
+𝑚
+𝑡
+) ∶= min
+𝒙𝑡,𝒚𝑡
+(𝒅
+𝑚
+𝑡
+)
+𝑇
+𝒚𝑡 + 𝛹𝑡(62)
+s.t. (𝒙𝑡, 𝒚𝑡, 𝒛𝑡) ∈ 𝑡(𝝃
+𝑚
+𝑡
+) (63)
+𝒛𝑡 = 𝒙̂
+𝑚,𝜏
+𝑡−1 ← 𝝅𝑡 ∈ R
+𝜒2 (64)
+𝛹𝑡 ≥
+1
+|𝛯|
+∑
+|𝛯|
+𝓁=1
+[
+𝝊̂
+𝑝𝓁
+𝑡 +
+(
+𝝅̂
+𝑝𝓁
+𝑡
+)𝑇
+𝒙𝑡
+]
+, ∀𝑝 ∈ 
+𝜏
+𝑡
+(65)
+𝒙𝑡 ∈ {0, 1}
+𝜒2 , 𝒚𝑡 ∈ {0, 1}
+𝜓1 × R
+𝜓2 , 𝒛𝑡 ∈ [0, 1]𝜒2 (66)
+where 𝛹𝑡is the approximated ECTG function, which is constructed by a
+set of hyperplanes in (65). 𝒛𝑡equals to the optimal 𝒙̂
+𝑚,𝜏
+𝑡−1 derived from the
+forward problem of scenario 𝑚 in stage 𝑡− 1, and (64) is introduced for
+cut generation in the backward pass. 𝝅𝑡is the Lagrangian multiplier of
+(64). Besides, 𝑝∕
+𝜏
+𝑡
+is the index/set of cutting planes, while 𝝊̂
+𝑝𝓁
+𝑡
+and 𝝅̂
+𝑝𝓁
+𝑡
+represent two parameters that define the cuts. Moreover, 
+′
+𝑡
+is utilized
+
+===== PAGE 7 =====
+Journal of Energy Storage 85 (2024) 111125
+7
+X. Sun et al.
+Fig. 2. Description of scenario tree (|𝛯| = 3).
+to denote the combined feasible region surrounded by (63), (65) and
+(66).
+Remark 2. Note that SDDiP requires all state variables for the MSMIP be binary [30]. To this end, we approximately discretize the state
+variables (𝑔
+𝑡,𝑒𝑛𝑑,𝐻+1
+𝑠ℎ𝑠,𝑖 ) to integer and apply the binarization technique.
+Subsequently, a backward pass, proceeding from 𝑡 = 𝑇 to 2, is conducted to generate valid cutting planes to strengthen the approximation
+𝛹𝑡−1 of stage 𝑡 − 1. To balance the solution quality and computation
+time, the Strengthened Benders (SB) cut [30] is adopted here as the
+form of cutting planes. Detailed steps of yielding SB cuts are presented
+as follows:
+- STEP 1. In each stage 𝑡, for sampled node 𝑚, |𝛯| LP relaxation
+of 𝒫
+𝜏+1
+𝑡
+(𝒙̂
+𝑚,𝜏
+𝑡−1, 𝝃̂
+𝓁
+𝑡
+) (𝓁 = 1, …, |𝛯|) are computed to obtain the
+multipliers 𝝅̂
+𝑚𝓁,𝜏
+𝑡,𝐿𝑃 of (64).
+- STEP 2. By relaxing (64) and setting 𝝅𝑡to 𝝅̂
+𝑚𝓁,𝜏
+𝑡,𝐿𝑃 , we solve |𝛯|
+Lagrangian relaxation (LR) problems of 𝒫
+𝜏+1
+𝑡
+(𝒙̂
+𝑚,𝜏
+𝑡−1, 𝝃̂
+𝓁
+𝑡
+) in (67) to
+attain the optimal values (𝑄̂
+𝑚𝓁,𝜏
+𝑡,𝐿𝑅
+) of its objective function.
+𝑄
+𝜏
+𝑡,𝐿𝑅 (
+𝒙̂
+𝑚,𝜏
+𝑡−1, 𝝃̂
+𝓁
+𝑡
+)
+=
+min
+(𝒙𝑡,𝒚𝑡,𝒛𝑡,𝛹𝑡)∈
+′
+𝑡
+(𝝃̂
+𝓁
+𝑡
+)
+(𝒅
+𝑚
+𝑡
+)
+𝑇
+𝒚𝑡 + 𝛹𝑡 +
+(
+𝝅̂
+𝑚𝓁,𝜏
+𝑡,𝐿𝑃 )𝑇 (
+𝒙̂
+𝑚,𝜏
+𝑡−1 − 𝒛𝑡
+)
+(67)
+- STEP 3. Generate the SB cuts as below:
+𝛹𝑡−1 ≥
+1
+|𝛯|
+∑
+|𝛯|
+𝓁=1
+[
+𝑄̂
+𝑚𝓁,𝜏
+𝑡,𝐿𝑅
++
+(
+𝝅̂
+𝑚𝓁,𝜏
+𝑡,𝐿𝑃 )𝑇 (
+𝒙𝑡−1 − 𝒙̂
+𝑚,𝜏
+𝑡−1
+)
+]
+,
+𝑚 = 1, … ,𝑀 (68)
+Then, by collecting 𝑀 cuts from stage 𝑡 and adding them to the
+cut set in stage 𝑡 − 1, it can be updated as 
+𝜏+1
+𝑡−1 .
+When finishing the backward pass, the relaxation bound (RB) can be
+calculated by solving 𝒫
+𝜏+1
+1
+. The SDDiP algorithm terminates when RB
+becomes stable [30]. After that, a feasible bound (FB) can be estimated
+through the sampling of a large scenario subset out of the scenario tree,
+and conducting a complementary forward pass.
+3.2.3. Solution procedures
+Based on our elaboration for forward pass, backward pass and
+strengthened cut set, the complete procedures to implement SDDiP are
+summarized as in Algorithm 1.
+Algorithm 1 Stochastic dual dynamic integer programming
+1: Initialization: Set 𝑅𝐵 ← −∞; Initialize {
+1
+𝑡
+}
+𝑡=1,⋯,𝑇
+2: while 𝑅𝐵 has not became stable do
+3: Sample 𝑀 scenarios {𝝃
+𝑚
+1
+, ⋯ , 𝝃
+𝑚
+𝑇
+}
+𝑚=1,⋯,𝑀 from the scenario tree.
+4: Forward Pass:
+5: for 𝑚 = 1, ⋯ ,𝑀 do
+6: for 𝑡 = 1, ⋯ , 𝑇 do
+7: Solve forward subproblem 𝒫
+𝜏
+𝑡
+(𝒙̂
+𝑚,𝜏
+𝑡−1, 𝝃
+𝑚
+𝑡
+);
+8: Collect optimal 𝒙̂
+𝑚,𝜏
+𝑡
+and 𝒚̂
+𝑚,𝜏
+𝑡
+.
+9: end for
+10: Calculate policy value 𝛷
+𝑚,𝜏
+∶= ∑𝑇
+𝑡=1(𝒅
+𝑚
+𝑡
+)
+𝑇 𝒚̂
+𝑚,𝜏
+𝑡
+.
+11: end for
+12: Backward Pass:
+13: for 𝑡 = 𝑇 , ⋯ , 2 do
+14: for 𝑚 = 1, ⋯ ,𝑀 do
+15: for 𝓁 = 1, ⋯ , |𝛯| do
+16: Solve LP relaxation of 𝒫
+𝜏+1
+𝑡
+(𝒙̂
+𝑚,𝜏
+𝑡−1, 𝝃̂
+𝓁
+𝑡
+); Collect 𝝅̂
+𝑚𝓁,𝜏
+𝑡,𝐿𝑃 .
+17: Fix 𝝅𝑡 = 𝝅̂
+𝑚𝓁,𝜏
+𝑡,𝐿𝑃 and solve LR problem in (67); Collect 𝑄̂
+𝑚𝓁,𝜏
+𝑡,𝐿𝑅
+.
+18: end for
+19: Generate an SB cut as (68).
+20: end for
+21: end for
+22: EB Update:
+23: Update EB by solving 𝒫
+𝜏+1
+1
+.
+24: 𝜏 ← 𝜏 + 1.
+25: end while
+26: Feasible Bound Acquisition:
+27: Resample 𝑀′scenarios; Carry on a Forward Pass on them.
+28: Obtain expectation 𝜇 =
+1
+𝑀′
+∑𝑀′
+𝑚=1 𝛷
+𝑚,𝜏 and standard deviation 𝜎 = √ 1
+𝑀′−1
+∑𝑀′
+𝑚=1(𝛷
+𝑚,𝜏
+− 𝜇𝜏)
+2 of the 𝑀 policy values:
+29: Obtain 𝐹 𝐵 = 𝜇 +
+1.96𝜎 √
+𝑀
+.
+Remark 3. Note that for the resample step in Algorithm 1, the selection
+strategy for 𝑀′is case by case. When the scale of entire scenario set is
+small, 𝑀′can even be set to |𝛯|
+𝑇−1, so that 𝜇 itself serves as the FB.
+However, if |𝛯|
+𝑇−1 is large, it could be very time-consuming to compute
+the forward subproblems on all scenarios. In these instances, 𝑀′ would
+be a relatively small value (but still much bigger than 𝑀).
+4. Case studies
+The proposed NHOP model and customized SDDiP algorithm are
+verified based on an exemplary 33-bus integrated energy network with
+3 HMMs and 2 RES-based microgrids (RMs), as shown in Fig. 3. Table 1
+exhibits the capacity sizing schemes of all these microgrids. Major
+techno-economical parameters for our operational planning model are
+listed in Table 2. The time-of-use (TOU) electricity prices are specified
+as in Table 3. Besides, we consider a one-year operation horizon
+
+===== PAGE 8 =====
+Journal of Energy Storage 85 (2024) 111125
+8
+X. Sun et al.
+Table 1
+Capacity configuration of HMMs and RMs.
+Microgrid Bus PV (kW) WT (kW) BS (kW) BS (kWh) ELZ (kW) HS (kg) SHS (kg) FC (kW) HWS (kWh) CWS (kWh) AC (kWh)
+HMM1 2 5000 4000 2000 4000 2000 200 8000 1000 1500 1200 1000
+HMM2 13 4000 5000 1500 3000 2000 150 5000 1000 1000 600 800
+HMM3 27 3000 3500 1200 3000 2000 100 4000 1000 1000 600 800
+RM1 24 4000 5000 1500 3000 0 0 0 0 0 0 0
+RM2 31 3000 4000 1000 3000 0 0 0 0 0 0 0
+Table 2
+Major techno-economical parameters for NHOP [31].
+Parameter Description Value
+𝜁𝑏𝑠∕𝜁𝑒𝑙𝑧∕𝜁𝑓 𝑐 Degradation cost factor of BS/ELZ/FC ($/kWh) 0.001
+𝜘𝑒𝑐 Penalty cost factor of electricity curtailment ($/kWh) 20
+𝜄
+𝑒𝑠∕𝜄ℎ𝑠∕𝜄𝑐𝑠 Penalty cost factor of electrical/heating/cooling load shedding ($/kWh) 20
+𝜒𝑒−𝑔 COP of ELZ for electricity-hydrogen conversion (kg/kWh) 0.022
+𝜒𝑔−𝑒 COP of FC for hydrogen-electricity conversion (kWh/kg) 9.09
+𝜒𝑔−ℎ COP of FC for hydrogen-heating conversion (kWh/kg) 19.91
+𝜒ℎ−𝑐 COP of AC for heating-cooling conversion 0.94
+Table 3
+TOU electricity price.
+Period (h) 1–8 9–10 11–14 15–17 18 19–22 23 24
+𝜚
+𝑡,𝑑,ℎ
+𝑖𝑚𝑝 ($/kWh) 0.0431 0.1135 0.1875 0.1135 0.1875 0.2058 0.1875 0.1140
+Fig. 3. 33-bus test network with HMMs and RMs.
+including four interdependent stages (𝑇 = 4), which corresponds to four
+seasons in order.
+Fig. 4 presents the typical varying patterns of RES outputs and
+multi-energy demands. The RES outputs and electrical demands are
+extracted from the operation data of real-world power grids in Northern
+China, while heating and cooling demands are simulated using EnergyPlus [32]. As in Fig. 4(a), the PV outputs demonstrate evident diurnal
+and seasonal rhythms, which are consistent with the variation trends
+of solar irradiation. On the one hand, the PV outputs climb up from
+morning to the noontime, reaching the climax at around 13:00 and
+monotonously decrease during the afternoon. On the other hand, the
+average PV outputs could be higher in a Summer day than Spring and
+Autumn, while reaching the lowest level in Winter. In contrast, the
+fluctuation of WT outputs (as in Fig. 4(b)) is more uncertain, which
+could be higher at a Spring day than the rest seasons. Also, its diurnal
+peak might appear in different time periods. As in Fig. 4(c), the daily
+variation of electrical demands can be described as ‘‘camel’’ curves,
+while their seasonal rhythm is less obvious. In addition, for typical
+residential or commercial areas, the heating demands mainly occur in
+Winter and reach a peak at early morning, while the cooling demands
+arise in Summer and reach a peak during the afternoon, as can be seen
+in Fig. 4(d).
+The numerical experiments are performed under the environment
+of MATLAB R2023b on a mobile workstation with Intel(R) Core(TM)
+i9-13900H processor and 16 GB RAM. In SDDiP procedure, we set 𝑀
+= 1. All the basic MIP and LP problems are solved using YALMIP Toolbox [33] and Gurobi 11.0 (a state-of-the-art commercial solver) [34].
+The solution gap of Gurobi keeps its default value. SDDiP terminates
+when RB becomes stable, and the time lime limit is set to 3600 s. Then,
+a forward pass is conducted complementally upon min {
+|𝛯|
+𝑇−1
+, 125}
+scenarios to calculate FB.
+4.1. Analysis of long-term operation results
+We first present the long-term operation scheme of HMMs under an
+average scenario to investigate the synergy of multi-type energy storage
+devices. Figs. 5–7 show the NHOP results of electrical, hydrogen,
+as well as heating and cooling subsystems, respectively. Each figure
+contains two or four typical days corresponding to different seasons,
+which captures the seasonal and diurnal patterns of system operation.
+Our results are elaborated and discussed as in the following:
+• Electrical Subsystem: According to Fig. 5, the operational decisions
+of electrical subsystem are made based on the varying patterns
+of RES outputs, electrical demands, and TOU electricity prices.
+As shown in Fig. 5(a), because the wind power resources are
+obviously more abundant in Spring than the other seasons while
+the demands level is relatively lower, the electrical demands in
+a typical Spring day can be mostly fulfilled by RES outputs.
+Moreover, during 8:00–18:00, since the summation of WT and
+PV generation exceeds the load demand, both the BSs and ELZs
+are activated to store the surplus energy. For such a Spring
+scenario, the regional electrical subsystem can autonomously operate without the support of utility power grid. The operation
+strategies in Autumn day (as in Fig. 5(c)) are similar to the Spring,
+except the needs for grid power imports and the less frequent
+utilization of energy storage devices. That is because the WT
+outputs are much lower along with a higher electrical demands
+level in Autumn. In comparison, the situations in Summer and
+Winter could be quite different, associating with the variation
+of heating and cooling demands. As exhibited in Fig. 5(b), for
+a typical Summer day, our optimization results suggest a mixed
+power supply scheme based on the generation of WTs, PVs and
+FCs. It mainly relies on utility power procurement during early
+morning (e.g., 1:00–7:00) to energize the electrolyzers under the
+valley of TOU prices, in preparation for satisfying the power and
+cooling demands in subsequent periods. The power import also
+occurs in night time (e.g., 20:00–24:00) when PVs’ generation
+is unavailable. Similarly, in Winter (see Fig. 5(d)), it intends to
+purchase power from the utility grid in the morning time but with
+a smaller amount, because the WTs’ generation is more abundant
+than Summer. Besides, the FCs operate under a relatively high
+setting point during 5:00–10:00 following the peak periods of
+heating demands.
+
+===== PAGE 9 =====
+Journal of Energy Storage 85 (2024) 111125
+9
+X. Sun et al.
+Fig. 4. Typical seasonal and daily varying patterns of RES outputs and multi-energy demands.
+Fig. 5. Seasonal operation scheme of electrical subsystem.
+• Hydrogen Subsystem: The hydrogen subsystem in an HMM is responsible for large-scale and long-term energy storage, also servesas the critical energy resource for supplying heating and cooling
+demands through the H-CCHP system. As shown in Figs. 6(a) and
+
+===== PAGE 10 =====
+Journal of Energy Storage 85 (2024) 111125
+10
+X. Sun et al.
+Fig. 6. Seasonal operation scheme of hydrogen subsystem.
+Fig. 7. Seasonal operation scheme of thermal supply subsystem.
+6(c), the ELZs, HSs and SHSs mainly work during the day time
+(e.g., 8:00–16:00) in Spring and Autumn for accommodating the
+excessive power of RES units. As a contrast, in Summer or Winter
+(see Figs. 6(b) and 6(d)), the hydrogen storage system starts up for
+an entire day to keep track with the demands pattern of cooling
+and heating consumption.
+• Thermal Supply Subsystem: Note that the cooling demands are only
+considered in Summer day, as in Fig. 7(a). It can be observed
+that ACs, which operate based on FCs’ generation, nearly remain
+active for a whole day to fulfill the cooling demands. Similarly,
+as exhibited in Fig. 7(b), the heating demands in Winter days are
+mainly served by FCs. Moreover, the heating and cooling storage facilities are activated for further enhancing the operational
+flexibility of H-CCHP system.
+Specifically, we study the long-term storage dynamics of SHSs. As
+shown in Fig. 8, the operational decisions of SHS demonstrate a clear
+seasonal pattern, i.e., charging in Spring and Autumn, while discharging in Summer and Winter. Together with the results in Figs. 4 and 6,
+we can see that the charging of SHS in transition seasons is not only
+for renewable energy utilization, but also to prepare for the upcoming
+requirements of large-scale thermal supply. From Spring to Summer,
+there also exists a significant increase in electrical loads. Along with
+the cooling demands, the SHS begins to release hydrogen for energizing
+the co-generation system. Besides, due to inadequacy of RES outputs
+in Winter, the SHS also operates under the energy discharging mode
+that facilitates the coordinated heat and power supply. Therefore, our
+results confirm the validity of SHSs for inter-seasonal energy regulation.
+4.2. Impact of renewable energy penetration
+Based on the case settings in Section 4.1, the influence of RES penetration on the operational economics and efficiency of multi-microgrid
+network is further explored. The capacity factor 𝛾𝑟𝑒𝑠 is introduced
+
+===== PAGE 11 =====
+Journal of Energy Storage 85 (2024) 111125
+11
+X. Sun et al.
+Fig. 8. Yearly storage states of SHS.
+Fig. 9. Economic and energy efficiency metrics with changing capacity of RES
+integration.
+to characterize the proportional changes of total RES capacity. With
+respect to a varying 𝛾𝑟𝑒𝑠, we present the values of OPEX and RES
+curtailment rate (RCR) in Fig. 9. In this case, the penalty costs are not
+considered in the evaluation of OPEXs. It can be seen that the OPEX
+decreases monotonously (from $3,740,832.09 to 0) with the increasing
+of 𝛾𝑟𝑒𝑠 (from 0.7 to 1.8). For a higher capacity of RES units, it needs
+less importing power through the utility grid, thus reducing the power
+procurement costs. When 𝛾𝑟𝑒𝑠 = 1.8, the cost of this part reduces to
+zero. The remaining OPEX is rather small (i.e., $4622.55), which only
+constitutes the operational costs of BSs, ELZs and FCs.
+On the other hand, the increase of 𝛾𝑟𝑒𝑠 would lead to a growing
+trend of RCR. We observe a more drastic increase of RCR under
+Spring scenario than the rest seasons and yearly average, which is
+consistent with the seasonal patterns of WT and PV outputs. When
+𝛾𝑟𝑒𝑠 increases from 0.7 to 1.8, the RCR in Spring grows sharply from
+0 to 52.23%. Differently, the changing of RCR in Autumn could be
+slower and more smooth, which, again, reflects the insufficiency of
+wind and solar resources in this season. Also, the RCR levels in Summer
+and Winter are generally higher than Autumn. It attributes to both
+the seasonal resource patterns and the influence of thermal supply. To
+ensure the reliable supply of cooling or heating demands, sometimes
+we may need FCs to generate more rather than fully utilizing the RES
+generation. So, the proposed NHOP method can help determine the
+proper ratios of energy curtailment under different season scenarios and
+RES penetrations.
+Fig. 10. Cost–benefit metrics with changing installed capacity of energy storage.
+4.3. Cost–benefit analysis for different storage sizing plans
+In this subsection, we make use of the NHOP model to conduct the
+cost–benefit analysis for different configuration plans of energy storage.
+Another capacity factor 𝜈𝑒𝑠 is introduced to quantify the proportional
+changes of storage capacity all over the multi-microgrid network. In
+Fig. 10, the annual capital expenditure of storage configuration (𝛷𝑐𝑎𝑝𝑒𝑥)
+is compared with the OPEX (𝛷𝑜𝑝𝑒𝑥) under different levels of 𝜈𝑒𝑠. Note
+that the penalty factors are considered and set to 0.2 when calculating
+𝛷𝑜𝑝𝑒𝑥. The capital cost 𝛷𝑐𝑎𝑝𝑒𝑥 can be attained according to Refs. [11,23,
+35]. The total system costs (i.e., 𝛷𝑡𝑜𝑡𝑎𝑙 = 𝛷𝑐𝑎𝑝𝑒𝑥+𝛷𝑜𝑝𝑒𝑥) are also depicted
+in Fig. 10 to assess the overall economical effectiveness.
+With the enlarging of 𝜈𝑒𝑠, we observe a monotonous increasing trend
+of 𝛷𝑐𝑎𝑝𝑒𝑥 along with the decline of 𝛷𝑜𝑝𝑒𝑥. As expected, 𝛷𝑐𝑎𝑝𝑒𝑥 grows linearly from $8,068,699.60 to $11,144,040.29. In contrast, the changing
+rate of 𝛷𝑜𝑝𝑒𝑥 may experience different phases. When 𝜈𝑒𝑠 changes from
+0 to 2, the operational cost drops very fast (decreasing by 79.14%).
+It could be induced by the dramatic declining of RES curtailment
+cost with more storage deployed. When 𝜈𝑒𝑠 changes from 2 to 4, the
+decreasing of 𝛷𝑜𝑝𝑒𝑥 slows down (reduces by 28.79%). In this phase,
+the decrease of OPEX mainly originates from the energy arbitrary of
+storage facilities, which is with a smaller unit cost than the curtailment
+penalties. As a summation of 𝛷𝑐𝑎𝑝𝑒𝑥 and 𝛷𝑜𝑝𝑒𝑥, 𝛷𝑡𝑜𝑡𝑎𝑙 first decreases
+when 𝜈𝑒𝑠 changes in the interval of [0, 1.5], then increases when 𝜈𝑒𝑠
+changes between [1.5, 4.0]. The lowest cost level ($10,764,844.83)
+can be achieved when 𝜈𝑒𝑠 = 1.5, which corresponds to a best tradeoff between investment and operational expenditures. Practically, the
+results in Fig. 10 could guide the system planners to select the optimal
+configuration of multi-type energy storage.
+The cost–benefit analysis is further implemented for different types
+of energy storage (including the batteries, hot and chilled water tanks,
+as well as the short-term and seasonal hydrogen storage), as presented
+in Fig. 11. The individual capacity factors 𝜈𝑘 are applied. As can be seen
+in Fig. 11(a), the total cost of BS decrease when 𝜈𝑏𝑠 changes from 0 to 1,
+but monotonously grows subsequently. It indicates that the high capital
+cost of BSs (mainly due to the capacity degradation) overweighs their
+effects on RES utilization and energy arbitrary. Following this result,
+a large capacity of BS installation may not be recommended. As in
+Figs. 11(b)–11(d), the total cost of other four storage types decreases
+monotonously with the increasing of 𝜈𝑘. In particular, the cost drop of
+HS is very sharp at the beginning while slows down when 𝜈𝐻𝑆 ≥ 1.5.
+After that, the change of 𝜈𝐻𝑆 could barely influence their cost variation.
+In comparison, the cost of seasonal storage system keeps declining at
+a fair rate, which demonstrates a more flexible design space for SHS
+deployment to improve the cost-efficiency.
+
+===== PAGE 12 =====
+Journal of Energy Storage 85 (2024) 111125
+12
+X. Sun et al.
+Fig. 11. Detailed cost–benefit analysis for different storage types.
+Table 4
+Value of stochastic solutions under different scenario trees.
+|𝛯| |𝛯|
+𝑇−1 𝛷𝑆
+($) 𝛷𝐷 ($) VSS
+2 8 7 131 591 7 314 917 2.51%
+3 27 5 430 004 5 636 096 3.66%
+4 64 6 251 382 6 367 591 1.83%
+These observations verify the effectiveness of our NHOP model for
+evaluating the cost-benefits of different storage technologies and their
+capacity sizing schemes, which thus could provide informative planning
+guidance for the HMMs.
+4.4. Value of uncertainty modeling
+In this subsection, we further verify the effectiveness of developing
+the MS-MIP extension to handle time-dependent supply–demand uncertainties. In particular, the value of stochastic solution (VSS) index
+is introduced to measure the cost-saving effects of our uncertainty
+modeling:
+𝑉 𝑆𝑆 =
+𝛷𝐷 − 𝛷𝑆
+𝛷𝐷
+× 100% (69)
+where 𝛷𝑆 denotes the objective value of stochastic model in (58). Also,
+by fixing the state variables in (58) as the solution of deterministic
+model (57), we can derive 𝛷𝐷 by resolving problem (58). Table 4
+presents the VSS metrics based on the operational results with 8, 27 and
+64 scenarios in a scenario tree. It can be seen that VSS keeps positive
+in all the instances with an average value of 2.67%, demonstrating
+that our MS-MIP formulation can effectively decrease the risk cost of
+microgrids operation.
+The instance with |𝛯| = 4 is utilized to elaborate the NHOP results
+with stochastic modeling. The stage-wise (seasonal) realizations of four
+selected scenarios are given in Table 5. For simplicity, we choose two
+parameters 𝜅
+𝑡
+𝑟𝑒𝑠
+and 𝜅
+𝑡
+𝑑𝑒𝑚𝑎𝑛𝑑 respectively representing the realization of
+RES generation and multi-energy demands (i.e., power, heating and
+cooling) of each season compared to the deterministic case. Fig. 12
+shows the SOC of SHS at the end of each season under these scenarios.
+As the starting stage, the SOC of SHSs keeps the same for all the
+Spring scenarios due to the non-anticipative requirements for multistage operational decision. For the subsequent stages, the varying of
+Table 5
+Seasonal realizations of RES generation and energy demands.
+Scenario Spring Summer Autumn Winter
+A
+𝜅
+𝑡
+𝑟𝑒𝑠
+1 0.8 1.4 0.9
+𝜅
+𝑡
+𝑑𝑒𝑚𝑎𝑛𝑑 1 1.4 0.6 0.9
+B
+𝜅
+𝑡
+𝑟𝑒𝑠
+1 0.8 1.4 1.2
+𝜅
+𝑡
+𝑑𝑒𝑚𝑎𝑛𝑑 1 1.4 0.6 0.8
+C
+𝜅
+𝑡
+𝑟𝑒𝑠
+1 1.4 1.2 1.4
+𝜅
+𝑡
+𝑑𝑒𝑚𝑎𝑛𝑑 1 0.6 0.8 0.6
+D
+𝜅
+𝑡
+𝑟𝑒𝑠
+1 1.2 0.9 1.2
+𝜅
+𝑡
+𝑑𝑒𝑚𝑎𝑛𝑑 1 0.8 0.9 0.8
+SOCs largely depends on the realization of uncertainties. For instance,
+compared to Scenario A, Scenario B is with higher level of RES outputs
+and lower energy demands in Winter. As a result, the SHS in Scenario
+A releases more hydrogen than in Scenario B. Such supply–demand
+gap is enlarged in Scenario C, which further restricts the utilization
+of SHS. In comparison to Scenario B, the final remaining hydrogen
+storage increases from 5868 kg to 17,000 kg. Hence, different from the
+deterministic model, the results of MS-MIP could assist the microgrids
+operators to flexibly adjust their operation and risk-hedging strategy
+against versatile practical situations.
+4.5. Computational tests
+The computational feasibility of using SDDiP to solve our stochastic
+formulation is examined and reported in 6. Note that a parallelization
+strategy is leveraged in the forward and backward passes to enhance
+the solution performance. For comparison, the results derived by the
+direct use of Gurobi (a state-of-the-art commercial solver) are also
+given. As in Table 6, Column 1 and 2 show the stage number (𝑇 = 4
+in all instances) and the number of actual realizations in each stage
+(|𝛯|
+𝑇−1), while Column 3 gives the total number of scenarios. Column
+4–8 presents the performance metrics of SDDiP, including FB, RB,
+remaining gap, number of iterations and the solution time. Column 9–
+11 provides the metrics of Gurobi, including FB, remaining gap and
+the solution time. Besides, all the algorithm implementations will be
+restricted by a time limit as 3600 seconds (s). By sharing the same RB
+
+===== PAGE 13 =====
+Journal of Energy Storage 85 (2024) 111125
+13
+X. Sun et al.
+Table 6
+Results of computational tests.
+𝑇 |𝛯| |𝛯|
+𝑇−1 SDDiP Gurobi
+FB RB Gap Iter Time (s) FB Gap Time (s)
+4
+1 1 617 826.61 616 538.76 0.21% 5 29.84 617 824.39 0.21% 6.41
+2 8 807 960.90 807 966.67 0.00% 8 54.38 807 959.35 0.00% 26.71
+3 27 610 803.16 610 767.42 0.01% 8 67.28 610 788.18 0.00% 151.87
+4 64 559 546.70 559 545.09 0.00% 10 96.74 559 546.19 0.00% 659.16
+5 125 566 890.74 566 547.74 0.06% 13 140.29 566 703.09 0.03% 2272.5
+6 216 655 269.41 654 692.02 0.09% 11 156.08 \ \ >3600
+10 1000 566 183.39 566 173.96 0.00% 13 193.16 \ \ >3600
+Fig. 12. Relationship between OPEX and RCR with RES installations.
+of SDDiP, the solution gaps of SDDiP and Gurobi can both be defined
+as:
+𝐺𝑎𝑝 =
+𝐹 𝐵 − 𝑅𝐵
+𝑅𝐵
+× 100%. (70)
+As shown in Table 6, SDDiP successfully deal with all instances,
+providing high-quality solutions in a gap of 0.22% with acceptable
+amount of time (less than 195 s). The solution time for the instance
+with 1 scenario is 29.84 s, whereas for the instance with 1000 scenarios
+is 193.16 s. The solution time only increases by 6.47 times when the
+size of scenario tree is enlarged by 1000 times. As a contrast, the
+solution time of Gurobi rises very fast with the growth of problem
+scale. Although Gurobi demonstrates a better performance for smallscale instances (when |𝛯|
+𝑇−1 = 1 or 8), it is defeated by SDDiP
+when 27 or more stochastic scenarios are involved. In some instances,
+SDDiP could even reduce the computation time by more than 94%.
+When |𝛯|
+𝑇−1 ≥ 216, Gurobi is incapable to find a feasible solution
+in predefined time limit. In comparison, SDDiP can readily address
+a very challenging problem with 1000 scenarios within only 193.16
+s. Therefore, the proposed SDDiP algorithm provides a powerful and
+scalable computational tool to deal with large-scale MS-MIPs.
+5. Conclusion and discussions
+In this paper, we propose an MS-MIP method to support the networked HMMs operation planning considering seasonal and short-term
+energy storage. To relieve the computational burden of computing
+large-scale MS-MIP, a nested decomposition algorithm based on SDDiP
+is customized and developed. Case studies on a 33-bus integrated energy network verify the effectiveness of the proposed NHOP model and
+SDDiP algorithm. Some key observations and insights are summarized
+as follows:
+• The seasonal hydrogen storage provides a long-term and large-scale
+energy regulation capability. Our results suggest that the SHS
+charges in transitions seasons (Spring and Autumn) for fully utilizing the RES generation, while prepares for the upcoming demands
+of centralized cooling and heating consumption in Summer and
+Winter. The coordination of SHS with short-term energy storage
+helps achieve a higher operational flexibility for mitigating the
+demand–supply mismatches in a district multi-energy network.
+• The proposed operation planning method offers an analytical tool to
+generate economical operation strategies for networked HMMs.
+Moreover, it can provide an informative planning guidance for the
+capacity configuration of RES units and multi-type energy storage. Compared to conventional storage equipment, SHS could be
+with a more flexible design space for enhancing the system-level
+economic benefits.
+• The multi-stage stochastic formulation could help the grid operators to flexibly adjust their operation strategies against versatile
+practical situations, which effectively decreases the risk cost. Also,
+the customized SDDiP algorithm provides a powerful and scalable
+computational tool to deal with large-scale MS-MIPs. Compared
+to a state-of-the-art commercial solver (i.e., Gurobi), our method
+has reduced the solution time by more than 94% when ≥125
+scenarios are involved.
+CRediT authorship contribution statement
+Xunhang Sun: Writing – original draft, Software, Methodology.
+Xiaoyu Cao: Writing – review & editing, Supervision, Methodology,
+Conceptualization. Miaomiao Li: Visualization, Investigation. Qiaozhu
+Zhai: Validation, Methodology. Xiaohong Guan: Supervision, Funding
+acquisition.
+Declaration of competing interest
+The authors declare that they have no known competing financial interests or personal relationships that could have appeared to
+influence the work reported in this paper.
+Data availability
+The authors do not have permission to share data.
+Acknowledgments
+The authors would like to thank Mr. Jinhui Liu, Miss Xiyan Jian,
+Mr. Wangyi Guo and Mr. Wenhao Jia with Xi’an Jiaotong University for
+their selfless helps, constructive comments, and valuable suggestions.
+References
+[1] Intergovernmental Panel on Climate Change, Global warming of 1.5◦C, 2018,
+https://www.ipcc.ch/sr15.
+[2] International Energy Agency, The role of CCUS in low-carbon power systems, 2020, https://www.iea.org/reports/the-role-of-ccus-in-low-carbon-powersystems.
+[3] International Energy Agency, The future of hydrogen, 2019, https://www.iea.
+org/reports/the-future-of-hydrogen.
+
+===== PAGE 14 =====
+Journal of Energy Storage 85 (2024) 111125
+14
+X. Sun et al.
+[4] Jude A Okolie, Biswa R Patra, Alivia Mukherjee, Sonil Nanda, Ajay K Dalai,
+Janusz A Kozinski, Futuristic applications of hydrogen in energy, biorefining,
+aerospace, pharmaceuticals and metallurgy, Int. J. Hydrogen Energy 46 (13)
+(2021) 8885–8905.
+[5] Xunhang Sun, Xiaoyu Cao, Bo Zeng, Qiaozhu Zhai, Xiaohong Guan, Multistage
+dynamic planning of integrated hydrogen-electrical microgrids under multiscale
+uncertainties, IEEE Trans. Smart Grid 14 (5) (2023) 3482–3498.
+[6] C.C. Chan, The state of the art of electric, hybrid, and fuel cell vehicles, Proc.
+IEEE 95 (4) (2007) 704–718.
+[7] Nader A. El-Taweel, Hadi Khani, Hany E.Z. Farag, Hydrogen storage optimal
+scheduling for fuel supply and capacity-based demand response program under
+dynamic hydrogen pricing, IEEE Trans. Smart Grid 10 (4) (2019) 4531–4542.
+[8] Wenguo Liu, Haibin Zuo, Jingsong Wang, Qingguo Xue, Binglang Ren, Fan Yang,
+The production and application of hydrogen in steel industry, Int. J. Hydrogen
+Energy 46 (17) (2021) 10548–10569.
+[9] Steven J. Davis, Nathan S. Lewis, Matthew Shaner, et al., Net-zero emissions
+energy systems, Science 360 (6396) (2018) eaas9793.
+[10] Iain Staffell, Zero carbon infinite COP heat from fuel cell CHP, Appl. Energy 147
+(2015) 373–385.
+[11] Jinhui Liu, Zhanbo Xu, Jiang Wu, Kun Liu, Xiaohong Guan, Optimal planning
+of distributed hydrogen-based multi-energy systems, Appl. Energy 281 (2021)
+116107.
+[12] Hadi Khani, Nader A. El-Taweel, Hany Essa Zidan Farag, Supervisory scheduling
+of storage-based hydrogen fueling stations for transportation sector and distributed operating reserve in electricity markets, IEEE Trans. Ind. Inform. 16
+(3) (2020) 1529–1538.
+[13] Gunther Glenk, Stefan Reichelstein, Economics of converting renewable power
+to hydrogen, Nat. Energy 4 (3) (2019) 216–222.
+[14] Xiangxiang Dong, Jiang Wu, Zhanbo Xu, Kun Liu, Xiaohong Guan, Optimal
+coordination of hydrogen-based integrated energy systems with combination of
+hydrogen and water storage, Appl. Energy 308 (2022) 118274.
+[15] Wentao Huang, Bohan Zhang, Leijiao Ge, Jun He, Wenlong Liao, Peilei Ma, Dayahead optimal scheduling strategy for electrolytic water to hydrogen production
+in zero-carbon parks type microgrid for optimal utilization of electrolyzer, J.
+Energy Storage 68 (2023) 107653.
+[16] Xiaolun Fang, Wei Dong, Yubin Wang, Qiang Yang, Multiple time-scale energy
+management strategy for a hydrogen-based multi-energy microgrid, Appl. Energy
+328 (2022) 120195.
+[17] Yi Yuan, Tao Ding, Xinyue Chang, Wenhao Jia, Yixun Xue, A distributed
+multi-objective optimization method for scheduling of integrated electricity and
+hydrogen systems, Appl. Energy 355 (2024) 122287.
+[18] Jinhui Liu, Xiaoyu Cao, Zhanbo Xu, Xiaohong Guan, Xiangxiang Dong, Chao
+Wang, Resilient operation of multi-energy industrial park based on integrated
+hydrogen-electricity-heat microgrids, Int. J. Hydrogen Energy 46 (57) (2021)
+28855–28869.
+[19] Hamed Haggi, Wei Sun, James M. Fenton, Paul Brooker, Proactive rollinghorizon-based scheduling of hydrogen systems for resilient power grids, IEEE
+Trans. Ind. Appl. 58 (2) (2022) 1737–1746.
+[20] Xiong Wu, Shixiong Qi, Zhao Wang, Chao Duan, Xiuli Wang, Furong Li, Optimal
+scheduling for microgrids with hydrogen fueling stations considering uncertainty
+using data-driven approach, Appl. Energy 253 (2019) 113568.
+[21] Paolo Gabrielli, Alessandro Poluzzi, Gert Jan Kramer, Christopher Spiers, Marco
+Mazzotti, Matteo Gazzani, Seasonal energy storage for zero-emissions multienergy systems via underground hydrogen storage, Renew. Sustain. Energy Rev.
+121 (2020) 109629.
+[22] Ahmed M. Elberry, Jagruti Thakur, Jason Veysey, Seasonal hydrogen storage for
+sustainable renewable energy integration in the electricity sector: A case study
+of Finland, J. Energy Storage 44 (2021) 103474.
+[23] Guangsheng Pan, Wei Gu, Yuping Lu, Haifeng Qiu, Shuai Lu, Shuai Yao, Optimal
+planning for electricity-hydrogen integrated energy system considering power to
+hydrogen and heat and seasonal storage, IEEE Trans. Sustain. Energy 11 (4)
+(2020) 2662–2676.
+[24] Zhentong Shao, Xiaoyu Cao, Qiaozhu Zhai, Xiaohong Guan, Risk-constrained
+planning of rural-area hydrogen-based microgrid considering multiscale and
+multi-energy storage systems, Appl. Energy 334 (2023) 120682.
+[25] Zhongjie Guo, Wei Wei, Jiayu Bai, Shengwei Mei, Long-term operation of isolated
+microgrids with renewables and hybrid seasonal-battery storage, Appl. Energy
+349 (2023) 121628.
+[26] Hengyi Li, Boyu Qin, Yu Jiang, Yuhang Zhao, Wen Shi, Data-driven optimal
+scheduling for underground space based integrated hydrogen energy system, IET
+Renew. Power Gener. 16 (12) (2022) 2521–2531.
+[27] Xin Chen, Wenchuan Wu, Boming Zhang, Chenhui Lin, Data-driven DG capacity
+assessment method for active distribution networks, IEEE Trans. Power Syst. 32
+(5) (2017) 3946–3957.
+[28] Xiaoyu Cao, Tianxiang Cao, Feng Gao, Xiaohong Guan, Risk-averse storage
+planning for improving RES hosting capacity under uncertain siting choices, IEEE
+Trans. Sustain. Energy 12 (4) (2021) 1984–1995.
+[29] Alexander Shapiro, Darinka Dentcheva, Andrzej Ruszczynski, Lectures on
+Stochastic Programming: Modeling and Theory, Third Edition, SIAM, 2021.
+[30] Jikai Zou, Shabbir Ahmed, Xu Andy Sun, Stochastic dual dynamic integer
+programming, Math. Program. 175 (2019) 461–502.
+[31] Yuzhou Zhou, Qiaozhu Zhai, Zhanbo Xu, Lei Wu, Xiaohong Guan, Multi-stage
+adaptive stochastic-robust scheduling method with affine decision policies for
+hydrogen-based multi-energy microgrid, IEEE Trans. Smart Grid (2023).
+[32] EnergyPlus, Energy simulation software, https://energyplus.net/.
+[33] J. Löfberg, YALMIP : A Toolbox for Modeling and Optimization in MATLAB, in:
+Proceedings of the CACSD Conference, Taipei, Taiwan, 2004.
+[34] Gurobi Optimization, LLC, Gurobi optimizer reference manual, 2023.
+[35] Xiaoyu Cao, Xunhang Sun, Zhanbo Xu, Bo Zeng, Xiaohong Guan, Hydrogenbased networked microgrids planning through two-stage stochastic programming
+with mixed-integer conic recourse, IEEE Trans. Autom. Sci. Eng. 19 (4) (2022)
+3672–3685.

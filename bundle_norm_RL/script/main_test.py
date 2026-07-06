@@ -751,7 +751,7 @@ def collect_configs():
     return configs, config_info
 
 if __name__ == "__main__":
-    experiment_name = "exp_17"
+    experiment_name = "exp_18"
     main(
         experiment_name=experiment_name,
         train_experiment_name=experiment_name,

@@ -144,9 +144,19 @@ class LevelBundleConfig:
 
     @classmethod
     def from_pkl(cls, file_path):
-        """从pickle文件加载LevelBundleConfig对象"""
+        """从pickle文件加载LevelBundleConfig对象（兼容旧 pkl 缺少增量参数的情况）"""
         with open(file_path, "rb") as f:
-            return pickle.load(f)
+            obj = pickle.load(f)
+        # 兼容旧 pkl：若缺少增量形式参数，补充默认值
+        if not hasattr(obj, 'rho'):
+            obj.rho = 1.0
+        if not hasattr(obj, 'B_t'):
+            obj.B_t = None
+        if not hasattr(obj, 'norm_bound_type'):
+            obj.norm_bound_type = "l1"
+        if not hasattr(obj, 'weights'):
+            obj.weights = None
+        return obj
 
 
 # 问题参数

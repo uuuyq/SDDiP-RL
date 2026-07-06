@@ -1,0 +1,3243 @@
+===== PAGE 1 =====
+IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING, VOL. 22, 2025 9285
+Decentralized Coordination of Multiple Buildings
+With Renewable Energy Resource
+and Electric Vehicles
+Fengxia Liu , Student Member, IEEE, Zhanbo Xu , Member, IEEE, Kun Liu, Member, IEEE,
+Haoming Zhao , Student Member, IEEE, Jiang Wu , Member, IEEE, Yuzhou Zhou , Member, IEEE,
+and Xiaohong Guan , Life Fellow, IEEE
+Abstract— With the popularity of electric vehicles (EVs) and
+renewable energy sources (RES), the flexibility of charging and
+discharging of EVs and the intermittency of RES have brought
+challenges to building operations. Considering the mobility of
+EVs as commuting tools between buildings and the uncertainty
+of RES, it is of great practical significance to coordinate multiple
+buildings with RES and EVs on the premise of meeting the state
+of energy (SOE) requirements of the future trip. We formulate
+this coordination problem as a stochastic centralized mixed
+integer linear programming problem. A polyhedral convex set
+is constructed to describe the SOE uncertainty of EVs. New
+nonanticipative constraints (NCs) are derived through forward
+recursion based on constructed scenarios to guarantee the allscenario-feasibility (ASF) and nonanticipativity of the decision.
+A Lagrangian relaxation-based decentralized all-scenario-feasible
+(LR-DASF) algorithm is developed to solve the centralized
+optimization problem in a decomposition and coordination way.
+In this method, the optimal ASF solution can be obtained with
+a fast convergence rate by updating Lagrangian multipliers
+without solving all subproblems with NCs. The performance of
+the LR-DASF algorithm is verified by numerical results, which
+shows that the algorithm can guarantee the ASF of the solution,
+as well as promote computational efficiency.
+Note to Practitioners—EVs as energy storage devices bring
+energy exchanges between buildings accompanying the mobility
+of EVs which is an opportunity to improve the energy efficiency
+of multiple buildings. However, as commuting tools, the SOE of
+EVs must be guaranteed to be larger than the trip requirement
+over the randomness of RES generation. Furthermore, solving
+the coordinated optimization problem of multiple buildings with
+RES and EVs still faces computational complexity challenge
+due to the spatio-temperal coupling between EVs and buildings,
+Received 28 March 2024; revised 6 October 2024; accepted 12 November
+2024. Date of publication 11 December 2024; date of current version 28 March
+2025. This article was recommended for publication by Associate Editor
+X. Zuo and Editor T. Nishi upon evaluation of the reviewers’ comments.
+This work was supported in part by the National Natural Science Foundation
+of China under Grant 62122062, Grant 62192755, Grant 62192752, and Grant
+62192750. (Corresponding author: Zhanbo Xu.)
+Fengxia Liu, Zhanbo Xu, Kun Liu, Haoming Zhao, Jiang Wu, and
+Yuzhou Zhou are with the Systems Engineering Institute, MOE KLINNS
+Laboratory, Xi’an Jiaotong University, Xi’an, Shaanxi 710049, China (email: fengxialiu@stu.xjtu.edu.cn; zbxu@sei.xjtu.edu.cn; kliu@sei.xjtu.edu.cn;
+zhao_haoming@hotmail.com; jwu@sei.xjtu.edu.cn; yzzhou@sei.xjtu.edu.cn).
+Xiaohong Guan is with the Systems Engineering Institute, MOE KLINNS
+Laboratory, Xi’an Jiaotong University, Xi’an, Shaanxi 710049, China, and
+also with the Center for Intelligent and Networked Systems (CFINS),
+Department of Automation, Tsinghua University, Beijing 100084, China
+(e-mail: xhguan@xjtu.edu.cn).
+Digital Object Identifier 10.1109/TASE.2024.3504718
+which may lead to costly computational effort in the premise
+of guaranteeing the feasibility and nonanticipativity of the
+decision over the uncertainties in practice. Therefore, in order
+to overcome the above challenges, an LR-DASF algorithm is
+developed in this paper to solve the coordinated optimization
+problem of multiple buildings with RES and EVs. Based on the
+algorithm, for the system operator, it updates and broadcasts
+the Lagrangian multipliers information to the local coordinators
+of buildings. For each building, the local coordinator can make
+ASF decisions based on new NCs with the information obtained
+from the system operator independently to guarantee the SOE
+requirement. The method developed in this paper can make faster
+optimal decisions without perceivable degradation in accuracy
+and guarantee the SOE requirement of EVs simultaneously,
+to meet the requirements of feasibility and computational
+efficiency of decision making in practice. It is conducive to the
+future application of LR-DASF in the coordinated optimization
+of buildings and EVs at the city or regional scale.
+Index Terms— Decentralized optimization, renewable energy
+sources, all scenarios feasible method, Lagrange relaxation,
+coordination of EVs and buildings.
+NOMENCLATURE
+Indices and Sets
+k Index of time period, k ∈ {1,2,...,K}.
+l Index of iteration, l ∈ N.
+m,h Index of buildings, m,h ∈ {1,2,...,M}.
+n Index of EVs, n ∈ {1,2,...,N}.
+s Index of scenarios, s ∈ {1,2,...,S}.
+Parameters
+P Big number.
+τ Period duration, (h).
+E
+c Battery capacity of each EV, (kWh).
+E
+min Minimum battery capacity of each EV,
+(kWh).
+µ0 Electric drive efficiency, (kWh/km).
+ωs Weighting factor of scenario s.
+ξm,k SOE variation of EVs of building m at k,
+(kWh).
+p
+PV
+m,k
+Power from PV system of building m at k,
+(kW).
+1558-3783 © 2024 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission.
+See https://www.ieee.org/publications/rights/index.html for more information.
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:22:46 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 2 =====
+9286 IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING, VOL. 22, 2025
+D
+ev
+n,k
+Location of n-th EV at k, D
+ev
+n,k ∈
+{0,1,2,...,M}, 0 means on the road, others
+are the buildings’ number.
+d
+ev
+n,k New trip distance of n-th EV at k, (km).
+E0,k SOE of EVs on road at k, (kWh).
+E
+consd
+k
+SOE consumed by all EVs at k, (kWh).
+E
+ev_need
+n,k
+SOE requirement for the new trip of n-th
+EV at k, (kW).
+Nm,k Number of EVs of building m at k.
+N
+I
+m,k Number of EVs comes to building m during
+k.
+N
+O
+m,k Number of EVs departs building m during
+k.
+p
+b_base
+m,k Baseline load of building m at k, (kW).
+T
+re f
+m,k Reference thermostat setpoint temperature
+of building m at k, (◦).
+f(Tm,k) Load flexibility ratio related to thermostat
+setpoint temperature, Tm,k.
+∆
+−
+m,k
+(∆
++
+m,k
+) Lower (Upper) physical SOE bound of EVs
+of building m at k, (kWh).
+η
++(η−) Charging (Discharging) efficiency coefficient of each EV.
+Ωk(Φk) Polyhedral convex set of ξm,k (p
+PV
+m,k
+).
+c
+buy
+k
+(c
+sell
+k
+) Buying (Selling) price from (to) grid at k,
+(RMB/kWh).
+p
+c
+(p
+d
+) Rated charging (discharging) power of each
+EV, (kW).
+p
+pile_c
+m (p
+pile_d
+m ) Rated charging (discharging) power of
+charging piles of building m, (kW).
+p
+ev_c
+m,k
+(p
+ev_d
+m,k
+) Maximum charging (discharging) power of
+EVs of building m at k, (kW).
+p
+b
+m,k
+(p
+b
+m,k
+) Lower (Upper) building power of building
+m at k, (kW).
+ξ
+m,k
+(ξ m,k
+) Lower (Upper) bound of ξm,k, (kWh).
+ξ
+s
+m,k
+(ξ
+s
+m,k
+) Minimum (Maximum) of ξm,kin constructed scenarios, (kWh).
+E0,k
+(E0,k) Lower (Upper) bound of E0,k, (kWh).
+Em,k
+(Em,k) Lower (Upper) bound of Em,k
+, (kWh).
+p
+G(p
+G) Lower (Upper) power bound of transmission line, (kW).
+γ
+1
+m,k
+,..., γ
+6
+m,k
+Parameters1 for function f(Tm,k).
+κ
+1
+m,k
+,...,κ
+6
+m,k
+Parameters2 for function f(Tm,k).
+E(·) Expectation functions.
+g1(·),g2(·),h(·) Ancillary functions.
+I(·) Indicator function.
+Variables
+Em,k SOE of EVs of building m at k, (kWh).
+Tm,k Current thermostat setpoint temperature of
+building m at k, (◦).
+p
+b
+m,k Current load of building m at k, (kW).
+p
+buy
+m,k
+(p
+sell
+m,k
+) Buying (Selling) electrical power from (to)
+grid of building m at k, (kW).
+p
+ev_c
+m,k
+(p
+ev_d
+m,k
+) Charging (Discharging) power of EVs of
+building m at k, (kW).
+E
+min
+m,k
+(E
+max
+m,k
+) Minimum (Maximum) SOE of EVs of
+building m at k, (kWh).
+z
+buy
+m,k
+(z
+sell
+m,k
+) Binary variable. 1 means buying (selling)
+action; 0 otherwise.
+z
+ev_c
+m,k
+(z
+ev_d
+m,k
+) Binary variable. 1 means charging (discharging) action; 0 otherwise .
+am,k Decision variable vector of building m at k.
+a
+l
+m Vector am of l-th iteration, while am =
+[am,1,...,am,K].
+λ
+s,+
+k
+,λ
+s,−
+k
+Lagrange multipliers for scenario s at k.
+λ
++,l
+,λ
+−,l Vector λ+
+,λ
+−
+of l-th iteration, while λ
++ =
+[λ
+s,+
+k
+]K×S, λ
+− = [λ
+s,−
+k
+]K×S.
+I. INTRODUCTION
+E
+NERGY consumption of buildings, which accounts for
+40% of the total energy consumption [1], has drawn great
+interests in its energy efficiency improvement for reducing
+carbon emissions [2], [3]. The majority of current works
+achieve this goal by imposing renewable energy sources
+(RES) and implementing energy management of integrated
+RES, energy storage system (ESS), and smart demand energy
+devices [4], [5], [6], [7]. However, the inherent intermittency
+of RES has a significant impact on energy efficiency due to
+insufficient flexibility in building energy demand.
+EVs can be considered as distributed ESS when parking
+at buildings. On one hand, EVs show extensive flexibility
+of charging as the deferrable loads through grid-to-vehicle
+(G2V) technology [8]. On the other hand, EVs can be treated
+as power suppliers by discharging through vehicle-to-grid
+(V2G) technologies [9]. After decades of rapid growth, the
+quantity of global EVs has exceeded 26 million in 2022, and
+half of them are in China [10]. The popularity of EVs has
+significantly reached a prominent level that is conducive to
+compensating the intermittency and randomness of RES [11],
+[12]. Therefore, it is promising to utilize EVs as ESS to
+improve the energy efficiency of building energy systems.
+However, as commuting tools, EVs travel between buildings, for example, leaving home to go to office buildings or
+other types of buildings in the morning, and returning home
+from office buildings or other types of buildings in the evening.
+Therefore, it is necessary to guarantee that the state of energy
+(SOE) of EVs is larger than the energy consumed on the
+road when leaving, which is a hard constraint. In addition, the
+movement of EVs between buildings not only brings energy
+migration but also spatio-temporal coupled constraints.
+In this context, considering the uncertainty of RES
+generation and the spatio-temporal coupled SOE uncertainty of
+EVs, exploring the coordinated optimization of buildings with
+RES and EVs on the premise of meeting SOE requirements
+poses great practical difficulties:
+First, nonanticipativity. It means that the decision made at
+the current stage should not rely on the future realization
+of the uncertainty [13]. So, new nonanticipative constraints
+(NCs) should be derived to guarantee the nonanticipativity.
+Second, all-scenario-feasibility (ASF). It means the decision
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:22:46 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 3 =====
+LIU et al.: DECENTRALIZED COORDINATION OF MULTIPLE BUILDINGS WITH RENEWABLE ENERGY RESOURCE AND EVs 9287
+made at the current stage should deal with any possible future
+realization of the uncertainty to satisfy the SOE requirements
+of future trips. Third, the curse of dimensionality. The decision
+space grows exponentially with the rise of the scale of
+the buildings and EVs due to the spatio-temporal coupled
+characteristics.
+Based on the aforementioned discussion, the motivation of
+this paper is to establish a coordinated formulation to address
+the above concerns. In comparison to existing studies, the main
+contributions of this paper can be summarized below.
+1) The coordinated optimization of buildings with RES
+and EVs is formulated as a stochastic centralized mixed
+integer linear programming (MILP) problem considering the
+spatio-temporal coupled constraints and uncertainties. In this
+problem, the SOE of EVs is spatio-temporal coupled and
+uncertain, and the RES generation is also uncertain. The
+polyhedral convex set is employed to depict the uncertainty
+based on the information of EVs’ travel trajectories. Then,
+based on the characteristics of the polyhedral convex set, any
+realization of the uncertainty can be represented as the convex
+combination of the vertices of the polyhedral convex set.
+Therefore, the finite scenarios constructed based on vertices of
+the polyhedral convex set are the prerequisite and foundation
+for guaranteeing the nonanticipativity and ASF in this paper.
+2) New NCs are derived through forward recursion based
+on constructed scenarios, auxiliary variables and functions.
+The new NCs with auxiliary variables and functions make
+the decision independent of any realization of the uncertainties
+which means it can guarantee the nonanticipativity of the decision. Therefore, the combination of new NCs and constructed
+scenarios can not only guarantee the nonanticipativity, but also
+guarantee the ASF.
+3) A Lagrangian relaxation-based decentralized all-scenariofeasible (LR-DASF) algorithm is proposed to solve the
+centralized optimization problem in a decomposition and
+coordination way. The LR-DASF algorithm makes each
+building focus on its subproblem through the local coordinator
+according to the Lagrangian multipliers from the system
+operator, and the system operator updates new Lagrangian
+multipliers without collecting all decisions as long as any
+building can reduce the Lagrangian function. The ASF of the
+optimal solution is also proved.
+The performance of the LR-DASF algorithm is verified
+by a series of case studies with parameters acquired from
+government websites or actual data. Firstly, a small-scale
+deterministic case study is tested to validate the energy
+efficiency improvement of the method developed in this paper.
+Then, another small-scale case study under uncertainty is
+tested to validate the ASF. Finally, large-scale case studies are
+tested to demonstrate computational efficiency improvement,
+accuracy and scalability. Numerical results show that the
+solution of LR-DASF is less than 0.01% compared with
+the centralized method, while the computational efficiency
+is improved by at least 6 times. The results shed light
+on the coordination optimization of multiple buildings with
+the increasing number of EVs in practical engineering
+applications. Our method can make faster optimal decisions
+without perceivable degradation in accuracy and guarantee the
+SOE requirement of EVs simultaneously. It is conducive to the
+future application of LR-DASF in the coordinated optimization
+of buildings and EVs at the city or regional scale.
+This paper is organized as follows. In Section II, the
+related works are briefly reviewed. In Section III, the
+problem is formulated as a stochastic MILP problem under
+uncertainty. In Section IV, the LR-DASF algorithm is
+presented. In Section V, case studies and numerical results
+are shown. In Section VI, the limitations of our work and
+future works are discussed. A brief conclusion is summarized
+in Section VII.
+II. LITERATURE REVIEW
+In recent years, more and more attentions have been
+attracted to the coordinated optimization of buildings integrating RES and EVs due to the flexibility of charging and
+discharging during the long parking time at the building.
+In terms of the scale of buildings, they are mainly classified
+as coordinated optimization of a single building or multiple
+buildings. For a single building, EVs are treated as ESS or
+deferrable loads. For example, Sangswang and Konghirun [14]
+developed and implemented optimal control strategies on a
+hardware platform for a home microgrid integrating PV, ESS,
+and EVs. Saber et al. [15] developed a novel transactive
+energy market scheme for a residential building to determine
+the charging/discharging action of plug-in EVs and then
+employed the model predictive control (MPC) algorithm
+to tackle the uncertainties of demand and PV generation.
+Liu et al. [16] proposed a transactive real-time EV charging
+management scheme for a commercial building to track the
+fluctuating PV generation. Wu et al. [17] employed a twostage stochastic programming framework for a large office
+building to coordinate EVs and PV, optimizing the energy
+management of the building. Xu et al. [18] proposed a
+scenario-based stochastic optimization method for a shopping
+mall considering PV and EVs.
+For the coordination of multiple buildings, EVs are regarded
+as portable energy storage media. For example, Ojand and
+Dagdougui [19] presented a curtailable demand response
+scheduling model in a residential community exploiting
+the flexibility of RES and EVs. Du et al. [20] presented
+a coordinated energy dispatched scheme for autonomous
+microgrids equipped with RES, ESS and Plug-in EVs.
+Yan et al. [21] presented the optimized operation of an
+EV charging station and a commercial building aiming to
+reduce operational costs. It can be seen that the above
+works have improved the energy efficiency of buildings by
+the coordination of RES and EVs. However, those works
+ignore the spatio-temporal coupled flexibility obtained by the
+mobility of EVs between buildings.
+Recently, some researchers have focused on the coordination of multiple buildings considering the spatio-temporal
+coupled flexibility caused by EVs’ mobility. For example,
+Roccotelli et al. [22] adopted the MonteCarlo simulation to
+generate scenarios for the smart district energy management of
+buildings, EVs, RES and ESS, representing the mobility of EV
+and other uncertainties. Huang et al. [23] and Yang et al. [24]
+both employed Markov chain to depict the mobility of EV.
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:22:46 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 4 =====
+9288 IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING, VOL. 22, 2025
+An event-based control policy is proposed for the coordination
+of buildings equipped with PV, EV charging and hydrogen
+energy storage [23]. A distributed policy is proposed for the
+coordination of EV charging and wind power in a microgrid
+of buildings [24]. However, these works have exploited the
+flexibility of individual EVs rather than the aggregated EVs,
+which makes them unsuitable for large-scale EVs because the
+decision space exponentially increases with the rise of EVs
+number. Therefore, this paper focuses on the coordination
+of flexibility of aggregated EVs, and multiple buildings with
+RES, considering the uncertainties of RES generation and SOE
+of EVs, on the premise of meeting SOE requirements for the
+next trip.
+The optimization problem with uncertainties has been
+studied for decades, and there are many methods to tackle
+the uncertainties. Those methods can be divided into two
+groups: the first group is based on the distribution information,
+such as the scenario-based method [22]. It can achieve
+better expected objective value but may be infeasible for
+the scenarios not included. The other group is based on the
+uncertainty set [25], [26], [27], [28], [29], [30], [31], [32],
+[33], [34], [35], [36], such as the two-stage robust optimization
+(RO) methods [25], [31], [32], [33], the adjustable RO
+methods [27], [28], [29], [34], the multistage RO methods [35],
+the distributed RO methods [27], [28], and the all-scenariofeasible (ASF) method [13], [36]. The two-stage RO methods
+are to find a certain solution for the worst scenario, and
+the optimal solutions tend to be rather conservative and
+infeasible in other certain situations. The adjustable RO
+methods and the multistage RO methods are developed to
+address the conservativeness, and the decision process is
+usually much more complicated because the decision cannot
+be made until the realization of the uncertainty happens.
+The distributed RO methods are developed to improve the
+computational efficiency under Lagrangian relaxation, while
+the conservativeness and the infeasibility are the same as
+the two-stage RO methods. The ASF methods are introduced
+to address the nonanticipativity and infeasibility. Due to the
+characteristics of EVs, as commuting tools, the feasibility
+of decision-making is the most important thing, which can
+guarantee the SOE requirements for the trip. So the ASF
+method is adopted in this paper to guarantee that the decision
+made at the current stage can deal with any possible future
+realization of the uncertainties to satisfy the SOE requirements
+of future trips.
+Due to the curse of dimensionality caused by the spatiotemporal coupled constraints, the computational burden of
+the ASF method increases exponentially with the rise of
+the scale of the buildings and EVs. Decentralization is an
+effective technique to improve computational efficiency and
+scalability [24], [27], [28], [37], compared to centralized
+approaches. One form of the decentralized framework,
+as shown in [37], solves all subproblems in parallel without
+the system operator exchanging information, however, its
+convergence and efficiency can not be guaranteed due to the
+spatio-temporal coupled flexibility caused by EVs’ mobility.
+The second form of the decentralized framework, as shown
+in [24], [27], and [28], also solves all subproblems in
+parallel, but with the system operator exchanging information
+with different buildings, which may have better performance
+in efficiency with the spatio-temporal coupled uncertainty.
+Therefore, this paper proposes a decentralized ASF algorithm
+under the Lagrangian relax framework, i.e. LR-DASF, to solve
+the coordinated optimization problem in a decomposition and
+coordination way to guarantee nonanticipativity, ASF and
+computational efficiency.
+For convenience, a detailed comparison between our work
+and existing works is summarized in Table I. The comparison
+mainly takes 7 aspects into account including the terms
+of building number, the spatio-temporal coupled uncertainty,
+nonanticipativity, ASF, etc.
+III. PROBLEM FORMULATION
+In this section, the problem of the coordination of multiple
+buildings with RES and EVs under uncertainties is formulated
+with the objective of minimizing the system operation cost,
+on the premise of meeting the SOE requirements for the coming trip. The system description is shown in subsection III-A.
+The model of EVs and the model of building load’s flexibility
+are presented in subsections III-B and III-C, respectively. The
+operation constraints and the objective function of the problem
+are developed in subsections III-D and III-E, respectively.
+A. System Description
+A microgrid of buildings and EVs is shown in Fig.1.
+It consists of M buildings and N EVs. Buildings comprise
+one or several types, e.g. residential, office, commercial, etc.
+Each building is equipped with solar PV panels on the roof
+and charging piles in the underground parking lots. EVs can
+travel on the road or park at the buildings.
+It is assumed that: 1) the installation and maintenance fees
+of PV panels are ignored since we consider the operation
+problem in this paper, as similar to [23]. 2) EVs have
+bidirectional power exchange capability through charging
+piles: G2V and V2G [8]. 3) The building load affected by
+thermostat setpoint temperature can only be shifted other than
+curtailed due to the comfort requirements of occupants [38].
+4) The buying (selling) price from (to) grid is time-of-use
+(TOU) pricing [7]. 5) Each building has a local coordinator and
+the whole microgrid has only one system operator. The local
+coordinators can get the global information (e.g. Lagrange
+multiplier) from the system operator and then make decisions
+for the subproblem. The system operator can spread the global
+information to the local coordinators.
+The discrete version of this problem is formulated
+and the scheduling horizon is discretized into K periods.
+The time of one period can be determined based on
+practice requirements, without affecting operation details and
+computational efficiency, e.g., it can be 1 hour or 30 minutes.
+The objective function is to minimize the total operation cost
+on the condition that all constraints are satisfied.
+B. Model of EVs
+As similar to [39], in this paper, the Markov chain is
+adopted to depict the mobility of a single EV whereas the
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:22:46 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 5 =====
+LIU et al.: DECENTRALIZED COORDINATION OF MULTIPLE BUILDINGS WITH RENEWABLE ENERGY RESOURCE AND EVs 9289
+TABLE I
+THE COMPARISON BETWEEN OUR WORK AND EXISTING WORKS
+Fig. 1. The system structure of multiple buildings.
+state is the location of EV, D
+ev
+n,k
+. If EV n starts its new trip
+during period k, the trip length, d
+ev
+n,k
+, is modeled as truncated
+power exponential distribution, and the corresponding SOE
+requirement is calculated by (1).
+E
+ev_need
+n,k = µ0 · d
+ev
+n,k
+. (1)
+Equation (1) means the SOE requirement of the trip is
+proportional to the distance [40].
+In this paper, the destination, parking time and distance of
+the trip are predicted through historical data. For each building,
+as EVs are treated as a whole ESS, then the related information
+of the aggregated EVs is calculated, such as the number of EVs
+at/ out/ to building m during period k (Nm,k,N
+O
+m,k
+,N
+I
+m,k
+) [39].
+Those information can affect the charging /discharging power
+of EVs which is shown in the latter constraints.
+I(A) = (
+0, i f event A is f alse
+1, i f event A is true,
+(2)
+Nm,k =
+N
+∑
+n=1
+I(Dn,k = m), (3)
+N
+O
+m,k =
+N
+∑
+n=1
+I(Dn,k = m & Dn,k+1 ̸= m), (4)
+N
+I
+m,k =
+N
+∑
+n=1
+I(Dn,k ̸= m & Dn,k+1 = m), (5)
+Nm,k+1 = Nm,k +N
+I
+m,k −N
+O
+m,k
+. (6)
+Equation (2) gives the definition of the indicator function,
+which is employed to calculate the numbers of aggregated EVs
+of each building. Equations (3) - (5) show the details of the
+calculation of numbers of EVs at/ out/ to building m during
+period k. Equation (6) describes the EV quantity evolution of
+each building.
+C. Model of Building Load’s Flexibility
+Since this paper focuses on the distributed coordination of
+multiple buildings with RES and EVs, similar to [39], we use
+a simplified engineering model to formulate the flexibility of
+the building loads. Note that other physical models can also
+be applied to the formulation of the flexibility of the building
+loads and have no impact on the contribution of this paper.
+Therefore, the flexibility of the building load is formulated as
+a piecewise linear function of thermostat setpoint temperature
+as shown below.
+p
+b
+m,k = p
+b_base
+m,k
+·
+
+1+ f(Tm,k)
+
+, (7)
+f(Tm,k) =
+
+
+
+γ
+1
+m,k +κ
+1
+m,k
+·∆Tm,k,∆Tm,k ∈ [−3,−2]
+γ
+2
+m,k +κ
+2
+m,k
+·∆Tm,k,∆Tm,k ∈ [−2,−1]
+γ
+3
+m,k +κ
+3
+m,k
+·∆Tm,k,∆Tm,k ∈ [−1,0]
+γ
+4
+m,k +κ
+4
+m,k
+·∆Tm,k,∆Tm,k ∈ [0,1]
+γ
+5
+m,k +κ
+5
+m,k
+·∆Tm,k,∆Tm,k ∈ [1,2]
+γ
+6
+m,k +κ
+6
+m,k
+·∆Tm,k,∆Tm,k ∈ [2,3],
+∆Tm,k = Tm,k −T
+re f
+m,k
+, (8)
+where p
+b
+m,k
+and p
+b_base
+m,k
+are the current building load after
+temperature adjustment and the baseline building load with
+the reference temperature of building m during period
+k, respectively. Tm,k and T
+re f
+m,k
+are the current thermostat
+setpoint temperature and the reference setpoint temperature
+of building m during period k, respectively. ∆Tm,kis the
+temperature difference of building m during period k between
+the current setpoint temperature and the reference setpoint
+temperature of thermostat. f(Tm,k) is the ratio of building m
+during period k decided by the current thermostat setpoint
+temperature. Parameters, γ
+1
+m,k
+,..., γ
+6
+m,k
+and ∆
+1
+m,k
+,...,∆
+6
+m,k
+, can
+be obtained from the historical data of building load, outside
+air temperature and the temperature difference of thermostat,
+are the offset and slope rate of building m during period k for
+the piecewise linear function.
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:22:46 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 6 =====
+9290 IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING, VOL. 22, 2025
+Generally speaking, those parameters are different for
+different buildings. Even for the same building, they may be
+different in time, depending on whether the dynamics of the
+building loads during weekdays and weekends are different or
+not. For example, p
+b_base
+m,k
+in (7) is decided by the predicted
+outside weather factors, the reference setpoint temperature
+of thermostat and the historical data. If the historical
+data is quite different between weekdays and weekends,
+p
+b_base
+m,k
+for weekdays and weekends are different, and vice
+versa [41].
+Equation (8) shows that the building load’s flexibility is
+affected by the temperature difference between the current
+temperature and the reference temperature of thermostat. For
+example, when the temperature is set higher than the reference
+value in summer, ∆Tm,k and f(Tm,k) are negative, which means
+building load will be lower than the baseline load, and vice
+versa.
+D. Operation Constraints
+1) Power Balance Constraints:
+p
+buy
+m,k − p
+sell
+m,k + p
+PV
+m,k = p
+b
+m,k + p
+ev_c
+m,k − p
+ev_d
+m,k
+, (9)
+Em,k+1 = Em,k + (η
++ p
+ev_c
+m,k −
+p
+ev_d
+m,k
+η−
+)· τ −ξm,k.
+(10)
+Equation (9) describes power balance of building m at
+period k. It shows buildings can purchase (sell) electricity
+from (to) the power grid when necessary, and EVs parked
+in building m at period k are treated as a whole ESS.
+Equation (10) describes SOE dynamics of EVs parked at
+building m between adjacent periods k, k + 1. Equations (9)
+- (10) show that EVs can charge or discharge like a whole
+ESS.
+2) Constraints of Building Loads:
+K
+∑
+k=1
+p
+b
+m,k =
+K
+∑
+k=1
+p
+b_base
+m,k
+, (11)
+T m,k ≤ Tm,k ≤ T m,k
+, (12)
+p
+b
+m,k
+≤ p
+b
+m,k ≤ p
+b
+m,k
+. (13)
+Equation (11) imposes that the total consumption over the
+schedule horizon is the same before and after the temperature
+adjustment of the thermostat. According to the category of
+devices, the thermostat belongs to load shifting device, which
+means that the building load affected by the thermostat is
+shifted in time rather than curtailed [42]. Equation (12)
+guarantees thermostat setpoint temperature is in the comfort
+zone. Equation (13) implies the constraint of building load
+capacity.
+3) Constraints of EVs:
+Em,k ≤ Em,k ≤ Em,k, (14)
+ξm,k ∈ [ξ
+m,k
+,ξ m,k], (15)
+(Em,k −ξm,k) ∈ [∆
+−
+m,k
+,∆
++
+m,k
+]. (16)
+Equation (14) means the SOE of EVs must be larger than
+the SOE requirement for the next trip (Em,k) as commuting
+tools. At the same time, it is not exceed battery capacity (Em,k)
+which is physical constraint. The value range of stochastic
+variable, ξm,k, is defined in (15). The SOE of remaining EVs
+after mobility should also be satisfied as (16).
+4) Constraints of Charging and Discharging Power of EVs:
+0 ≤ p
+ev_c
+m,k ≤ z
+ev_c
+m,k
+· p
+ev_c
+m,k
+; p
+ev_c
+m,k
+= min{Nm,k· p
+c
+, p
+pile_c
+m }, (17)
+0 ≤ p
+ev_d
+m,k ≤ z
+ev_d
+m,k
+· p
+ev_d
+m,k
+; p
+ev_d
+m,k
+= min{Nm,k· p
+d
+, p
+pile_d
+m }, (18)
+z
+ev_c
+m,k +z
+ev_d
+m,k ≤ 1. (19)
+Equations (17) and (18) show that the maximum charging
+and discharging power are decided by the number of EVs at
+the building and the charging piles’ capacity. Equation (19)
+implies charging and discharging actions cannot be both
+happened at the same time.
+5) Constraints of Power Exchange Between Microgrid and
+Main Grid:
+p
+G ≤
+M
+∑
+m=1
+(p
+buy
+m,k − p
+sell
+m,k
+) ≤ p
+G
+, (20)
+0 ≤ p
+buy
+m,k ≤ z
+buy
+m,k
+·P, (21)
+0 ≤ p
+sell
+m,k ≤ z
+sell
+m,k
+·P, (22)
+z
+buy
+m,k +z
+sell
+m,k ≤ 1. (23)
+The bidirectional power exchange range between the
+microgrid and main grid is limited due to the transmission
+line constraint as shown in (20). The constraints (21) - (23)
+imply that the purchasing or selling power of each building is
+also limited and they cannot both happen at the same time.
+6) Constraints of Stochastic Variables:
+ξ k ∈ Ωk, (24)
+p
+PV
+k ∈ Φk
+, (25)
+where ξ k = [ξ1,k,ξ2,k,...,ξM,k]
+T
+is a stochastic variable
+vector representing the uncertainty of SOE change of EVs.
+And p
+PV
+k = [p
+PV
+1,k
+, p
+PV
+2,k
+,..., p
+PV
+M,k
+]
+T
+is a stochastic variable
+vector representing the uncertainty of PV power. Ωk,Φk
+in (24) and (25) are polyhedral convex sets which will be
+introduced in next subsection IV-A
+E. The Objective Function
+(P1)minJ, J =
+K
+∑
+k=1
+M
+∑
+m=1
+(c
+buy
+k
+· p
+buy
+m,k −c
+sell
+k
+· p
+sell
+m,k
+)· τ. (26)
+As all buildings are the price-taker, the objective is to
+minimize the overall operation cost subjected to the constraints
+of (6) - (25).
+IV. SOLUTION METHODOLOGY
+The stochastic MILP problem (P1) cannot be directly solved
+due to the uncertainty of the infinite realizations. Secondly, it is
+costly to solve due to the curse of dimensionality because the
+decision space grows exponentially with the building scale.
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:22:46 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 7 =====
+LIU et al.: DECENTRALIZED COORDINATION OF MULTIPLE BUILDINGS WITH RENEWABLE ENERGY RESOURCE AND EVs 9291
+Fig. 2. The flowchart of the proposed algorithm.
+To overcome these challenges, an LR-DASF algorithm is
+developed to solve the problem. The charflow is shown in
+Fig.2.
+Firstly, polyhedral convex sets are constructed to capture
+the uncertainties in subsection IV-A. Then, base scenarios
+(BSs) and selected vertex scenarios (SVSs) are constructed
+based on the vertices of uncertainty sets in subsection IV-B.
+Thirdly, new NCs based on constructed scenarios are proposed
+to guarantee the ASF and nonanticipativity of the solution
+in subsection IV-C. And, the ASF-based formulation with
+NCs is proposed in subsection IV-D. Finally, to improve the
+computational efficiency, the LR-DASF algorithm is developed
+to solve the problem in a decomposition and coordination way
+in subsection IV-E.
+A. Uncertainty Sets
+As mentioned above, there exist two stochastic variables
+in problem (P1), ξ k,p
+PV
+k
+. The general method is to employ
+the probability information to depict them. However, the truth
+is the probability information is usually unknown in many
+circumstances. Therefore, we will adopt another method to
+depict those stochastic variables, the uncertainty sets.
+For the convenience of description, those two stochastic
+variables are combined into a new vector, denoted as ϕk =
+[p
+PV
+k
+,ξ k]. In this section, we will use two different polyhedral
+convex sets to model them according to their different
+stochastic characteristics.
+As known, for ξ k, it has spatio-temporal coupled characteristics caused by the mobility between buildings and the hard
+constraints of SOE requirements for the next trip. Based on
+the principle of energy conservation, (27) can be obtained to
+describe SOE conservation of the whole EVs between adjacent
+periods, which is spatio-temporal coupled.
+E0,k+1 +
+M
+∑
+m=1
+Em,k+1 = E0,k +
+M
+∑
+m=1
+Em,k
++
+M
+∑
+m=1
+(η
++ p
+ev_c
+m,k −
+p
+ev_d
+m,k
+η−
+)· τ −E
+consd
+k
+.
+(27)
+Then, a new expression of SOE conservation about
+stochastic variable ξ kis shown in (28), which is derived by
+Fig. 3. The projection of the uncertainty set on 2-dimensions.
+subtracting (10) from (27) on both sides of the equation.
+E0,k+1 = E0,k +
+M
+∑
+m=1
+(ξm,k)−E
+consd
+k
+. (28)
+Therefore, an M-dimensional polyhedral convex set is
+constructed as (29) to capture the uncertainty of ξ kbased
+on (28) and the SOE boundary of EVs, which is shown in
+Fig.3.
+Ωk =
+
+
+
+ξ k
+
+
+
+
+
+
+
+
+ξ
+m,k
+≤ ξm,k ≤ ξ m,k;m = 1,...M
+E0,k ≤ E0,k ≤ E0,k;
+E0,k+1 ≤ E0,k +
+M
+∑
+m=1
+(ξm,k)−E
+consd
+k ≤ E0,k+1
+
+
+
+.
+(29)
+For p
+PV
+k
+, a box set defined in (30) is employed to capture
+the uncertainty of PV power since the PV power generation
+is bounded by the weather conditions.
+Φk = {p
+PV
+k
+|p
+PV
+m,k
+≤ p
+PV
+m,k ≤ p
+PV
+m,k
+;m = 1,...,M}. (30)
+B. Scenarios Construction
+Since the uncertainty sets have been constructed in the
+above section, the scenarios constructed in this section based
+on the uncertainty sets are different from the scenarios
+generated by the traditional method, such as Monte Carlo
+(MC) simulation. The constructed scenarios in this section
+are divided into two types: base scenarios (BSs) and selected
+vertex scenarios (SVSs). BSs are constructed to guarantee
+economic performance, and SVSs are constructed to guarantee
+the nonanticipativity and ASF.
+The SVSs are intended to be constructed of the vertices of
+the uncertainty sets. The uncertainty sets are the polyhedral
+convex sets, any value in those sets can be represented
+as a convex combination of the vertices. In other words,
+any realization of the uncertainties can also be a convex
+combination of the SVSs. It means that if solutions of the
+SVSs exist, there always exists a solution for the realization,
+which is ASF. This is the cornerstone of transforming infinite
+realizations of the uncertainties into the convex combination
+of finite SVSs. The total number of SVSs is close to 22M, far
+less than the original scale of 22MK.
+BSs are usually selected as the significant scenarios because
+they are considered as “the most probable scenarios”, such as
+the expected value of the uncertainties or scenarios generated
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:22:46 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 8 =====
+9292 IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING, VOL. 22, 2025
+from historical data. The number of BSs can be 0,1 or
+any natural number according to practical requirements. BSs
+can also be generated by MC simulation. The number of
+the BSs can only affect the economic performance and
+computational efficiency. Too many BSs will bring a heavy
+computational burden rather than economic performance
+improvement. In this paper, only one BS is considered which
+is the expected scenario to get better economic performance
+with less computational burden.
+The detailed construction methods are introduced below.
+1) BSs are constructed as the expected value of ϕkin this
+paper, similar to [13] in this paper.
+BSs = {s|p
+PV,s
+k = E(p
+PV
+k
+),ξ
+s
+k = E(ξ k
+)}. (31)
+2) SVSs are constructed into three types, SVSs = SVS1 ∪
+SVS2 ∪ SVS3, which is different from [13] in which SVSs
+are constructed in the direction of increasing the total sum of
+variables in all periods. Due to the temporal coupled constraint
+in (29), scenarios with maximum /minimum sum value in
+all periods cannot be constructed. The detailed construction
+process is shown in (32) - (37).
+SV S1 = {s|
+M
+∑
+m=1
+ϕ
+s
+m,k = Qk
+,
+M
+∑
+m=1
+ϕ
+s
+m,k+1 = Qk+1}, (32)
+SV S2 = {s|
+M
+∑
+m=1
+ϕ
+s
+m,k = Qk
+,
+M
+∑
+m=1
+ϕ
+s
+m,k+1 = Qk+1
+}, (33)
+SV S3 = {s|
+M
+∑
+m=1
+ϕ
+s
+m,k ∈ (Qk
+,Qk),
+M
+∑
+m=1
+ϕ
+s
+m,k+1 ∈ (Qk+1
+,Qk+1)},
+(34)
+Qk(E0,k+1,E0,k,p
+PV
+k
+) = E0,k+1 −E0,k +E
+consd
+k +
+M
+∑
+m=1
+p
+PV
+m,k+1
+,
+(35)
+Qk
+= E0,k+1 −E0,k +E
+consd
+k +
+M
+∑
+m=1
+p
+PV
+m,k+1
+, (36)
+Qk = E0,k+1 −E0,k +E
+consd
+k +
+M
+∑
+m=1
+p
+PV
+m,k+1
+. (37)
+Equation (32) shows SVS1 is a scenario set with maximum
+sum value at odd periods and minimum sum value at even
+periods. Equation (33) shows SVS2 is a scenario set with
+maximum sum value at even periods and minimum sum value
+at odd periods. Equation (34) shows SVS3 is constructed
+following the same method as [13].
+We will use Fig.4 as an example to illustrate the construction
+of SVSs. Period k is the odd period. The numbers of vertices at
+period k, k+1 are different. Then, virtual vertices are created
+as any one of the existing vertices to make the numbers the
+same, virtual vertex v
+1
+k
+is created as vertex v
+5
+k
+here. SVSs are
+given below.
+SVS1 are given as {(v
+2
+k
+, v
+5
+k+1
+),(v
+3
+k
+, v
+4
+k+1
+)}.
+SVS2 are given as {(v
+4
+k
+, v
+3
+k+1
+),(v
+5
+k
+, v
+2
+k+1
+)}.
+SVS3 are given as {(v
+1
+k
+, v
+1
+k+1
+)}.
+C. Nonanticipative Constraints
+In this subsection, new NCs are derived based on scenarios
+constructed by vertices of the uncertainty sets. Those NCs
+Fig. 4. Illustration of SVSs construction.
+do not rely on any realization of the uncertainty, which
+can guarantee nonanticipativity. Meanwhile, those NCs make
+decisions at the current period feasible to any future realization
+of the uncertainty, which is ASF. The details are shown below.
+Firstly, three ancillary functions, h(x), g1(Em,k,ξm,k),
+g2(Em,k,ξm,k), are defined as (38) - (40). Then two
+ancillary parameters are introduced, E
+max
+m,k
+,E
+min
+m,k
+, which are the
+maximum and minimum value of the SOE of EVs parked at
+building m at period k. They can determine a new compact
+feasible region of Em,k by (41), which can guarantee that if
+Em,kis in the feasible region, there always exists a feasible
+solution no matter what realization of the uncertainty will be.
+h(x) =
+
+
+
+1
+η+τ
+x,i f(x ≥ 0)
+η
+−
+τ
+x,i f(x ≤ 0),
+(38)
+g1(Em,k,ξm,k) = min(∆
++
+m,k
+,Em,k −ξm,k), (39)
+g2(Em,k,ξm,k) = max(∆
+−
+m,k
+,Em,k −ξm,k), (40)
+Em,k ≤ E
+min
+m,k ≤ Em,k ≤ E
+max
+m,k ≤ Em,k
+. (41)
+Secondly, based on two ancillary functions (39) – (40),
+ancillary parameters and constructed scenarios, as well as the
+upper and lower bounds of constraints (14), (15) and (16),
+the new constraints of remaining EVs after departure can be
+obtained as (44).
+ξ
+m,k
+≤ ξ
+s
+m,k
+;ξ
+s
+m,k
+= min
+s
+(ξ
+s
+m,k
+),s ∈ SVSs, (42)
+ξ
+s
+m,k ≤ ξ m,k
+;ξ
+s
+m,k = max
+s
+(ξ
+s
+m,k
+),s ∈ SVSs, (43)
+g2(E
+min
+m,k
+,ξ
+s
+m,k
+) ≤ Em,k −ξm,k ≤ g1(E
+max
+m,k
+,ξ
+s
+m,k
+). (44)
+Finally, new NCs are derived as (45) - (48) from constraints
+(9) - (11), (13), (17) - (23) and (44) through forward
+recursion based on constructed scenarios, ancillary functions
+and variables. New NCs ((45) - (46)) are constraints for
+adjacent periods, and (47) - (48) are constraints for the whole
+periods. It can be seen that new NCs make the decision
+dependent on auxiliary variables and functions rather than any
+realization of the uncertainties, which means it can guarantee
+the nonanticipativity of the decision. Furthermore, New NCs
+can guarantee ASF, which means if SOE is in the feasible
+range decided by E
+max
+m,k
+,E
+min
+m,k
+, no matter what future realization
+of the uncertainties will be, it always has a solution.
+h(E
+max
+m,k+1 −g2(E
+min
+m,k
+,ξ
+s
+m,k
+))
+≤ min(p
+ev_c
+m,k
+,P+ p
+PV
+m,k − p
+b
+m,k
+), (45)
+h(E
+min
+m,k+1 −g1(E
+max
+m,k
+,ξ
+s
+m,k
+))
+≥ max(−p
+ev_d
+m,k
+,−P+ p
+PV
+m,k
+− p
+b
+m,k
+)), (46)
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:22:46 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 9 =====
+LIU et al.: DECENTRALIZED COORDINATION OF MULTIPLE BUILDINGS WITH RENEWABLE ENERGY RESOURCE AND EVs 9293
+K
+∑
+k=1
+M
+∑
+m=1
+h
+
+E
+max
+m,k+1 −g2
+
+E
+min
+m,k
+,ξ
+s
+m,k
+
+≤ K · p
+G +
+K
+∑
+k=1
+M
+∑
+m=1
+(p
+PV
+m,k − p
+b_base
+m,k
+), (47)
+K
+∑
+k=1
+M
+∑
+m=1
+h
+
+E
+min
+m,k+1 −g1
+
+E
+max
+m,k
+,ξ
+s
+m,k
+
+≥ K · p
+G +
+K
+∑
+k=1
+M
+∑
+m=1
+
+p
+PV
+m,k
+− p
+b_base
+m,k
+
+. (48)
+D. The ASF Formulation With New NCs
+Based on constructed scenarios, ancillary parameters and
+functions, and new NCs, the original problem (P1) can be
+converted into the problem (P2).
+(P2)minJ, J
+=
+K
+∑
+k=1
+M
+∑
+m=1
+S
+∑
+s=1
+ω
+s
+·(c
+buy
+k
+· p
+buy,s
+m,k −c
+sell
+k
+· p
+sell,s
+m,k
+)· τ, (49)
+subject to constraints (7) - (23), (41) - (48) based on
+constructed scenarios (BSs and SVSs). All decision
+variables of building m in period k form a vector am,k.
+am,k = [p
+buy,s
+m,k
+, p
+sell,s
+m,k
+, p
+ev_c,s
+m,k
+, p
+ev_d,s
+m,k
+,z
+buy,s
+m,k
+,z
+sell,s
+m,k
+,z
+ev_c,s
+m,k
+,z
+ev_d,s
+m,k
+,
+E
+s
+m,k
+,E
+max
+m,k
+,E
+min
+m,k
+, p
+b
+m,k
+,Tm,k]..
+Theorem 1: If (p
+b
+m,k
+,Tm,k,E
+max
+m,k
+,E
+min
+m,k
+)
+M×K
+is feasible for the
+problem (P2), then it is all-scenario-feasible for PV generation
+and SOE variation.
+The proof process of Theorem 1 is shown in Appendix.
+According to Theorem 1, the solution to the problem
+(P2) can guarantee nonanticipativity without using any future
+realization of the uncertainties but the constructed scenarios
+(BSs and SVSs). Furthermore, the solution is feasible for any
+future realization of the uncertainties under SOE requirements
+to guarantee ASF.
+E. LR-DASF Algorithm
+As mentioned above, an ASF solution can be obtained
+by solving the problem (P2) in a centralized form, however,
+it is costly to solve as the number of scenarios is
+close to 22M. Therefore, a Lagrangian relaxation-based
+decentralized all-scenario-feasible (LR-DASF) algorithm is
+proposed.
+The LR-DASF algorithm solves the centralized optimization problem in a decomposition and coordination way.
+In the LR-DASF algorithm, each building focuses on its
+subproblem through the local coordinator according to
+the Lagrangian multipliers from the system operator, and
+the system operator updates new Lagrangian multipliers
+without collecting all decisions, as long as any building
+can reduce the Lagrangian function. The detail is introduced
+below.
+Firstly, introduce Lagrangian multipliers {λ
+s,+
+k
+,λ
+s,−
+k
+,
+k = 1,2,...,K;s ∈ BSs, SVSs} to decouple the constraint (20).
+Algorithm 1 LR-DASF Algorithm
+Step1. Initialize. Set l = 0, l is the iteration index. Given initial
+multipliers λ
+0
+.
+λ
+0 = (λ
+s,+,0
+k
+,λ
+s,−,0
+k
+), k ∈ {1,2,...,K},s ∈ {1,2,...,S}.
+Step2. Update the Lagrangian multipliers
+for m = 1 : M do
+Solve subproblem (51) with λ
+l
+to obtain L
+∗,l
+m and a
+l
+m.
+if l ≥ 1 then
+If condition (53) is satisfied, update decision variables
+a
+l
+h:h̸=m
+: a
+l
+h:h̸=m = a
+l−1
+h:h̸=m
+;
+end if
+Break;
+end for
+Update new directions for Lagrangian multipliers.
+g
+l
+λ
+s,+,l
+k
+= ω
+s
+.(
+M
+∑
+m=1,
+(p
+buy,s,l
+m,k − p
+sell,s,l
+m,k
+)−p
+G).
+g
+l
+λ
+s,−,l
+k
+= ω
+s
+.(p
+G −
+M
+∑
+m=1,
+(p
+buy,s,l
+m,k − p
+sell,s,l
+m,k
+)).
+Choose step size s
+l which must satisfy below condition.
+0 < s
+l < (L∗ −Ll
+)/
+
+
+g
+l
+
+
+
+2
+,
+where L
+∗
+is the optimal value.
+L
+l = L(λ
+l
+) =
+M
+∑
+m=1
+L
+∗,l
+m −
+K
+∑
+k=1
+N
+max
+∑
+s=1
+ω
+s
+· [λ
+s,+,l
+k
+· p
+G −λ
+s,−,l
+k
+· p
+G]
+g
+l = (gl
+λ
+1,+,l
+1
+,...,g
+l
+λ
+1,+,l
+K
+,...,g
+l
+λ
+Nmax,+,l
+1
+,...,g
+l
+λ
+Nmax,+,l
+K
+,
+g
+l
+λ
+1,−,l
+1
+,...,g
+l
+λ
+1,−,l
+K
+,...,g
+l
+λ
+Nmax,−,l
+1
+,...,g
+l
+λ
+Nmax,−,l
+K
+).
+Update the multipliers according to
+λ
+s,−,l+1 = λs,−,l +sl
+· g
+l
+λ
+s,−,l
+k
+;λ
+s,+,l+1 = λs,+,l +sl
+· g
+l
+λ
+s,+,l
+k
+.
+Step3. Check stop criteria. If the following criterion is met, go to
+step 4; otherwise update l = l +1 and go to step 2.
+
+
+
+λ
+l+1 −λl
+
+
+ < ε,
+where ε is the accuracy requirement.
+Step4. Construct feasible solution. Based on solutions of subproblems and dual problem, construct a feasible solution of the
+original problem.
+Then the LR function, L, can be derived as (50):
+minL,L =
+K
+∑
+k=1
+M
+∑
+m=1
+S
+∑
+s=1
+ω
+s
+·(c
+buy
+k
+· p
+buy,s
+m,k −c
+sell
+k
+· p
+sell,s
+m,k
+)· τ
++
+K
+∑
+k=1
+S
+∑
+s=1
+ω
+s
+· [λ
+s,−
+k
+·(p
+G −
+M
+∑
+m=1
+(p
+buy,s
+m,k − p
+sell,s
+m,k
+))
++λ
+s,+
+k
+·(
+M
+∑
+m=1
+(p
+buy,s
+m,k − p
+sell,s
+m,k
+)−p
+G
+)], (50)
+subject to constraints (7) - (19), (21) - (23), (41) - (48) based
+on constructed scenarios (i.e., BSs and SVSs).
+Secondly, construct a separative optimization subproblem
+for each building. For m-th building, it is denoted as Lm by
+collecting all items related to building m, which is expressed
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:22:46 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 10 =====
+9294 IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING, VOL. 22, 2025
+as (51).
+minLm,Lm =
+K
+∑
+k=1
+S
+∑
+s=1
+ω
+s
+· [(c
+buy
+k
+· τ −λ
+s,−
+k +λ
+s,+
+k
+)· p
+buy,s
+m,k
+]
+−(c
+sell
+k
+· τ −λ
+s,−
+k +λ
+s,+
+k
+)· p
+sell,s
+m,k
+], (51)
+subject to constraints (7) - (19), (21) - (23), (41) - (48) based
+on selected scenarios (i.e., BSs and SVSs).
+Thirdly, update multipliers by solving the dual problem for
+the system operator.
+max
+λ
+s,+
+k
+,λ
+s,−
+k ≥0
+q,q =
+M
+∑
+m=1
+L
+∗
+m −
+K
+∑
+k=1
+S
+∑
+s=1
+ω
+s
+· [λ
+s,+
+k
+· p
+G −λ
+s,−
+k
+· p
+G
+].
+(52)
+To achieve a fast convergence rate, the surrogate subgradient
+method is adopted in our algorithm. A proper search direction
+for convergence is obtained without optimally solving all
+subproblems if the decision variable vector for building m
+at l-th iteration, a
+l
+m, can reduce the Lagrangian function L,
+satisfying the following surrogate optimization condition [43].
+L
+
+λ
+s,+,l
+,λ
+s,−,l
+,a
+l
+m,a
+l−1
+h:h̸=m
+
+< L
+
+λ
+s,+,l
+,λ
+s,−,l
+,a
+l−1
+m ,a
+l−1
+h:h̸=m
+
+.
+(53)
+The detailed algorithm is introduced in Algorithm 1.
+V. CASE STUDIES AND NUMERICAL RESULTS
+In this section, the performance of computational efficiency,
+accuracy and scalability of the LR-DASF method is tested
+through three case studies. General parameters of case studies
+are shown in subsection V-A. A small-scale deterministic
+case study is tested to validate the model and algorithm in
+subsection V-B. A small-scale case study under uncertainty is
+tested to validate the ASF in subsection V-C. Finally, largescale case studies are tested in subsection V-D to demonstrate
+the computational efficiency, accuracy and scalability of the
+LR-DASF algorithm. All tests are implemented by using
+Matlab R2019b and Gurobi 9.0.2 at Intel(R) Core (TM)
+i7-8700T CPU@ 2.40 GHz PC with 16 GB RAM.
+A. Description of Case Studies
+The LR-DASF method is tested through three case studies.
+The scheduling horizon is 24 hours which is divided into
+24 periods, so the time length of each period is 1 hour.
+According to the Beijing transportation report [44], most
+people leave home between 7:00 am and 9:00 am and get
+off work between 5:00 pm and 7:00 pm. Then, the probability
+matrices are generated from the above data, which are the
+same as [39]. The EVs are simplified as the same brand,
+Nissan leaf, and the related parameters are listed in Table II
+[45]. The electricity price is adopted as the time of use
+price of Beijing obtained from the website of the Beijing
+Municipal Commission of Development and Reform [46],
+which is listed in Table III. Based on the daily routine of
+humans, the thermostats in buildings are closed during time
+22:00 - 05:00 and open during time 06:00 - 21:00 to do load
+shifting according to [38]. The hourly solar radiation density
+TABLE II
+BATTERY SPECIFICATION OF EV
+TABLE III
+THE ELECTRICITY PRICE (RMB)
+is generated from the website of the U.S. Department of
+Energy based on typical summer weather data of Beijing [47].
+Different scales of buildings and EVs in Beijing are tested as
+examples in the section.
+Firstly, a small-scale deterministic case study of 5 buildings
+(Building 1 and 2 are residential buildings, Building 3 and
+4 are office buildings, and Building 5 is a commercial building)
+and 300 EVs is tested to validate the model and algorithm
+in subsection V-B. PV panels for each building are 500,
+600, 2000, 2500, and 3000 m
+2
+, respectively. The charging/
+discharging power capacities of buildings are 2000, 2000,
+4000, 4000, and 4000 kW, respectively.
+Secondly, as compared with the traditional methods,
+a small-scale case study with the same configuration as the
+first case study under uncertainty is tested to validate the ASF
+in subsection V-C.
+Finally, large-scale case studies are tested in subsection V-D
+to demonstrate the computational efficiency, accuracy and
+scalability of the algorithm developed in this paper. The
+number of buildings in the studies has increased from 5 to 10,
+and the number of EVs has increased from 300 to 3000.
+We will explore whether the LR-DASF algorithm exhibits
+good scalability performance, and whether the key factor
+affecting the computational efficiency and accuracy is the
+number of buildings or the number of EVs.
+B. Performance Analysis of Deterministic Problem
+In this subsection, the LR-DASF method is tested to
+validate the model and algorithm. The coordination results
+are exhibited in Table IV, Fig. 5 and Fig.6. The reason
+why only the results of Building 1, 3, and 5 (representing
+residential, office, and commercial buildings) are shown is
+that the optimization results of the same type of buildings
+are similar.
+Table IV shows the operation cost of each building before
+and after coordination. It is found that, through coordination,
+the operation cost of each building after coordination can
+be reduced by at least 10% compared with the individual
+optimization.
+In Fig. 5, it shows EVs, together with PV, have improved
+the energy efficiency of the building, making the power
+exchange between the building and the main grid close to
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:22:46 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 11 =====
+LIU et al.: DECENTRALIZED COORDINATION OF MULTIPLE BUILDINGS WITH RENEWABLE ENERGY RESOURCE AND EVs 9295
+Fig. 5. Coordinative optimization result of buildings.
+Fig. 6. Thermostat setpoint temperature strategy for buildings.
+TABLE IV
+OPERATION COST SAVING OF EACH BUILDING
+0 as much as possible. For an individual building, EVs can
+either store surplus energy from the PV system when PV
+power is sufficient or purchase energy from the grid when
+the electricity price is low, and feed energy back to the grid
+or building when the electricity price is high. For example, for
+Building 5 (commercial building), EVs charge to store energy
+during periods 10-14 when PV power is surplus and discharge
+during periods 7-8 and 19-20 when the electricity price is
+high. The power exchange between Building 5 and the main
+grid during periods 10-15 is correspondingly approaching 0.
+The same situation happens in Building 3 and Building 1.
+For the whole microgrid, EVs can transfer energy between
+buildings. For example, EVs store energy during periods of
+lower electricity prices when parking at Building 1, and then
+feed back to Building 3 and Building 5, which corresponds to
+the process of EVs leaving residential buildings and going
+to the workplace in the morning. EVs store energy free
+or at a lower electricity price when parking at Building
+3 and Building 5 either from the PV system or the grid,
+and then feed back to Building 1, which corresponds to the
+process of EVs returning home from the workplace in the
+evening.
+In Fig. 6, it shows building loads are shifted from high
+price periods to low price periods by the thermostat setpoint
+temperature strategies which are the precooling strategies. Set
+a lower temperature in the morning to store cooling by the
+building thermal mass when the electricity price is low to precool the building. Then set a higher temperature in the noon
+with high electricity price to reduce energy consumption and
+cost.
+C. ASF Analysis of the Problem Under Uncertainty
+In this subsection, the ASF of the proposed LR-DASF
+method is analyzed by comparing it with scenario-based
+stochastic programming (SSP) [22], [39]. Fig. 7 shows SOE
+regions decided by LR-DASF and SSP, and Table V gives
+detailed information of period 9 of Building 4. These two
+results are combined to explain why the LR-DASF method
+can guarantee the ASF of the solution.
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:22:46 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 12 =====
+9296 IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING, VOL. 22, 2025
+TABLE V
+SOE REGION INFORMATION
+Fig. 7. Feasible SOE range comparison of EVs.
+TABLE VI
+SOLUTIONS OF LR-DASF AND SSP FOR EXPERIMENT 1
+In Fig.7, it shows SOE regions of LR-DASF and SSP are
+both more compact than the original region, but it cannot
+tell why LR-DASF can guarantee the ASF but SSP can’t.
+Without loss of generality, we take period 9 of Building 4 as an
+example to explain the reason, which is shown in Table V. ASF
+means if SOE is in the feasible range decided by the decision
+variables, (E
+max
+m,k
+,E
+min
+m,k
+)MxK, no matter what future realization
+of the uncertainty, ξ4,9, will be, it always has a solution.
+Table V shows that the differences in SOE regions of
+E4,9,E4,10 between LR-DASF and SSP are the lower bounds.
+Then we will just take the lower bounds as examples to
+explicitly explain the ASF. As known, the worst scenario must
+be one of the vertices of the polyhedral convex set. For ξ4,9,
+the worst scenario must be ξ4,9 = −216 or ξ4,9 = −988.21.
+So both of them are included for the verification.
+Then, two experiments are designed to verify the ASF of
+LR-DASF and SSP.
+Experiment 1: fix the variables E4,9 = 1408,E4,10 =
+5400 for SSP, and E4,9 = 1584,E4,10 = 5400 for LR-DASF.
+Then verify the feasibility of the solution for different
+realizations of ξ4,9, the results are shown in Table VI.
+TABLE VII
+SOLUTIONS OF LR-DASF AND SSP FOR EXPERIMENT 2
+Table VI shows, for SSP, the solutions of No.4 and
+No.5 highlighted in red, p
+ev_c
+4,9
+, are larger than the maximum
+p
+ev_c
+4,9 = 4000, which means they are infeasible and can not
+guarantee the ASF. For LR-DASF, the solutions of these five
+cases including the worst case are all feasible. Furthermore,
+if we represent the uncertainty ξ4,9 as ξ4,9 = −988.21 + π ·
+(−216+988.21), π ∈ [0,1], then p
+ev_c
+4,9 = 3141.99+π ·(4000−
+3141.99) is feasible for any realization of ξ4,9 depending on
+different values of π. It can be verified that LR-DASF can
+guarantee the ASF.
+Experiment 2: fix the variables E4,9 = 4320,E4,10 =
+3410 for SSP, and E4,9 = 4320,E4,10 = 1579.77 for LRDASF. Then verify the feasibility of the solution for different
+realizations of ξ4,9, the results are shown in Table VII.
+Table VII shows, the solutions for all cases are feasible
+for SSP and LR-DASF. It can also be verified that they can
+guarantee the ASF in this experiment.
+In summary, SSP can not guarantee the ASF because there
+exist infeasible cases, but LR-DASF can. Following the proof
+of Theorem 1 shown in Appendix, it can be verified that
+the range determined by LR-DASF, no matter what value the
+stochastic variable ξ4,9 will be, p
+ev_c
+m,k
+and p
+ev_d
+m,k
+always exist,
+which means ASF.
+D. Performance Analysis of the LR-DASF Algorithm
+In this subsection, the computational efficiency, economic
+performance and scalability of the proposed LR-DASF
+algorithm are validated through large-scale case studies,
+compared with traditional algorithms, such as the centralized
+ASF algorithm (CASF), and the nested column and constraints
+generation algorithm (Nested CCG) for two-stage robust
+optimization with integer recourse [32]. The comparison
+results of computational time and economic performance are
+listed in Table VIII and Table IX, respectively.
+It is found in Table VIII that LR-DASF can improve the
+computational time at least 6 times as compared with the
+other two methods. The larger the problem scale, the better
+the performance of the LR-DASF algorithm. Moreover, the
+LR-DASF algorithm shows good performance in scalability
+especially compared with the Nested CCG. When the building
+number equals 10, Nested CCG has no solution, but the LRDASF algorithm not only has a solution but also has the fastest
+computational efficiency. Furthermore, the computational time
+of LR-DASF is more sensitive to building scale rather than the
+scale of EVs since EVs are treated in a whole ESS way.
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:22:46 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 13 =====
+LIU et al.: DECENTRALIZED COORDINATION OF MULTIPLE BUILDINGS WITH RENEWABLE ENERGY RESOURCE AND EVs 9297
+TABLE VIII
+COMPUTATIONAL TIME OF LR-DASF, CASF AND NESTED CCG
+TABLE IX
+SYSTEM COST OF LR-DASF, CASF AND NESTED CCG
+It is found in Table IX that CASF has the best performance
+whereas the Nested CCG is the worst. The gap between
+LR-DASF and CASF is quite small, no more than 0.01%.
+Therefore, the numerical results show that the LR-DASF
+results in a reduction of more than 80% in computation time
+without perceivable degradation in accuracy.
+VI. DISCUSSION
+In this paper, we focus on the coordinated optimization
+of multiple buildings with RES and EVs, aiming to reveal
+the flexibility brought to building energy management by the
+use of EVs. EVs could play a similar role to ESS when
+parking at buildings, as they can be charged as loads or
+discharged as power suppliers. On the other hand, EVs act
+like mobile batteries when EVs move between buildings as
+commuting tools, bringing energy transfer between different
+buildings. As commuting tools, the SOE requirements of EVs
+for the coming trip are the top priority and must be met.
+Therefore, the feasibility of the decision-making for charging,
+discharging and satisfying the SOE requirements for future
+trips is the most important for the method developed in
+this paper. It encourages EVs to actively participate in the
+coordination without affecting their travel plans under any
+realization of the uncertainties, which is helpful to improve
+energy efficiency and RES utilization. So integrating ESS into
+the system has no impact on the method developed in this
+paper.
+As pointed out in [22], the uncertainties in the coordinated
+optimization of multiple buildings with RES and EVs can
+be divided into three categories: uncertainty in the supply
+side, uncertainty in the demand side and uncertainty in energy
+pricing. In this paper, we consider two of the most common
+uncertainties closely related to decision feasibility while
+guaranteeing the nonanticipativity caused by the uncertainties.
+The first one is the RES generation which represents the
+uncertainty in the supply side, and the other one is the SOE of
+EVs caused by the mobility which represents the uncertainty
+in the demand side. Note that the uncertainty in energy pricing
+can also be addressed by our method with the box set, but it
+has no impact on the decision feasibility.
+In this paper, the uncertainties are depicted by polyhedral
+convex sets rather than probabilistic distributions. Then scenarios are constructed based on the vertices of the uncertainty
+sets, and new NCs are derived based on constructed scenarios
+to guarantee ASF and nonanticipativity of the decision. Finally,
+the LR-DASF algorithm is developed to solve the centralized
+optimization problem in a decomposition and coordination
+way to promote computational efficiency and scalability. It is
+verified that the proposed LR-DASF algorithm can guarantee
+the ASF of the solution to any realization of the uncertainties
+with less number of scenarios and higher computational
+efficiency. Therefore, we hope this work brings insight and
+extension to the coordination of multiple buildings.
+In this paper, there still exist some limitations. Firstly, all
+buildings are supposed as price-takers. Although the TOU
+energy pricing (purchasing/selling) scheme is conventionally
+adopted based on policy, there exists a real-time pricing
+rate in practice. The operation cost of our method could be
+decreased and the performance could be improved with the
+real-time pricing rate adopted in the future. In addition, the
+performance of ASF could also address the uncertainty of
+energy pricing. So it is a new perspective and viewpoint to
+the coordinated optimization of multiple buildings. Secondly,
+the battery capacity of the current system without ESS is
+less than that of integrating ESS. Due to the battery capacity,
+The performance of ASF is weaker than that of integrating
+ESS. With the development of ESS, the disadvantages of
+maintenance costs and huge space will be improved [48],
+[49], [50]. ESS will be widely used in buildings. Hence, the
+battery capacity and the performance of ASF will be greater
+if ESS is integrated into the system in the future. Therefore,
+it is an interesting future work to do cooperation of multiple
+buildings equipped with ESS and PV, and EVs to improve
+energy efficiency, RES utilization and economic performance.
+VII. CONCLUSION
+In this paper, we investigate the coordination of multiple
+buildings with PV and EVs. This problem is formulated
+as a centralized MILP problem, aiming to fully utilize
+PV by the charging/discharging of EVs to improve energy
+efficiency and reduce the system operation cost, on the
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:22:46 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 14 =====
+9298 IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING, VOL. 22, 2025
+premise of meeting the SOE requirements of the future
+trip. Due to the uncertainties of SOE of EVs and PV
+power, the nonanticipativity and ASF of the decision cannot
+be guaranteed by the current constraints. New NCs are
+constructed based on constructed scenarios to guarantee the
+nonanticipativity and ASF of the decision. By analyzing the
+structure of this centralized form, the LR-DASF algorithm
+is developed to decouple the spatially coupled constraints
+between buildings, converting the centralized optimization
+problem into a decentralized form. Each building focuses on
+its subproblem according to the Lagrangian multipliers from
+the system operator, and the system operator can update new
+Lagrangian multipliers without collecting all decisions as long
+as any building can reduce the Lagrangian function. Moreover,
+the performance of the proposed method is demonstrated
+by numerical tests in deterministic and uncertain cases
+with different scales through comparisons with traditional
+algorithms (i.e., Nested CCG and SSP). The results show
+that the LR-DASF algorithm can guarantee nonanticipativity
+and ASF of the solution on the premise of meeting the
+hard constraints of SOE requirements. Besides, the LRDASF algorithm results in a reduction of more than 80% in
+computation time without perceivable degradation in accuracy.
+APPENDIX
+PROOF OF THEOREM 1
+Proof: To prove Theorem 1, it equals to prove the
+following two conclusions.
+1) Any solution (p
+b
+m,k
+,Tm,k,E
+max
+m,k
+,E
+min
+m,k
+)
+M×K
+is feasible to all
+possible realization [ϕm,k]
+2M×K
+.
+2) Nonanticipativity of decision is satisfied by any solution
+to the problem (P2).
+A. Proof of Conclusion 1
+For convenience, variable p
+ev
+m,k
+, p
+g
+m,k
+, are introduced as (A1)
+- (A3). Because h(x) is a monotone function, then constraints (19) and (23) are naturally guaranteed.
+p
+ev
+m,k = p
+ev_c
+m,k − p
+ev_d
+m,k
+(A1)
+p
+g
+m,k = p
+buy
+m,k − p
+sell
+m,k
+(A2)
+p
+ev
+m,k = h(Em,k+1 −(Em,k −ξm,k)) (A3)
+According to problem (P2), each s ∈ SVS, there must
+exist feasible solution [p
+buy,s
+m,k
+, p
+sell,s
+m,k
+, p
+ev_c,s
+m,k
+, p
+ev_d,s
+m,k
+,z
+buy,s
+m,k
+,z
+sell,s
+m,k
+,
+z
+ev_c,s
+m,k
+,z
+ev_d,s
+m,k
+,E
+s
+m,k
+]M×K. All constraints are satisfied.
+p
+g,s
+m,k + p
+PV,s
+m,k = p
+b
+m,k + p
+ev,s
+m,k
+(A4)
+p
+ev,s
+m,k = h(E
+s
+m,k+1 −(E
+s
+m,k −ξ
+s
+m,k
+)) (A5)
+E
+min
+m,k ≤ E
+s
+m,k ≤ E
+max
+m,k
+(A6)
+−p
+ev_d
+m,k ≤ p
+ev,s
+m,k ≤ p
+ev_c
+m,k
+(A7)
+−P ≤ p
+g,s
+m,k ≤ P (A8)
+p
+G ≤
+M
+∑
+m=1
+(p
+g,s
+m,k
+) ≤ p
+G
+(A9)
+Firstly, for any realization of ϕk, it can be expressed as a
+convex combination of vertices ϕ
+s
+k
+(s ∈ SVSs), in other words,
+there exists a group of convex combination coefficients.
+{β
+s
+k
+|β
+s
+k ≥ 0, ∑
+s∈SV S
+β
+s
+k = 1} (A10)
+ϕk= ∑
+s∈SV S
+β
+s
+k
+·ϕ
+s
+k
+(A11)
+ξm,k= ∑
+s∈SV S
+β
+s
+k
+· ξ
+s
+m,k
+; p
+PV
+m,k= ∑
+s∈SV S
+β
+s
+k
+· p
+PV,s
+m,k
+(A12)
+Secondly, define two subsets S1,S2 defined
+by (A13) and (A14).
+S1 = {s|
+M
+∑
+m=1
+ϕ
+s
+m,k = Qk} (A13)
+S2 = {s|
+M
+∑
+m=1
+ϕ
+s
+m,k = Qk
+,} (A14)
+Then, for the realization ϕk, there always exists two
+scenarios s1 ∈ S1,s2 ∈ S2, make the (A15) always right. For
+any value Em,k ∈ [E
+min
+m,k
+,E
+max
+m,k+1
+], we can get constraints (A16)-
+(A17).
+ϕ
+s2
+m,k ≤ ϕm,k ≤ ϕ
+s1
+m,k
+;s1 ∈ S1,s2 ∈ S2 (A15)
+p
+PV
+m,k
+≤ p
+PV
+m,k ≤ p
+PV
+m,k
+(A16)
+E
+min
+m,k −ξm,k ≤ Em,k −ξm,k ≤ E
+max
+m,k −ξm,k (A17)
+For the sake of presentation, we will use h(g2(ξ ))
+as abbreviation of h(E
+max
+m,k+1 − g2(E
+min
+m,k
+,ξm,k)), h(g1(ξ )) for
+h(E
+min
+m,k+1 − g2(E
+max
+m,k
+,ξm,k)). Furthermore, new constraints
+about the upper boundary and lower boundary in (A17) are
+derived as (A18) - (A21).
+g1(E
+max
+m,k
+,ξ
+s1
+m,k
+)) ≤ g1(E
+max
+m,k
+,ξm,k) ≤ g1(E
+max
+m,k
+,ξ
+s2
+m,k
+)) (A18)
+g2(E
+min
+m,k
+,ξ
+s1
+m,k
+)) ≤ g2(E
+min
+m,k
+,ξm,k) ≤ g2(E
+min
+m,k
+,ξ
+s2
+m,k
+)) (A19)
+h(g2(ξ
+s2
+m,k
+)) ≤ h(g2(ξm,k)) ≤ h(g2(ξ
+s1
+m,k
+)) (A20)
+h(g1(ξ
+s2
+m,k
+)) ≤ h(g1(ξm,k)) ≤ h(g1(ξ
+s1
+m,k
+)) (A21)
+Thirdly, three solution sets Ψ1,Ψ2,Ψ3 are defined by (A22),
+(A23) and (A24).
+Ψ1 =
+
+
+
+p
+ev,s1
+k
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+p
+ev,s1
+m,k ≤ h(g2(ξ
+s1
+m,k
+))
+p
+ev,s1
+m,k ≥ h(g1(ξ
+s1
+m,k
+))
+h(g2(ξ
+s1
+m,k
+)) ≤ P+ p
+PV
+m,k − p
+b
+m,k
+h(g1(ξ
+s1
+m,k
+)) ≥ −P+ p
+PV
+m,k − p
+b
+m,k
+h(g2(ξ
+s1
+m,k
+)) ≤ p
+ev_c
+m,k
+h(g1(ξ
+s1
+m,k
+)) ≥ −p
+ev_d
+m,k
+M
+∑
+m=1
+h(g2(ξ
+s1
+m,k
+)) ≤ p
+G +
+M
+∑
+m=1
+(p
+PV
+m,k − p
+b
+m,k
+);
+M
+∑
+m=1
+h(g1(ξ
+s1
+m,k
+)) ≥ p
+G +
+M
+∑
+m=1
+(p
+PV
+m,k − p
+b
+m,k
+)
+s1 ∈ S1;
+
+
+
+(A22)
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:22:46 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 15 =====
+LIU et al.: DECENTRALIZED COORDINATION OF MULTIPLE BUILDINGS WITH RENEWABLE ENERGY RESOURCE AND EVs 9299
+Ψ2 =
+
+
+
+p
+ev,s2
+k
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+p
+ev,s2
+m,k ≤ h(g2(ξ
+s2
+m,k
+))
+p
+ev,s2
+m,k ≥ h(g1(ξ
+s2
+m,k
+))
+h(g2(ξ
+s2
+m,k
+)) ≤ P+ p
+PV
+m,k
+− p
+b
+m,k
+h(g1(ξ
+s2
+m,k
+)) ≥ −P+ p
+PV
+m,k
+− p
+b
+m,k
+h(g2(ξ
+s2
+m,k
+)) ≤ p
+ev_c
+m,k
+h(g1(ξ
+s2
+m,k
+)) ≥ −p
+ev_d
+m,k
+M
+∑
+m=1
+h(g2(ξ
+s2
+m,k
+)) ≤ p
+G +
+M
+∑
+m=1
+(p
+PV
+m,k
+− p
+b
+m,k
+);
+M
+∑
+m=1
+h(g1(ξ
+s2
+m,k
+)) ≥ p
+G +
+M
+∑
+m=1
+(p
+PV
+m,k
+− p
+b
+m,k
+)
+s2 ∈ S2;
+
+
+
+(A23)
+Ψ3 =
+
+
+
+p
+ev
+k
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+p
+ev
+m,k ≤ h(g2(ξm,k))
+p
+ev,s
+m,k ≥ h(g1(ξm,k))
+h(g2(ξm,k)) ≤ P+ p
+PV
+m,k − p
+b
+m,k
+h(g1(ξm,k)) ≥ −P+ p
+PV
+m,k − p
+b
+m,k
+h(g2(ξm,k)) ≤ p
+ev_c
+m,k
+h(g1(ξm,k)) ≥ −p
+ev_d
+m,k
+M
+∑
+m=1
+h(g2(ξm,k)) ≤ p
+G +
+M
+∑
+m=1
+(p
+PV
+m,k
+− p
+b
+m,k
+);
+M
+∑
+m=1
+h(g1(ξm,k)) ≥ p
+G +
+M
+∑
+m=1
+(p
+PV
+m,k
+− p
+b
+m,k
+)
+
+
+
+(A24)
+It can be seen that Ψ1,Ψ2 are not empty, because
+{p
+ev,s1
+m,k
+∥s1 ∈ S1} ⊆ Ψ1 and {p
+ev,s2
+m,k
+∥s2 ∈ S2} ⊆ Ψ2.
+As known, suppose x1 ≤ x ≤ x2, x3 ≤ x ≤ x4 and x1 ≤ x3 ≤
+x2 ≤ x4, then x5 ≤ x ≤ x6 is not empty if x1 ≤ x5 ≤ x3 and
+x2 ≤ x6 ≤ x4. Then the solution set defined by (A24) is not
+empty.
+As function h(x) is monotonically increasing, then if
+x1 ≤ x2, there must be h(x1) ≤ h(x2), and vice versa.
+h(Em,k+1 −(Em,k −ξm,k)) ≥ h(E
+min
+m,k+1 −g1(E
+max
+m,k
+,ξm,k))
+h(Em,k+1 −(Em,k −ξm,k)) ≤ h(E
+max
+m,k+1 −g2(E
+min
+m,k
+,ξm,k))
+(A25)
+As known, suppose x ∈ [x, x], y ≤ x ≤ y, ∀x is valid if
+and only if y ≤ x, x ≤ y, there must exist a feasible solution
+according to [36]. For any value Em,k ∈ [E
+min
+m,k
+,E
+max
+m,k+1
+], (A25)
+is always established, which means there exists a feasible
+solution, p
+ev
+m,k
+.
+Proof of Conclusion 2: It is found that decision variables
+are constructed only based on the realization of stochastic
+variables at period k. In other words, the future realization of
+the uncertainties is not used at the current period k. Therefore,
+the nonanticipativity of the decision is satisfied. Q.E.D.
+REFERENCES
+[1] D. Kolokotsa, D. Rovas, E. Kosmatopoulos, and K. Kalaitzakis, “A
+roadmap towards intelligent net zero- and positive-energy buildings,”
+Sol. Energy, vol. 85, no. 12, pp. 3067–3084, 2011.
+[2] M. Razmara, G. R. Bharati, M. Shahbakhti, S. Paudyal, and
+R. D. Robinett, “Bilevel optimization framework for smart building-togrid systems,” IEEE Trans. Smart Grid, vol. 9, no. 2, pp. 582–593,
+Mar. 2018.
+[3] X. Guan, Z. Xu, Q.-S. Jia, K. Liu, and Y. Zhou, “Cyber-physical model
+for efficient and secured operation of CPES or energy Internet,” Sci.
+China Inf. Sci., vol. 61, no. 11, pp. 5–7, Nov. 2018.
+[4] S. Sharma, A. Verma, Y. Xu, and B. K. Panigrahi, “Robustly coordinated
+bi-level energy management of a multi-energy building under multiple
+uncertainties,” IEEE Trans. Sustain. Energy, vol. 12, no. 1, pp. 3–13,
+Jan. 2021.
+[5] Y. Zhang, V. Cheng, D. S. Mallapragada, J. Song, and G. He, “A modeladaptive clustering-based time aggregation method for low-carbon
+energy system optimization,” IEEE Trans. Sustain. Energy, vol. 14, no. 1,
+pp. 55–64, Jan. 2023.
+[6] L. Liu and G. Yang, “Distributed fixed-time optimal resource
+management for microgrids,” IEEE Trans. Autom. Sci. Eng., vol. 20,
+no. 1, pp. 404–412, Jan. 2023.
+[7] L. Wen, K. Zhou, W. Feng, and S. Yang, “Demand side management
+in smart grid: A dynamic-price-based demand response model,” IEEE
+Trans. Eng. Manag., vol. 71, pp. 1439–1451, 2024.
+[8] G. Salvatti, E. Carati, R. Cardoso, J. da Costa, and C. Stein, “Electric
+vehicles energy management with V2G/G2 V multifactor optimization
+of smart grids,” Energies, vol. 13, no. 5, p. 1191, Mar. 2020.
+[9] T. Rahman, Y. Xu, and Z. Qu, “Continuous-domain real-time distributed
+ADMM algorithm for aggregator scheduling and voltage stability in
+distribution network,” IEEE Trans. Autom. Sci. Eng., vol. 19, no. 1,
+pp. 60–69, Jan. 2022.
+[10] Int. Energy Agency. Global EV Outlook: Catching Up With
+Climate Ambitions. Accessed: Sep. 15, 2023. [Online]. Available: https://iea.blob.core.windows.net/assets/dacf14d2-eabc-498a-8263-
+9f97fd5dc327/GEVO2023.pdf
+[11] A. Rabiee, M. Sadeghi, J. Aghaeic, and A. Heidari, “Optimal
+operation of microgrids through simultaneous scheduling of electrical
+vehicles and responsive loads considering wind and PV units
+uncertainties,” Renew. Sustain. Energy Rev., vol. 57, pp. 721–739,
+May 2016.
+[12] N. El-Taweel, H. E. Farag, M. Shaaban, and M. Alsharidah,
+“Optimization model for EV charging stations with PV farm transactive
+energy,” IEEE Trans. Ind. Inf., vol. 18, no. 7, pp. 4608–4621,
+Jul. 2022.
+[13] Q. Zhai, X. Li, X. Lei, and X. Guan, “Transmission constrained
+UC with wind power: An all-scenario-feasible MILP formulation with
+strong nonanticipativity,” IEEE Trans. Power Syst., vol. 32, no. 3,
+pp. 1805–1817, May 2017.
+[14] A. Sangswang and M. Konghirun, “Optimal strategies in home energy
+management system integrating solar power, energy storage, and vehicleto-grid for grid support and energy efficiency,” IEEE Trans. Ind. Appl.,
+vol. 56, no. 5, pp. 5716–5728, Sep. 2020.
+[15] H. Saber, H. Ranjbar, S. Fattaheian-Dehkordi, M. Moeini-Aghtaie,
+M. Ehsan, and M. Shahidehpour, “Transactive energy management
+of V2G-capable electric vehicles in residential buildings: An MILP
+approach,” IEEE Trans. Sustain. Energy, vol. 13, no. 3, pp. 1734–1743,
+Jul. 2022.
+[16] Z. liu, Q. Wu, M. Shahidehpour, C. Li, S. Huang, and W. Wei,
+“Transactive real-time electric vehicle charging management for
+commercial buildings with PV on-site generation,” IEEE Trans. Smart
+Grid, vol. 10, no. 5, pp. 4939–4950, Sep. 2019.
+[17] D. Wu, H. Zeng, C. Lu, and B. Boulet, “Two-stage energy management
+for office buildings with workplace EV charging and renewable energy,”
+IEEE Trans. Transport. Electrific., vol. 3, no. 1, pp. 225–237, Mar. 2017.
+[18] X. Xu et al., “Risk management strategy for a renewable power
+supply system in commercial buildings considering thermal comfort
+and stochastic electric vehicle behaviors,” Energy Convers. Manage.,
+vol. 230, Feb. 2021, Art. no. 113831.
+[19] K. Ojand and H. Dagdougui, “Q-Learning-Based model predictive
+control for energy management in residential aggregator,” IEEE Trans.
+Autom. Sci. Eng., vol. 19, no. 1, pp. 70–81, Jan. 2022.
+[20] Y. Du, J. Wu, S. Li, C. Long, and S. Onori, “Coordinated energy dispatch
+of autonomous microgrids with distributed MPC optimization,” IEEE
+Trans. Ind. Inf., vol. 15, no. 9, pp. 5289–5298, Sep. 2019.
+[21] Q. Yan, B. Zhang, and M. Kezunovic, “Optimized operational cost
+reduction for an EV charging station integrated with battery energy
+storage and PV generation,” IEEE Trans. Smart Grid, vol. 10, no. 2,
+pp. 2096–2106, Mar. 2019.
+[22] M. Roccotelli, A. M. Mangini, and M. P. Fanti, “Smart district
+energy management with cooperative microgrids,” IEEE Access, vol. 10,
+pp. 36311–36326, 2022.
+[23] Q. Huang, L. Yang, C. Hou, Z. Zeng, and Y. Qi, “Event-based EV
+charging scheduling in a microgrid of buildings,” IEEE Trans. Transport.
+Electrific., vol. 9, no. 1, pp. 1784–1796, Mar. 2023.
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:22:46 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 16 =====
+9300 IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING, VOL. 22, 2025
+[24] Y. Yang, Q. Jia, X. Guan, X. Zhang, Z. Qiu, and G. Deconinck,
+“Decentralized EV-based charging optimization with building integrated
+wind energy,” IEEE Trans. Autom. Sci. Eng., vol. 16, no. 3,
+pp. 1002–1017, Jul. 2019.
+[25] S. L. Janak and C. A. Floudas, “Robust optimization: Mixed-integer
+linear programs,” in Encyclopedia of Optimization. New York, NY, USA:
+Springer, 2009.
+[26] Q. Zhang, I. E. Grossmann, and R. M. Lima, “On the relation between
+flexibility analysis and robust optimization for linear systems,” AIChE
+J., vol. 62, no. 9, pp. 3109–3123, Sep. 2016.
+[27] M. Khojasteh, P. Faria, and Z. Vale, “A distributed robust
+ADMM-based model for the energy management in local energy
+communities,” Sustain. Energy, Grids Netw., vol. 36, Dec. 2023,
+Art. no. 101136.
+[28] M. Mohiti, H. Monsef, and H. Lesani, “A decentralized robust model for
+coordinated operation of smart distribution network and electric vehicle
+aggregators,” Int. J. Electr. Power Energy Syst., vol. 104, pp. 853–867,
+Jan. 2019.
+[29] ˙I. Yanıkoglu, B. L. Gorissen, and D. den Hertog, “A survey of adjustable ˘
+robust optimization,” Eur. J. Oper. Res., vol. 277, no. 3, pp. 799–813,
+Sep. 2019.
+[30] V. Gabrel, C. Murat, and A. Thiele, “Recent advances in robust
+optimization: An overview,” Eur. J. Oper. Res., vol. 235, no. 3,
+pp. 471–483, 2014.
+[31] D. Bertsimas, D. B. Brown, and C. Caramanis, “Theory and applications
+of robust optimization,” SIAM Review, vol. 53, no. 3, pp. 464–501, 2011.
+[32] L. Zhao and B. Zeng, “An exact algorithm for two-stage robust
+optimization with mixed integer recourse problems,” Univ. South
+Florida, Tampa, FL, USA, Tech. Rep., 2012.
+[33] B. Zeng and L. Zhao, “Solving two-stage robust optimization problems
+by a constraint-and-column generation method,” Oper. Res. Lett., vol. 41,
+no. 5, pp. 457–461, 2013.
+[34] Z. Li, W. Wu, B. Zhang, and B. Wang, “Adjustable robust real-time
+power dispatch with large-scale wind power integration,” IEEE Trans.
+Sustain. Energy, vol. 6, no. 2, pp. 357–368, Apr. 2015.
+[35] A. Lorca, X. Sun, E. Litvinov, and T. Zheng, “Multistage robust
+unit commitment with dynamic uncertainty sets and energy storage,” IEEE Trans. Power Syst., vol. 32, no. 3, pp. 1678–1688,
+May 2017.
+[36] Y. Zhou, Q. Zhai, and L. Wu, “Optimal operation of regional
+microgrids with renewable and energy storage: Solution robustness and
+nonanticipativity against uncertainties,” IEEE Trans. Smart Grid, vol. 13,
+no. 6, pp. 4218–4230, Nov. 2022.
+[37] L. Adacher, M. Flamini, and F. Pascucci, “A Lagrangian relaxation
+method for an online decentralized assignment of electric vehicles to
+charging stations,” IEEE Trans. Syst., Man, Cybern., Syst., vol. 53, no. 9,
+pp. 5568–5579, Sep. 2023.
+[38] P. Xu, P. Haves, M. A. Piette, and L. Zagreus, “Demand shifting with
+thermal mass in large commercial buildings: Field tests, simulation and
+audits,” Lawrence Berkeley Nat. Lab., Berkeley, CA, USA, Tech. Rep.
+LBNL-58815, 2005.
+[39] F. Liu, Z. Xu, K. Liu, J. Wu, and X. Guan, “Coordinated
+optimization of EVs and multiple buildings with renewable energy,”
+in Proc. IEEE 16th Int. Conf. Autom. Sci. Eng. (CASE), Aug. 2020,
+pp. 1491–1496.
+[40] D. Tang and P. Wang, “Probabilistic modeling of nodal charging
+demand based on spatial–temporal dynamics of moving electric
+vehicles,” IEEE Trans. Smart Grid, vol. 7, no. 2, pp. 627–636,
+Mar. 2016.
+[41] K. Wang, R. Yin, L. Yao, J. Yao, T. Yong, and N. Deforest, “A twolayer framework for quantifying demand response flexibility at bulk
+supply points,” IEEE Trans. Smart Grid, vol. 9, no. 4, pp. 3616–3627,
+Jul. 2018.
+[42] S. Katipamula and N. Lu, “Evaluation of residential hvac control
+strategies for demand response programs,” Ashrae Trans., vol. 112,
+pp. 535–546, Aug. 2006.
+[43] X. Zhao, P. B. Luh, and J. Wang, “Surrogate gradient algorithm
+for Lagrangian relaxation,” J. Optim. Theory Appl., vol. 100, no. 3,
+pp. 699–712, Mar. 1999.
+[44] Beijing Transp. Inst. (2023). Beijing Transportation Development
+Annual Report 2023. [Online]. Available: http://www.bjtrc.org.
+cn/List/index/cid/7.html
+[45] Nissan Leaf Price Specification. Accessed: Sep. 15, 2023.
+[Online]. Available: https://ev-database.org/car/1106/Nissan-Leaf
+[46] Beijing Municipal Commission of Development and Reform.
+Accessed: Sep. 15, 2023. [Online]. Available: http://fgw.beijing.
+gov.cn/fgwzwgk/zcgk/bwqtwj
+[47] NREL U.S. Dept. Energy. PVWatts Calculator. Accessed: Sep. 15, 2023.
+[Online]. Available: https://pvwatts.nrel.gov/index.php
+[48] H. Yang et al., “Operational planning of electric vehicles for balancing
+wind power and load fluctuations in a microgrid,” IEEE Trans. Sustain.
+Energy, vol. 8, no. 2, pp. 592–604, Apr. 2017.
+[49] S. Nazari, F. Borrelli, and A. Stefanopoulou, “Electric vehicles for
+smart buildings: A survey on applications, energy management methods,
+and battery degradation,” Proc. IEEE, vol. 109, no. 6, pp. 1128–1144,
+Jun. 2021.
+[50] R. Dai, R. Esmaeilbeigi, and H. Charkhgard, “The utilization of shared
+energy storage in energy systems: A comprehensive review,” IEEE
+Trans. Smart Grid, vol. 12, no. 4, pp. 3163–3174, Jul. 2021.
+Fengxia Liu (Student Member, IEEE) received the
+B.E. degree in communication engineering from
+Shandong University, Jinan, China, in 2008, and the
+M.S. degree in signal and information processing
+from the University of Science and Technology
+of China, Hefei, China, in 2011. She is currently
+pursuing the Ph.D. degree in control science and
+engineering with Xi’an Jiaotong University, Xi’an,
+China.
+Her research interests include robust optimization,
+coordination of renewable energy, and electric
+vehicles.
+Zhanbo Xu (Member, IEEE) received the B.E.
+degree in electrical engineering and automation from
+Harbin Institute of Technology University, China,
+in 2008, and the Ph.D. degree in control science and
+engineering from Xi’an Jiaotong University, Xi’an,
+China, in 2015.
+He was a Post-Doctoral Scholar with Berkeley
+Education Alliance for Research in Singapore
+from 2015 to 2017. He is currently a Professor with
+the Systems Engineering Institute, Xi’an Jiaotong
+University. His research interests include networked
+energy systems, including smart power grids, energy internet, planning and
+scheduling of cyber-physical energy systems, building energy management,
+and smart cities.
+Kun Liu (Member, IEEE) received the B.S. degree
+in automatic control engineering and the Ph.D.
+degree in systems engineering from Xi’an Jiaotong
+University, China, in 2010 and 2016, respectively.
+He is currently an Associate Professor with
+the Systems Engineering Institute, Xi’an Jiaotong
+University. His research interests include power
+system optimization and scheduling.
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:22:46 UTC from IEEE Xplore. Restrictions apply. 
+
+===== PAGE 17 =====
+LIU et al.: DECENTRALIZED COORDINATION OF MULTIPLE BUILDINGS WITH RENEWABLE ENERGY RESOURCE AND EVs 9301
+Haoming Zhao (Student Member, IEEE) received
+the B.E. degree in aircraft design and engineering
+from Northwestern Polytechnical University, China,
+in 2016, and the M.S. degree in advanced control
+and dynamics engineering from the University of
+Leicester, U.K., in 2018. He is currently pursuing
+the Ph.D. degree with the System Engineering
+Institute and the School of Automation Science
+and Engineering, Xi’an Jiaotong University, Xi’an,
+China.
+His research interests include coordinated optimization of EVs and building energy systems.
+Jiang Wu (Member, IEEE) received the B.S. degree
+in electrical engineering and the Ph.D. degree in
+systems engineering from Xi’an Jiaotong University,
+Xi’an, China, in 2002 and 2008, respectively.
+He is currently an Associate Professor with
+the Systems Engineering Institute, Xi’an Jiaotong
+University. His research interests include stochastic
+unit commitment, wind energy, and deregulated
+electricity markets.
+Yuzhou Zhou (Member, IEEE) received the B.S.
+degree in automation and the Ph.D. degree in
+control science and engineering from Xi’an Jiaotong
+University, Xi’an, China, in 2015 and 2021,
+respectively.
+From 2019 to 2020, he was a Visiting Scholar
+with the Stevens Institute of Technology, Hoboken,
+NJ, USA. He is currently an Assistant Professor
+with the Systems Engineering Institute, Xi’an
+Jiaotong University. His research interests include
+the planning and scheduling of energy systems with
+renewable energy resources and energy storage systems.
+Xiaohong Guan (Life Fellow, IEEE) received the
+B.S. and M.S. degrees in control engineering from
+Tsinghua University, Beijing, China, in 1982 and
+1985, respectively, and the Ph.D. degree in electrical
+and systems engineering from the University of
+Connecticut in 1993.
+He was a Senior Consulting Engineer with
+Pacific Gas and Electric from 1993 to 1995.
+He visited the Division of Engineering and Applied
+Science, Harvard University, from 1999 to 2000.
+From 1985 to 1988 and since 1995, he has been
+with Xi’an Jiaotong University, Xi’an, China, and has been the Cheung Kong
+Professor of Systems Engineering since 1999. He was the Director of the
+State Key Laboratory for Manufacturing Systems from 1999 to 2009, the Dean
+of the School of Electronic and Information Engineering from 2008 to 2018,
+and the Dean of the Faculty of Electronic and Information Engineering since
+2019. Since 2001, he has also been with the Center for Intelligent and
+Networked Systems, Tsinghua University, Beijing, China, and was the Head
+of the Department of Automation, Tsinghua University, from 2003 to 2008.
+His research interests include economics and security of networked systems,
+including power and energy systems, manufacturing systems, and cyberphysical systems. He is a member of Chinese Academy of Science.
+Authorized licensed use limited to: Xian Jiaotong University. Downloaded on May 09,2026 at 02:22:46 UTC from IEEE Xplore. Restrictions apply. 

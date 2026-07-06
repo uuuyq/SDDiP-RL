@@ -30,6 +30,7 @@ def train_interleaved(
     n_epochs=3, ent_coef=0.005, vf_coef=1.0, max_grad_norm=0.5,
     target_kl=0.015, hidden_dim=128, log_std_init=-3.0, overwrite=False,
     encoder_type="deepset", n_heads=4, n_attn_layers=2,
+    rho=1.0, B_t=None, norm_bound_type="l1", weights=None,
 ):
     """交错训练函数：在多个 config 之间交替训练"""
     model = None
@@ -40,7 +41,10 @@ def train_interleaved(
         for config_idx, config in enumerate(configs):
             logger.info(f"  训练 Config {config_idx + 1}/{len(configs)} (realization {config.n})")
 
-            env = IncrementalLevelBundleEnv.create_env(logger, config, K=K)
+            env = IncrementalLevelBundleEnv.create_env(
+                logger, config, K=K,
+                rho=rho, B_t=B_t, norm_bound_type=norm_bound_type, weights=weights,
+            )
 
             model, _, _ = train(
                 env=env,
@@ -146,6 +150,10 @@ def main(experiment_name, config_path=None):
         encoder_type=net_config.get('encoder_type', 'deepset'),
         n_heads=net_config.get('n_heads', 4),
         n_attn_layers=net_config.get('n_attn_layers', 2),
+        rho=env_config.get('rho', 1.0),
+        B_t=env_config.get('B_t', None),
+        norm_bound_type=env_config.get('norm_bound_type', 'l1'),
+        weights=env_config.get('weights', None),
     )
 
     logger.info("训练完成！")
